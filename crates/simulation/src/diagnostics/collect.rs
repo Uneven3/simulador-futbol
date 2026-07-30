@@ -7,7 +7,9 @@
 use crate::diagnostics::ledger::MatchLedger;
 use bevy_ecs::prelude::*;
 use football_domain::diagnostics::{Field, MatchSnapshot, ReleaseKind, SectionId};
-use football_domain::{MatchPhase, MatchRegulations, MatchState, PossessionDesignation, SetPiece, TeamId};
+use football_domain::{
+    MatchPhase, MatchRegulations, MatchState, PossessionDesignation, SetPiece, TeamId,
+};
 use std::time::Duration;
 
 /// The time a broadcast clock would show: minutes counted from the start of the
@@ -67,7 +69,6 @@ pub fn restart_label(set_piece: SetPiece, team: Option<TeamId>) -> Option<String
         _ => awarded.to_string(),
     })
 }
-
 
 /// The match as a broadcast would state it: score, clock, and what part of the
 /// match this is.
@@ -133,14 +134,9 @@ pub(super) fn collect_snapshot(
         vec![
             Field::new(
                 "lost_passes",
-                ledger
-                    .turnovers_of(ReleaseKind::Pass)
-                    .to_string(),
+                ledger.turnovers_of(ReleaseKind::Pass).to_string(),
             ),
-            Field::new(
-                "at_receiver",
-                ledger.pass_turnovers_near.to_string(),
-            ),
+            Field::new("at_receiver", ledger.pass_turnovers_near.to_string()),
             Field::new("en_route", ledger.pass_turnovers_far.to_string()),
             Field::new("touchers", ledger.distinct_touchers().to_string()),
         ],
@@ -164,8 +160,6 @@ fn designated_name(designated: Option<football_domain::PlayerId>) -> String {
         None => "-".to_string(),
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

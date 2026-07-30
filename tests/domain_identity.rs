@@ -1,8 +1,8 @@
 //! Law 10: what the match remembers is keyed by domain identity, never by the
 //! ECS slot a body happens to occupy.
 
-use gameplayfootball::{PlayerId, ScenarioRunner, TeamId, scenarios};
 use football_domain::{Player, PlayerRegistry};
+use gameplayfootball::{PlayerId, ScenarioRunner, TeamId, scenarios};
 
 /// Every body on the pitch is reachable from its identity, and no two players
 /// share one. A duplicate would make the registry silently lose a player.

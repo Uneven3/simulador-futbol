@@ -213,22 +213,22 @@ fn referee_offside_system(
                 .iter()
                 .find(|(id, _)| *id == touch.player)
                 .copied()
-            {
-                match_state.set_piece = SetPiece::FreeKick;
-                match_state.set_piece_team = Some(touch.team().opponent());
-                match_state.set_piece_timer = 4.0;
-                match_state.restart_pos = Vec3::new(recorded_pos.x, recorded_pos.y, 0.0);
-                records.players.clear();
-                records.team = None;
-                telemetry.record(MatchFact::OffsideGiven {
-                    against: touch.player,
-                });
-                telemetry.record(MatchFact::RestartAwarded {
-                    set_piece: SetPiece::FreeKick,
-                    team: touch.team().opponent(),
-                });
-                continue;
-            }
+        {
+            match_state.set_piece = SetPiece::FreeKick;
+            match_state.set_piece_team = Some(touch.team().opponent());
+            match_state.set_piece_timer = 4.0;
+            match_state.restart_pos = Vec3::new(recorded_pos.x, recorded_pos.y, 0.0);
+            records.players.clear();
+            records.team = None;
+            telemetry.record(MatchFact::OffsideGiven {
+                against: touch.player,
+            });
+            telemetry.record(MatchFact::RestartAwarded {
+                set_piece: SetPiece::FreeKick,
+                team: touch.team().opponent(),
+            });
+            continue;
+        }
 
         records.players.clear();
         records.team = Some(touch.team());

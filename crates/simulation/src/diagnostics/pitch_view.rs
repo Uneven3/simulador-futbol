@@ -74,8 +74,14 @@ mod tests {
         let lines: Vec<&str> = drawn.lines().collect();
 
         assert_eq!(lines.len(), ROWS);
-        assert!(lines.iter().any(|line| line.contains("---")), "no touchline");
-        assert!(lines.iter().any(|line| line.contains(':')), "no halfway line");
+        assert!(
+            lines.iter().any(|line| line.contains("---")),
+            "no touchline"
+        );
+        assert!(
+            lines.iter().any(|line| line.contains(':')),
+            "no halfway line"
+        );
         assert!(!drawn.contains('@'), "a ball that does not exist was drawn");
     }
 }

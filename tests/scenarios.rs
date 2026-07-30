@@ -75,7 +75,9 @@ fn a_scenario_that_contradicts_itself_is_caught_before_it_runs() {
     // The opening scenario describes a match, not a situation: asserting it
     // would simulate 540,000 ticks.
     assert!(
-        !gameplayfootball::Scenario::kick_off().contradictions().is_empty(),
+        !gameplayfootball::Scenario::kick_off()
+            .contradictions()
+            .is_empty(),
         "a 90-minute window was accepted into a suite"
     );
 

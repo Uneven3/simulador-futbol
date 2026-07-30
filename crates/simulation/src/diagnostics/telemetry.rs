@@ -5,8 +5,8 @@
 //! are appended and read in order — by a console sink, by an overlay, or by a
 //! test that wants to count what a match did without running its own bookkeeping.
 
-use football_domain::diagnostics::{DiagnosticChannel, DiagnosticChannels, MatchFact};
 use bevy_ecs::prelude::*;
+use football_domain::diagnostics::{DiagnosticChannel, DiagnosticChannels, MatchFact};
 use std::collections::VecDeque;
 
 /// A fact and the fixed tick it happened on. The tick is the correlation key:

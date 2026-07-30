@@ -30,8 +30,8 @@ use bevy_time::prelude::*;
 
 use crate::team_tactics::{
     DISTANCE_TO_VELOCITY_MULTIPLIER, DRIBBLE_VELOCITY, PITCH_HALF_H, PITCH_HALF_W, PlayerReading,
-    SPRINT_VELOCITY, TeamTactics, WALK_VELOCITY, apply_offside_trap, closest_player, closest_players,
-    cpp_clamp, get_adapted_formation_position, team_side,
+    SPRINT_VELOCITY, TeamTactics, WALK_VELOCITY, apply_offside_trap, closest_player,
+    closest_players, cpp_clamp, get_adapted_formation_position, team_side,
 };
 use football_domain::math::{
     curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
@@ -260,7 +260,10 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
     let ball_pos = Vec2::new(ctx.ball.predictions[0].x, ctx.ball.predictions[0].y);
     let dist = me.pos.distance(ball_pos);
     if dist > 0.5 {
-        ((ball_pos - me.pos).normalize_or_zero(), stats.top_speed * 0.95)
+        (
+            (ball_pos - me.pos).normalize_or_zero(),
+            stats.top_speed * 0.95,
+        )
     } else {
         let all: Vec<(TeamId, Vec2, Vec2)> =
             ctx.snaps.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
@@ -285,7 +288,11 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
 /// (`!oppTeamHasPossession && possessionAmount > 0.5`). Otherwise he behaves
 /// like any off-the-ball player (the original's defensive designated branch
 /// has autoBias ≈ 0 for AI players).
-fn ball_winnable(ctx: &DecisionContext, me: &PlayerReading, possession_player: Option<PlayerId>) -> bool {
+fn ball_winnable(
+    ctx: &DecisionContext,
+    me: &PlayerReading,
+    possession_player: Option<PlayerId>,
+) -> bool {
     let my_time = ctx.designation.time_to_ball_ms[me.team()].min(60_000.0);
     let opp_time = ctx.designation.time_to_ball_ms[me.team().opponent()].min(60_000.0);
     let possession_amount = (opp_time + 200.0) / (my_time + 200.0);
@@ -321,37 +328,41 @@ fn off_ball_movement(
 
     // hunt the opponent ball carrier when he's close and we're one of the two
     // closest teammates (port of the "more 'hunting' method" block)
-    if !team_has_best_possession && man_marking.is_none()
+    if !team_has_best_possession
+        && man_marking.is_none()
         && let Some(opp) =
             ctx.designation.designated[team.opponent()].and_then(|e| snap_of(ctx.snaps, e))
-        {
-            let mind_set = me.role.attacking_bias();
-            let mut hunt_threshold = 10.0 + (1.0 - mind_set) * 10.0;
-            hunt_threshold *=
-                0.5 * 1.0 + 0.5 * (1.0 - normalized_clamp(avg_velocity, 0.0, SPRINT_VELOCITY));
-            // match difficulty 1.0 → * (0.3 + 0.7) = 1.0
+    {
+        let mind_set = me.role.attacking_bias();
+        let mut hunt_threshold = 10.0 + (1.0 - mind_set) * 10.0;
+        hunt_threshold *=
+            0.5 * 1.0 + 0.5 * (1.0 - normalized_clamp(avg_velocity, 0.0, SPRINT_VELOCITY));
+        // match difficulty 1.0 → * (0.3 + 0.7) = 1.0
 
-            let gap = ((opp.pos + opp.vel * 0.12) - (me.pos + me.vel * 0.04)).length();
-            if gap < hunt_threshold {
-                let hunters = closest_players(ctx.snaps, team, opp.pos + opp.vel * 0.1, None, 2);
-                if hunters.iter().any(|s| s.id == me.id) {
-                    let defend_pos = get_defend_position(me, opp, team);
-                    if need_defending_movement(team_side(team), me.pos, defend_pos) {
-                        let to_target = defend_pos - me.pos;
-                        let velo = (to_target.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
-                            .clamp(0.0, SPRINT_VELOCITY);
-                        return (to_target.normalize_or_zero(), velo);
-                    }
+        let gap = ((opp.pos + opp.vel * 0.12) - (me.pos + me.vel * 0.04)).length();
+        if gap < hunt_threshold {
+            let hunters = closest_players(ctx.snaps, team, opp.pos + opp.vel * 0.1, None, 2);
+            if hunters.iter().any(|s| s.id == me.id) {
+                let defend_pos = get_defend_position(me, opp, team);
+                if need_defending_movement(team_side(team), me.pos, defend_pos) {
+                    let to_target = defend_pos - me.pos;
+                    let velo = (to_target.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
+                        .clamp(0.0, SPRINT_VELOCITY);
+                    return (to_target.normalize_or_zero(), velo);
                 }
             }
         }
+    }
 
     // default strategies (default_def / default_mid / default_off)
-    let (attack_bias_min, attack_bias_max, defensive_k, run_gate, use_trap) = match me.playing_position {
-        PlayingPosition::LeftBack | PlayingPosition::CentreBack | PlayingPosition::RightBack => (0.2, 0.9, 1.9, f32::MAX, true),
-        PlayingPosition::CentreForward => (0.1, 0.6, 1.3, 0.7, false),
-        _ => (0.1, 0.7, 1.5, 0.9, true),
-    };
+    let (attack_bias_min, attack_bias_max, defensive_k, run_gate, use_trap) =
+        match me.playing_position {
+            PlayingPosition::LeftBack
+            | PlayingPosition::CentreBack
+            | PlayingPosition::RightBack => (0.2, 0.9, 1.9, f32::MAX, true),
+            PlayingPosition::CentreForward => (0.1, 0.6, 1.3, 0.7, false),
+            _ => (0.1, 0.7, 1.5, 0.9, true),
+        };
 
     let ai = &ctx.tactics.team[team];
     let fading = ai.fading_team_possession_amount;
@@ -592,7 +603,9 @@ fn get_support_position_force_field(
     opponent_repel_weight *= match me.playing_position {
         PlayingPosition::CentreBack | PlayingPosition::LeftBack | PlayingPosition::RightBack => 2.2,
         PlayingPosition::DefensiveMidfielder => 2.0,
-        PlayingPosition::CentreMidfielder | PlayingPosition::LeftMidfielder | PlayingPosition::RightMidfielder => 1.6,
+        PlayingPosition::CentreMidfielder
+        | PlayingPosition::LeftMidfielder
+        | PlayingPosition::RightMidfielder => 1.6,
         PlayingPosition::AttackingMidfielder => 1.2,
         _ => 1.0,
     };
@@ -792,85 +805,85 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
             // keeper come-out logic: opponent rushing in with no help nearby
             let mut v0_adapted = v0;
             if ctx.tactics.team[team].fading_team_possession_amount < 1.0
-                && let Some(opp) = ctx.designation.designated[team.opponent()]
-                    .and_then(|e| snap_of(ctx.snaps, e))
-                {
-                    let opp_pos = opp.pos + opp.vel * 0.32;
-                    let opp_has_ball = ctx.match_designated.is_some_and(|id| id == opp.id);
-                    v0_adapted = if opp_has_ball {
-                        opp_pos * 0.4 + ball_pos * 0.6
-                    } else {
-                        opp_pos * 0.6 + ball_pos * 0.4
-                    };
+                && let Some(opp) =
+                    ctx.designation.designated[team.opponent()].and_then(|e| snap_of(ctx.snaps, e))
+            {
+                let opp_pos = opp.pos + opp.vel * 0.32;
+                let opp_has_ball = ctx.match_designated.is_some_and(|id| id == opp.id);
+                v0_adapted = if opp_has_ball {
+                    opp_pos * 0.4 + ball_pos * 0.6
+                } else {
+                    opp_pos * 0.6 + ball_pos * 0.4
+                };
 
-                    let shoot_threshold = 20.0;
-                    let opp_to_goal_distance = (goal_pos - opp_pos).length();
-                    let opp_to_threshold_distance = (opp_to_goal_distance
-                        - shoot_threshold
-                            * normalized_clamp(opp_to_goal_distance, 0.0, shoot_threshold * 2.0))
-                    .clamp(0.0, PITCH_HALF_W);
-                    let shooting_point = opp_pos
-                        + (goal_pos - opp_pos).normalize_or_zero() * opp_to_threshold_distance;
+                let shoot_threshold = 20.0;
+                let opp_to_goal_distance = (goal_pos - opp_pos).length();
+                let opp_to_threshold_distance = (opp_to_goal_distance
+                    - shoot_threshold
+                        * normalized_clamp(opp_to_goal_distance, 0.0, shoot_threshold * 2.0))
+                .clamp(0.0, PITCH_HALF_W);
+                let shooting_point =
+                    opp_pos + (goal_pos - opp_pos).normalize_or_zero() * opp_to_threshold_distance;
 
-                    let mate_to_threshold =
-                        closest_player(ctx.snaps, team, shooting_point, Some(me.id), false)
+                let mate_to_threshold =
+                    closest_player(ctx.snaps, team, shooting_point, Some(me.id), false)
+                        .and_then(|e| snap_of(ctx.snaps, e))
+                        .map(|m| (shooting_point - (m.pos + m.vel * 0.24)).length())
+                        .unwrap_or(99999.0);
+
+                if mate_to_threshold > opp_to_threshold_distance + 1.0 {
+                    away_from_goal_bias = 1.0;
+
+                    // secondary danger: the opponent's closest helper
+                    if let Some(helper) =
+                        closest_player(ctx.snaps, team.opponent(), goal_pos, Some(opp.id), false)
                             .and_then(|e| snap_of(ctx.snaps, e))
-                            .map(|m| (shooting_point - (m.pos + m.vel * 0.24)).length())
-                            .unwrap_or(99999.0);
-
-                    if mate_to_threshold > opp_to_threshold_distance + 1.0 {
-                        away_from_goal_bias = 1.0;
-
-                        // secondary danger: the opponent's closest helper
-                        if let Some(helper) =
-                            closest_player(ctx.snaps, team.opponent(), goal_pos, Some(opp.id), false)
-                                .and_then(|e| snap_of(ctx.snaps, e))
-                        {
-                            let helper_pos = helper.pos + helper.vel * 0.32;
-                            let helper_shoot_threshold = 24.0;
-                            let helper_to_goal = (goal_pos - helper_pos).length();
-                            let helper_to_threshold = (helper_to_goal
-                                - helper_shoot_threshold
-                                    * normalized_clamp(
-                                        helper_to_goal,
-                                        0.0,
-                                        helper_shoot_threshold * 2.0,
-                                    ))
-                            .clamp(0.0, PITCH_HALF_W);
-                            let helper_shooting_point = helper_pos
-                                + (goal_pos - helper_pos).normalize_or_zero() * helper_to_threshold;
-
-                            let mate_helper_to_threshold = closest_player(
-                                ctx.snaps,
-                                team,
-                                helper_shooting_point,
-                                Some(me.id),
-                                false,
-                            )
-                            .and_then(|e| snap_of(ctx.snaps, e))
-                            .map(|m| (helper_shooting_point - (m.pos + m.vel * 0.24)).length())
-                            .unwrap_or(99999.0);
-
-                            let mut secondary_distance_diff = 0.0;
-                            if mate_helper_to_threshold > helper_to_threshold {
-                                secondary_distance_diff = normalized_clamp(
-                                    mate_helper_to_threshold - helper_to_threshold,
+                    {
+                        let helper_pos = helper.pos + helper.vel * 0.32;
+                        let helper_shoot_threshold = 24.0;
+                        let helper_to_goal = (goal_pos - helper_pos).length();
+                        let helper_to_threshold = (helper_to_goal
+                            - helper_shoot_threshold
+                                * normalized_clamp(
+                                    helper_to_goal,
                                     0.0,
-                                    2.0,
-                                );
-                            }
-                            let mut helper_vs_primary = 1.0
-                                - normalized_clamp(
-                                    helper_to_threshold / (opp_to_threshold_distance + 0.0001),
-                                    1.0,
-                                    1.5,
-                                );
-                            helper_vs_primary *= 0.7;
-                            away_from_goal_bias =
-                                (1.0 - secondary_distance_diff * helper_vs_primary).clamp(0.0, 1.0);
+                                    helper_shoot_threshold * 2.0,
+                                ))
+                        .clamp(0.0, PITCH_HALF_W);
+                        let helper_shooting_point = helper_pos
+                            + (goal_pos - helper_pos).normalize_or_zero() * helper_to_threshold;
+
+                        let mate_helper_to_threshold = closest_player(
+                            ctx.snaps,
+                            team,
+                            helper_shooting_point,
+                            Some(me.id),
+                            false,
+                        )
+                        .and_then(|e| snap_of(ctx.snaps, e))
+                        .map(|m| (helper_shooting_point - (m.pos + m.vel * 0.24)).length())
+                        .unwrap_or(99999.0);
+
+                        let mut secondary_distance_diff = 0.0;
+                        if mate_helper_to_threshold > helper_to_threshold {
+                            secondary_distance_diff = normalized_clamp(
+                                mate_helper_to_threshold - helper_to_threshold,
+                                0.0,
+                                2.0,
+                            );
                         }
+                        let mut helper_vs_primary = 1.0
+                            - normalized_clamp(
+                                helper_to_threshold / (opp_to_threshold_distance + 0.0001),
+                                1.0,
+                                1.5,
+                            );
+                        helper_vs_primary *= 0.7;
+                        away_from_goal_bias =
+                            (1.0 - secondary_distance_diff * helper_vs_primary).clamp(0.0, 1.0);
                     }
                 }
+            }
 
             let distance = ((v0_adapted - v1).length() - 0.5).max(0.0);
             away_from_goal_offset = cpp_clamp(
@@ -1030,10 +1043,7 @@ pub fn decide_on_ball_action(
     // collect the best pass option
     let mut best_total = 0.0f32;
     let mut best: Option<(PlayerId, Vec2, PassKind, f32)> = None; // + pass rating
-    for mate in snaps
-        .iter()
-        .filter(|s| s.team() == team && s.id != me_id)
-    {
+    for mate in snaps.iter().filter(|s| s.team() == team && s.id != me_id) {
         // offside receivers are a wasted touch (our addition, see module docs)
         if mate.pos.x * -side > offside_line_x * -side - 0.5 {
             continue;
@@ -1138,10 +1148,7 @@ pub fn decide_on_ball_action(
         >= 2;
     if hemmed {
         let mut best_escape: Option<(PlayerId, Vec2, PassKind, f32)> = None;
-        for mate in snaps
-            .iter()
-            .filter(|s| s.team() == team && s.id != me_id)
-        {
+        for mate in snaps.iter().filter(|s| s.team() == team && s.id != me_id) {
             if mate.pos.x * -side > offside_line_x * -side - 0.5 {
                 continue;
             }
@@ -1153,9 +1160,10 @@ pub fn decide_on_ball_action(
             }
         }
         if let Some((target, aim, kind, odds)) = best_escape
-            && odds > 0.2 {
-                return OnBallAction::Pass { target, aim, kind };
-            }
+            && odds > 0.2
+        {
+            return OnBallAction::Pass { target, aim, kind };
+        }
         return OnBallAction::PanicClear;
     }
 

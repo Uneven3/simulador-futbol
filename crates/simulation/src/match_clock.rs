@@ -1,7 +1,7 @@
 use crate::SimulationSet;
+use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::TeamId;
@@ -118,11 +118,7 @@ fn advance_period(time: &Time, match_state: &mut MatchState) -> u64 {
     match_state.period_elapsed_ms
 }
 
-fn stop_play_for_kick_off(
-    match_state: &mut MatchState,
-    kicking_team: TeamId,
-    delay_seconds: f32,
-) {
+fn stop_play_for_kick_off(match_state: &mut MatchState, kicking_team: TeamId, delay_seconds: f32) {
     match_state.set_piece = SetPiece::KickOff;
     match_state.set_piece_team = Some(kicking_team);
     match_state.set_piece_timer = delay_seconds;

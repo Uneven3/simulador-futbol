@@ -5,10 +5,10 @@
 //! This is where that arithmetic lives, so the kernel keeps no counters and no
 //! test has to rebuild them from scratch.
 
-use football_domain::diagnostics::{MatchFact, PossessionCause, ReleaseKind};
 use super::telemetry::MatchTelemetry;
 use bevy_ecs::prelude::*;
 use bevy_math::Vec2;
+use football_domain::diagnostics::{MatchFact, PossessionCause, ReleaseKind};
 use football_domain::scenario::TICK;
 use football_domain::{ByTeam, PlayerId, TeamId};
 use std::collections::HashSet;
@@ -250,7 +250,11 @@ mod tests {
     #[test]
     fn the_longest_spell_is_measured_between_changes() {
         let mut ledger = MatchLedger::default();
-        for (tick, team) in [(0u64, TeamId::Home), (500, TeamId::Away), (600, TeamId::Home)] {
+        for (tick, team) in [
+            (0u64, TeamId::Home),
+            (500, TeamId::Away),
+            (600, TeamId::Home),
+        ] {
             ledger.absorb(
                 tick,
                 MatchFact::PossessionGained {

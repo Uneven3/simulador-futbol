@@ -11,8 +11,9 @@ use std::time::Duration;
 use crate::diagnostics::{MatchFact, MatchTelemetry, PossessionCause, ReleaseKind};
 use football_domain::math::{normalized_clamp, normalized_or_2d, sign_side};
 use football_domain::{
-    Attributes, Ball, BallTouched, ByTeam, Facing, MatchRng, MatchState, Player, PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation,
-    SetPiece, TeamId, Velocity,
+    Attributes, Ball, BallTouched, ByTeam, Facing, MatchRng, MatchState, Player, PlayerId,
+    PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation, SetPiece,
+    TeamId, Velocity,
 };
 
 /// Everything the ball systems need to read off a body, plus the one thing they
@@ -233,7 +234,10 @@ fn player_kick_system(
 
         // players flagged offside at the last touch hold off the ball
         if offside_records.team == Some(player.id.team)
-            && offside_records.players.iter().any(|(id, _)| *id == player.id)
+            && offside_records
+                .players
+                .iter()
+                .any(|(id, _)| *id == player.id)
         {
             continue;
         }
@@ -266,69 +270,70 @@ fn player_kick_system(
     if let Some((challenger, challenger_body)) = closest_player {
         if let Some(current_possessor) = match_state.possession_player {
             if challenger != current_possessor
-                && let Some(Ok((_, current_position, ..))) =
-                    registry.body(current_possessor).map(|b| player_query.get(b))
-                {
-                    // Teammates cannot steal the ball from each other
-                    if challenger.team != current_possessor.team {
-                        // Only the designated possession player makes deliberate
-                        // tackles (everyone else holds shape); tight contact
-                        // (< 0.50m) and tackle cooldowns still apply
-                        let is_designated_tackler =
-                            designation.designated[challenger.team] == Some(challenger);
-                        // Shielding: in the original the carrier's body (via the
-                        // ball-control animations) physically screens the ball, so
-                        // a steal needs (a) the tackler genuinely closer to the
-                        // ball, and (b) the ball NOT under close control — either
-                        // poked loose (> 1 m from the carrier's feet) or held so
-                        // long that pressure legitimately forces the turnover.
-                        // Without this, the two designated players trade the ball
-                        // every cooldown window and the match degenerates into a
-                        // stealing metronome.
-                        let carrier_dist = current_position.on_pitch().distance(ball_pos_2d);
-                        let wins_duel = closest_player_dist < carrier_dist * 0.8;
-                        let held_ms =
-                            current_time_ms.saturating_sub(match_state.last_possession_change_time);
-                        let ball_stealable = carrier_dist > 1.0 || held_ms > 2000;
-                        if is_designated_tackler
-                            && closest_player_dist < 0.50
-                            && wins_duel
-                            && ball_stealable
-                        {
-                            let is_prev = match_state.previous_possessor == Some(challenger);
-                            let cooldown_limit = if is_prev { 1000 } else { 500 };
+                && let Some(Ok((_, current_position, ..))) = registry
+                    .body(current_possessor)
+                    .map(|b| player_query.get(b))
+            {
+                // Teammates cannot steal the ball from each other
+                if challenger.team != current_possessor.team {
+                    // Only the designated possession player makes deliberate
+                    // tackles (everyone else holds shape); tight contact
+                    // (< 0.50m) and tackle cooldowns still apply
+                    let is_designated_tackler =
+                        designation.designated[challenger.team] == Some(challenger);
+                    // Shielding: in the original the carrier's body (via the
+                    // ball-control animations) physically screens the ball, so
+                    // a steal needs (a) the tackler genuinely closer to the
+                    // ball, and (b) the ball NOT under close control — either
+                    // poked loose (> 1 m from the carrier's feet) or held so
+                    // long that pressure legitimately forces the turnover.
+                    // Without this, the two designated players trade the ball
+                    // every cooldown window and the match degenerates into a
+                    // stealing metronome.
+                    let carrier_dist = current_position.on_pitch().distance(ball_pos_2d);
+                    let wins_duel = closest_player_dist < carrier_dist * 0.8;
+                    let held_ms =
+                        current_time_ms.saturating_sub(match_state.last_possession_change_time);
+                    let ball_stealable = carrier_dist > 1.0 || held_ms > 2000;
+                    if is_designated_tackler
+                        && closest_player_dist < 0.50
+                        && wins_duel
+                        && ball_stealable
+                    {
+                        let is_prev = match_state.previous_possessor == Some(challenger);
+                        let cooldown_limit = if is_prev { 1000 } else { 500 };
 
-                            if current_time_ms - match_state.last_possession_change_time
-                                > cooldown_limit
-                            {
-                                // Tackle successful: the tackler traps the ball
-                                match_state.previous_possessor = Some(current_possessor);
-                                match_state.possession_player = Some(challenger);
-                                match_state.possession_team = Some(challenger.team);
-                                match_state.last_possession_change_time = current_time_ms;
-                                match_state.pass_target = None;
-                                telemetry.record(MatchFact::PossessionGained {
+                        if current_time_ms - match_state.last_possession_change_time
+                            > cooldown_limit
+                        {
+                            // Tackle successful: the tackler traps the ball
+                            match_state.previous_possessor = Some(current_possessor);
+                            match_state.possession_player = Some(challenger);
+                            match_state.possession_team = Some(challenger.team);
+                            match_state.last_possession_change_time = current_time_ms;
+                            match_state.pass_target = None;
+                            telemetry.record(MatchFact::PossessionGained {
+                                player: challenger,
+                                from: Some(current_possessor),
+                                cause: PossessionCause::Tackle,
+                                at: ball_pos_2d,
+                            });
+                            control_touch(
+                                &mut ball,
+                                &mut ball_position,
+                                Toucher {
                                     player: challenger,
-                                    from: Some(current_possessor),
-                                    cause: PossessionCause::Tackle,
-                                    at: ball_pos_2d,
-                                });
-                                control_touch(
-                                    &mut ball,
-                                    &mut ball_position,
-                                    Toucher {
-                                        player: challenger,
-                                        body: challenger_body,
-                                    },
-                                    current_time_ms,
-                                    &mut player_query,
-                                    &mut touched_writer,
-                                    &mut telemetry,
-                                );
-                            }
+                                    body: challenger_body,
+                                },
+                                current_time_ms,
+                                &mut player_query,
+                                &mut touched_writer,
+                                &mut telemetry,
+                            );
                         }
                     }
                 }
+            }
         } else {
             // Ball is loose: anyone can pick it up, except:
             // 1. Global pickup cooldown of 220ms after any kick
@@ -342,16 +347,18 @@ fn player_kick_system(
             // race — an opponent must arrive CLEARLY first to win the loose ball,
             // otherwise the dribbler loses every knock-on to a coin flip.
             let mut touch_bias_ok = true;
-            if !is_last_toucher && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500
+            if !is_last_toucher
+                && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500
                 && let Some(last_toucher) = ball.last_touch_player
-                    && let Some(Ok((_, toucher_position, ..))) =
-                        registry.body(last_toucher).map(|b| player_query.get(b))
-                        && last_toucher.team != challenger.team {
-                            let toucher_dist = toucher_position.on_pitch().distance(ball_pos_2d);
-                            if toucher_dist < 1.0 && closest_player_dist > toucher_dist - 0.25 {
-                                touch_bias_ok = false;
-                            }
-                        }
+                && let Some(Ok((_, toucher_position, ..))) =
+                    registry.body(last_toucher).map(|b| player_query.get(b))
+                && last_toucher.team != challenger.team
+            {
+                let toucher_dist = toucher_position.on_pitch().distance(ball_pos_2d);
+                if toucher_dist < 1.0 && closest_player_dist > toucher_dist - 0.25 {
+                    touch_bias_ok = false;
+                }
+            }
 
             if global_cooldown_ok && individual_cooldown_ok && touch_bias_ok {
                 telemetry.record(MatchFact::PossessionGained {
@@ -626,24 +633,23 @@ fn control_touch(
     // the pitch lines), not towards wherever he happened to be running — a
     // trap in the raw approach direction next to the sideline knocks the ball
     // straight out and chains endless throw-ins.
-    let trap_momentum =
-        if let Ok((_, position, _, _, _, velocity)) = player_query.get(body) {
-            let my_pos = position.on_pitch();
-            let my_vel = Vec2::new(velocity.0.x, velocity.0.y);
-            let all_players: Vec<(TeamId, Vec2, Vec2)> = player_query
-                .iter()
-                .map(|(_, p_position, p, _, _, v)| {
-                    (p.id.team, p_position.on_pitch(), Vec2::new(v.0.x, v.0.y))
-                })
-                .collect();
-            let dir = dribble_direction(my_pos, my_vel, player.team, &all_players);
-            // set the ball up at dribble pace (AI_GetBallControlMovement): a dead
-            // trap parks the ball in the middle of the duel and invites the steal
-            let speed = (my_vel.length() * 0.5).clamp(2.0, 3.5);
-            Vec3::new(dir.x, dir.y, 0.0) * speed
-        } else {
-            ball.momentum * 0.2
-        };
+    let trap_momentum = if let Ok((_, position, _, _, _, velocity)) = player_query.get(body) {
+        let my_pos = position.on_pitch();
+        let my_vel = Vec2::new(velocity.0.x, velocity.0.y);
+        let all_players: Vec<(TeamId, Vec2, Vec2)> = player_query
+            .iter()
+            .map(|(_, p_position, p, _, _, v)| {
+                (p.id.team, p_position.on_pitch(), Vec2::new(v.0.x, v.0.y))
+            })
+            .collect();
+        let dir = dribble_direction(my_pos, my_vel, player.team, &all_players);
+        // set the ball up at dribble pace (AI_GetBallControlMovement): a dead
+        // trap parks the ball in the middle of the duel and invites the steal
+        let speed = (my_vel.length() * 0.5).clamp(2.0, 3.5);
+        Vec3::new(dir.x, dir.y, 0.0) * speed
+    } else {
+        ball.momentum * 0.2
+    };
     touch_ball(ball, ball_position, trap_momentum);
     ball.set_rotation(0.0, 0.0, 0.0, 1.0);
     ball.last_touch_team = Some(player.team);

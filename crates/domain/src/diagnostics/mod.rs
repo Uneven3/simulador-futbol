@@ -8,7 +8,5 @@
 pub mod facts;
 pub mod snapshot;
 
-pub use facts::{
-    DiagnosticChannel, DiagnosticChannels, MatchFact, PossessionCause, ReleaseKind,
-};
+pub use facts::{DiagnosticChannel, DiagnosticChannels, MatchFact, PossessionCause, ReleaseKind};
 pub use snapshot::{Field, MatchSnapshot, SectionId};

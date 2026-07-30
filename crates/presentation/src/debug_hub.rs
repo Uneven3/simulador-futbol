@@ -249,9 +249,17 @@ mod tests {
             open: true,
             selected: 0,
         };
-        let lines = panel_lines(&hub, &OverlaySettings::default(), &DiagnosticChannels::default());
+        let lines = panel_lines(
+            &hub,
+            &OverlaySettings::default(),
+            &DiagnosticChannels::default(),
+        );
 
-        assert_eq!(lines.len(), DebugSwitch::all().len() + 1, "a switch is hidden");
+        assert_eq!(
+            lines.len(),
+            DebugSwitch::all().len() + 1,
+            "a switch is hidden"
+        );
         for switch in DebugSwitch::all() {
             assert!(
                 lines.iter().any(|line| line.contains(&switch.label())),

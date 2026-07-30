@@ -127,7 +127,10 @@ impl std::fmt::Display for MatchFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             MatchFact::PossessionGained {
-                player, from, cause, ..
+                player,
+                from,
+                cause,
+                ..
             } => match from {
                 Some(from) => write!(f, "{player} took the ball off {from} ({})", cause.label()),
                 None => write!(f, "{player} collected the ball ({})", cause.label()),

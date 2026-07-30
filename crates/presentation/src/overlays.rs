@@ -74,7 +74,6 @@ fn team_colour(team: TeamId) -> Srgba {
     }
 }
 
-
 /// How far ahead a velocity arrow reaches. Half a second is long enough to read
 /// direction and pace at a glance, short enough not to cross the pitch.
 pub const VELOCITY_LEAD: f32 = 0.5;

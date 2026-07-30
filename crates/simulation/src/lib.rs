@@ -4,16 +4,16 @@ use bevy_ecs::prelude::*;
 pub mod ball_collisions;
 pub mod ball_physics;
 pub mod diagnostics;
-pub mod player_decisions;
 pub mod match_clock;
 pub mod match_setup;
+pub mod player_decisions;
 pub mod player_movement;
 pub mod referee;
 pub mod team_tactics;
 
 pub use ball_collisions::BallCollisionPlugin;
-pub use diagnostics::MatchDiagnosticsPlugin;
 pub use ball_physics::BallPhysicsPlugin;
+pub use diagnostics::MatchDiagnosticsPlugin;
 pub use match_clock::MatchClockPlugin;
 pub use match_setup::MatchSetupPlugin;
 pub use player_movement::PlayerMovementPlugin;
@@ -220,8 +220,9 @@ mod tests {
             );
         }
 
-        let elapsed =
-            std::time::Duration::from_millis(app.world().resource::<MatchState>().period_elapsed_ms);
+        let elapsed = std::time::Duration::from_millis(
+            app.world().resource::<MatchState>().period_elapsed_ms,
+        );
         let ledger = app.world().resource::<MatchLedger>();
         println!("=== 10 simulated minutes ===");
         println!("score: {} - {}", ledger.goals.home, ledger.goals.away);

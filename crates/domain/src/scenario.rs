@@ -228,7 +228,9 @@ impl Scenario {
             && (score.home > 0 || score.away > 0)
             && self.expectations.play_never_stops
         {
-            found.push("expects a goal, which stops play, and also that play never stops".to_string());
+            found.push(
+                "expects a goal, which stops play, and also that play never stops".to_string(),
+            );
         }
         if self.window > MAX_REASONABLE_WINDOW {
             found.push(format!(

@@ -17,8 +17,8 @@
 //! - `ApplyTeamPressure` is not triggered (its trigger is commented out in the
 //!   original as well).
 
-use bevy_ecs::prelude::*;
 use crate::diagnostics::{MatchFact, MatchTelemetry};
+use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use std::collections::VecDeque;
@@ -405,48 +405,46 @@ pub fn update_team_tactics(
             && now_ms % 500 < 10
             && tactics.team[t].end_attacking_run_ms <= now_ms
             && best_possession_team(&designation) == Some(t)
-            && let Some(designated) = designation.designated[t]
-                .and_then(|id| snaps.iter().find(|s| s.id == id))
-            {
-                // SelectAttackingRunPlayer: closest to a spot 26 m ahead of the ball carrier
-                let focus = designated.pos + Vec2::new(-side * 26.0, 0.0);
-                if let Some(runner_id) = closest_player(&snaps, t, focus, Some(designated.id), true)
-                {
-                    let runner = snaps.iter().find(|s| s.id == runner_id).unwrap();
-                    let distance = (runner.pos - designated.pos).length();
-                    let distance_rating = (1.0 - normalized_clamp(distance, 0.0, 40.0)).powf(0.5);
+            && let Some(designated) =
+                designation.designated[t].and_then(|id| snaps.iter().find(|s| s.id == id))
+        {
+            // SelectAttackingRunPlayer: closest to a spot 26 m ahead of the ball carrier
+            let focus = designated.pos + Vec2::new(-side * 26.0, 0.0);
+            if let Some(runner_id) = closest_player(&snaps, t, focus, Some(designated.id), true) {
+                let runner = snaps.iter().find(|s| s.id == runner_id).unwrap();
+                let distance = (runner.pos - designated.pos).length();
+                let distance_rating = (1.0 - normalized_clamp(distance, 0.0, 40.0)).powf(0.5);
 
-                    let spot =
-                        Vec2::new(runner.pos.x, runner.pos.y * 0.8) + Vec2::new(side * 10.0, 0.0);
-                    let mut opp_density_rating = 1.0;
-                    for opp in closest_players(&snaps, t.opponent(), spot, None, 4) {
-                        let opp_distance = (opp.pos - spot).length();
-                        let inv =
-                            curve(1.0 - normalized_clamp(opp_distance, 0.0, 15.0), 1.0).powf(0.5);
-                        opp_density_rating -= inv * 0.3;
-                    }
+                let spot =
+                    Vec2::new(runner.pos.x, runner.pos.y * 0.8) + Vec2::new(side * 10.0, 0.0);
+                let mut opp_density_rating = 1.0;
+                for opp in closest_players(&snaps, t.opponent(), spot, None, 4) {
+                    let opp_distance = (opp.pos - spot).length();
+                    let inv = curve(1.0 - normalized_clamp(opp_distance, 0.0, 15.0), 1.0).powf(0.5);
+                    opp_density_rating -= inv * 0.3;
+                }
 
-                    if distance_rating * opp_density_rating >= 0.5 {
-                        tactics.team[t].end_attacking_run_ms = now_ms + 4000;
-                        tactics.team[t].attacking_run_player = Some(runner_id);
-                        telemetry.record(MatchFact::AttackingRun { runner: runner_id });
-                    }
+                if distance_rating * opp_density_rating >= 0.5 {
+                    tactics.team[t].end_attacking_run_ms = now_ms + 4000;
+                    tactics.team[t].attacking_run_player = Some(runner_id);
+                    telemetry.record(MatchFact::AttackingRun { runner: runner_id });
                 }
             }
+        }
 
         // -- forward support player (every 1500 ms) --
         if now_ms % 1500 < 10
-            && let Some(designated) = designation.designated[t]
-                .and_then(|id| snaps.iter().find(|s| s.id == id))
-            {
-                tactics.team[t].forward_support_player = closest_player(
-                    &snaps,
-                    t,
-                    designated.pos + Vec2::new(-side * 1.5, 0.0),
-                    Some(designated.id),
-                    false,
-                );
-            }
+            && let Some(designated) =
+                designation.designated[t].and_then(|id| snaps.iter().find(|s| s.id == id))
+        {
+            tactics.team[t].forward_support_player = closest_player(
+                &snaps,
+                t,
+                designated.pos + Vec2::new(-side * 1.5, 0.0),
+                Some(designated.id),
+                false,
+            );
+        }
     }
 
     // -- man marking (port of CalculateManMarking) --
@@ -602,10 +600,26 @@ pub fn get_adapted_formation_position(
     let ball_x = ball.average_position(3500.0 * (1.0 - urgency_bias * 0.7)).x;
     let ball_y = ball.average_position(4000.0 * (1.0 - urgency_bias * 0.5)).y;
 
-    let offense_depth = mixup(OFFENSE_DEPTH_FACTOR, "position_offense_depth_factor", playing_position);
-    let defense_depth = mixup(DEFENSE_DEPTH_FACTOR, "position_defense_depth_factor", playing_position);
-    let offense_width = mixup(OFFENSE_WIDTH_FACTOR, "position_offense_width_factor", playing_position);
-    let defense_width = mixup(DEFENSE_WIDTH_FACTOR, "position_defense_width_factor", playing_position);
+    let offense_depth = mixup(
+        OFFENSE_DEPTH_FACTOR,
+        "position_offense_depth_factor",
+        playing_position,
+    );
+    let defense_depth = mixup(
+        DEFENSE_DEPTH_FACTOR,
+        "position_defense_depth_factor",
+        playing_position,
+    );
+    let offense_width = mixup(
+        OFFENSE_WIDTH_FACTOR,
+        "position_offense_width_factor",
+        playing_position,
+    );
+    let defense_width = mixup(
+        DEFENSE_WIDTH_FACTOR,
+        "position_defense_width_factor",
+        playing_position,
+    );
     let offense_ownhalf = mixup(
         OFFENSE_OWNHALF_FACTOR,
         "position_offense_ownhalf_factor",

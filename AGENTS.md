@@ -20,6 +20,8 @@ la especificación del producto.
 
 `docs/REVISION_2026-07-30.md` es la revisión del cierre de MVP 1: qué se
 verificó, qué no y qué se encontró. Las revisiones se fechan y no se editan.
+`docs/CIERRE_MVP_1_5.md` cuenta qué resolvió la consolidación y por qué se
+decidió cada cosa.
 
 La documentación histórica vive en `docs/references/gameplay_football/`.
 Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
@@ -30,12 +32,22 @@ Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
 - `cargo test`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo fmt --all -- --check`
-- `cargo test long_match_stats -- --ignored --nocapture`: 10 minutos simulados
-  con forense de posesión; es la métrica de gameplay, no un test de regresión.
+- `cargo test --release -p gameplayfootball_simulation long_match_stats -- --ignored --nocapture`:
+  10 minutos simulados con el forense completo (posesión, pérdidas por tipo de
+  suelta, campo en ASCII). Es la métrica de gameplay, no un test de regresión:
+  **correrla después de cualquier refactor del kernel.** La referencia actual es
+  1-0, 21 tocadores, 205 cambios de posesión y racha de 16,7 s.
+- `cargo test -p gameplayfootball -p gameplayfootball_domain -p gameplayfootball_simulation -p gameplayfootball_presentation`:
+  la suite del juego. `cargo test --workspace` arrastra los otros proyectos del
+  workspace y tarda muchísimo.
 
 El proyecto son cuatro crates: `crates/domain`, `crates/simulation`,
 `crates/presentation` y el paquete raíz como capa app (`src/`, `tests/`).
 Correr cargo desde el directorio del proyecto.
+
+Para observar una corrida: con ventana, `F1` abre el hub de depuración
+(overlays y canales de log, todo apagado por defecto); headless,
+`retaining_facts` + `MatchLedger` + `render_pitch` (ver `docs/DIAGNOSTICS.md`).
 
 La ventana se arranca con `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball`:
 bajo Wayland el compositor no entrega frames a un proceso lanzado desde un shell
@@ -56,7 +68,12 @@ de agente y la app queda muda, lo que parece una regresión y no lo es.
 - La edición IFAB y variantes de competición son datos versionados.
 - Un comportamiento no se declara realista sin métrica y referencia.
 - Toda aleatoriedad de simulación usa semillas reproducibles.
-- APIs nuevas no heredan nombres del original (`Eliza`, clases C++ o `AI_`).
+- APIs nuevas no heredan nombres del original (`Eliza`, clases C++ o `AI_`). Los
+  comentarios sí citan el original: son trazabilidad hacia
+  `references/gameplay_football/`, no nombres del presente.
+- Un atributo de jugador entra cuando tiene mecanismo que lo lee, unidad real y
+  referencia que lo calibra.
+- Ningún canal de diagnóstico se enciende por defecto.
 - Usar nombres completos, newtypes y unidades explícitas; evitar `GK`, `pos`,
   `vel` o índices numéricos sin tipo en APIs.
 - Sin `unsafe`. `unwrap()`/`expect()` solo para bugs de programador y tests.

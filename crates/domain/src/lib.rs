@@ -18,8 +18,6 @@ pub use match_state::{
     BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
     PossessionDesignation, SetPiece,
 };
-pub use player::{
-    Attributes, Mentality, Player, PlayerMatchState, PlayingPosition, TacticalRole,
-};
+pub use player::{Attributes, Mentality, Player, PlayerMatchState, PlayingPosition, TacticalRole};
 pub use scenario::{Scenario, ScenarioOutcome};
 pub use spatial::{Facing, Position, Velocity};
