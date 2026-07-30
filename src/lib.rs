@@ -119,7 +119,7 @@ impl ScenarioRunner {
             set_pieces: self.awarded_set_pieces.clone(),
             phases: self.entered_phases.clone(),
             final_phase: state.phase,
-            period_elapsed: std::time::Duration::from_millis(state.period_elapsed_ms),
+            period_elapsed: state.period_elapsed,
             play_resumed: self.play_resumed,
         }
     }

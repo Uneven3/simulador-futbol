@@ -2,31 +2,21 @@
 
 ## Objetivo activo
 
-**Cerrar MVP 1.5 — Consolidación.** Quedan dos puntos (unidades y
-allocations); los seis criterios de terminado ya se cumplen. Después:
-**MVP 2 — partido reglamentariamente completo**.
+**MVP 1.5 cerrado salvo un punto** (las allocations por tick). Los seis
+criterios de terminado se cumplen.
 
-Estado: **MVP 0 y MVP 1 cerrados** (`REVISION_2026-07-30.md`), **MVP 1.5 en su
-último tramo** (`CIERRE_MVP_1_5.md` lleva la cuenta de qué se hizo y por qué).
+Antes de MVP 2 hay que decidir una cosa que MVP 1.5 destapó: **el modelo marca
+51 goles cada 90 minutos** (rango 27-81 sobre diez semillas) contra ~2,7 de un
+partido real. Está en `REVISION_2026-07-30-reloj.md`. Calibrarlo estaba
+previsto para MVP 3, pero un simulador que marca veinte veces de más no puede
+demostrar ninguna regla intermedia de forma convincente.
+
+Estado: **MVP 0 y MVP 1 cerrados** (`REVISION_2026-07-30.md`); MVP 1.5 en
+`CIERRE_MVP_1_5.md`, que lleva la cuenta de qué se hizo y por qué.
 
 ## Lo que falta de MVP 1.5
 
-### 1. Unidades explícitas (ley 9) — pendiente
-
-El kernel sigue midiendo el tiempo en `u64` de milisegundos:
-`Ball.last_touch_time_ms`, `MatchState.period_elapsed_ms`,
-`last_possession_change_time`, `set_piece_timer: f32`, y los `now_ms` que cada
-sistema recalcula desde `Time`. `Duration` ya entró en el escenario, el reloj
-y `PlayerMatchState.last_touch_at`; falta el resto.
-
-Es el punto más invasivo que queda porque toca los cooldowns de toque y de
-posesión, que son gameplay calibrado. Hacerlo con la métrica de
-`long_match_stats` delante: si los 205 cambios de posesión se mueven, la
-conversión cambió el juego.
-
-Considerar además newtypes para metros y m/s donde aclaren.
-
-### 2. Allocations por tick (ley 14) — pendiente
+### 1. Allocations por tick (ley 14) — pendiente
 
 18 `collect()`/`vec!` por tick entre `player_decisions`, `team_tactics` y
 `player_movement` (eran 25; el resto se fue con la identidad). Los
@@ -43,6 +33,10 @@ MVP 6 que corra muchas variantes de la misma situación.
 5. ✅ `cargo clippy --all-targets -- -D warnings` limpio.
 6. ✅ Una corrida headless emite su forense desde el subsistema, sin código de
    test ad hoc.
+
+Extra no previsto: el tiempo del kernel es `Duration` en vez de `u64` de
+milisegundos, lo que destapó que el reloj anterior perdía 1 ms en el 1 % de los
+ticks y que el modelo estaba apoyado en ese ruido.
 
 ## Hecho
 
@@ -95,6 +89,9 @@ Detalle y razones en `CIERRE_MVP_1_5.md`. En resumen:
   Contrato en `DIAGNOSTICS.md`.
 - **Nombres**: `player_decisions` y `team_tactics` en vez de `eliza` y
   `team_ai`; `PlayerReading`, `DecisionContext`, `TeamShape`.
+- **Tiempo como `Duration`** en todo el kernel, y `seeded_envelope` como la
+  forma de comparar builds: diez semillas reportadas como tasas, en vez de una
+  trayectoria que cualquier perturbación cambia.
 - **Higiene**: clippy limpio con `-D warnings`, `Scenario::contradictions()`,
   escenario de red lateral y el fin de partido como estado real.
 
@@ -120,6 +117,9 @@ Ausencias conocidas, no descubrimientos pendientes:
   de la designación (MVP 5).
 - Los canales `Formation` y `Performance` existen en el hub y casi no tienen
   productores: `Formation` sólo emite carreras de ataque, `Performance` nada.
+- **El ritmo de gol es irreal**: 51/90 min contra ~2,7 reales
+  (`REVISION_2026-07-30-reloj.md`). Ningún resultado de este simulador puede
+  presentarse como predicción hasta calibrarlo.
 - **Nada visual ha sido verificado por nadie.** Bajo Wayland el compositor no
   entrega frames al proceso lanzado desde el shell del agente; hay que correr
   `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball` y la confirmación es

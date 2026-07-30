@@ -27,6 +27,7 @@
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
+use std::time::Duration;
 
 use crate::team_tactics::{
     DISTANCE_TO_VELOCITY_MULTIPLIER, DRIBBLE_VELOCITY, PITCH_HALF_H, PITCH_HALF_W, PlayerReading,
@@ -990,7 +991,7 @@ pub fn decide_on_ball_action(
     me_id: PlayerId,
     ball: &Ball,
     designation: &PossessionDesignation,
-    possession_duration_ms: u64,
+    held_for: Duration,
     offside_line_x: f32,
     rng: &mut MatchRng,
 ) -> OnBallAction {
@@ -1012,8 +1013,7 @@ pub fn decide_on_ball_action(
     let technical_shortpass = 0.5;
     let one_touch_is_hard = movement_diff - technical_shortpass * movement_diff * 0.8;
 
-    let long_possession_factor =
-        normalized_clamp(possession_duration_ms as f32, 0.0, 5000.0).powi(2);
+    let long_possession_factor = normalized_clamp(held_for.as_millis() as f32, 0.0, 5000.0).powi(2);
 
     // first selection weights
     let forward_space_weight = 0.4;

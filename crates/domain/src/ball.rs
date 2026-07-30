@@ -2,6 +2,7 @@ use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
 use std::collections::VecDeque;
+use std::time::Duration;
 
 /// Radius of a match ball in metres (IFAB Law 2: circumference 68-70 cm).
 pub const BALL_RADIUS: f32 = 0.11;
@@ -19,7 +20,8 @@ pub struct Ball {
     // gameplay bookkeeping
     pub last_touch_team: Option<crate::identity::TeamId>,
     pub last_touch_player: Option<crate::identity::PlayerId>,
-    pub last_touch_time_ms: u64,
+    /// Match time of the last touch.
+    pub last_touch_at: Duration,
     pub touches_net: bool,
 
     // physical state (port of Ball's momentum / rotation_ms / orientation buffers)
@@ -44,7 +46,7 @@ impl Default for Ball {
         Self {
             last_touch_team: None,
             last_touch_player: None,
-            last_touch_time_ms: 0,
+            last_touch_at: Duration::ZERO,
             touches_net: false,
             momentum: Vec3::ZERO,
             rotation_ms: Quat::IDENTITY,
@@ -116,6 +118,6 @@ impl Ball {
         self.touches_net = false;
         self.last_touch_team = None;
         self.last_touch_player = None;
-        self.last_touch_time_ms = 0;
+        self.last_touch_at = Duration::ZERO;
     }
 }

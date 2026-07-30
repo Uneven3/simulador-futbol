@@ -2,6 +2,7 @@ use crate::identity::{PlayerId, TeamId};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 pub enum SetPiece {
@@ -55,15 +56,15 @@ impl MatchPhase {
 /// which needs the referee to account for stoppages, and extra time.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub struct MatchRegulations {
-    pub half_duration: std::time::Duration,
-    pub half_time_interval: std::time::Duration,
+    pub half_duration: Duration,
+    pub half_time_interval: Duration,
 }
 
 impl Default for MatchRegulations {
     fn default() -> Self {
         Self {
-            half_duration: std::time::Duration::from_secs(45 * 60),
-            half_time_interval: std::time::Duration::from_secs(15 * 60),
+            half_duration: Duration::from_secs(45 * 60),
+            half_time_interval: Duration::from_secs(15 * 60),
         }
     }
 }
@@ -75,22 +76,24 @@ pub struct MatchState {
     pub phase: MatchPhase,
     pub set_piece: SetPiece,
     pub set_piece_team: Option<TeamId>,
-    /// Time played in the current period, in ms. It keeps running while play is
+    /// Time played in the current period. It keeps running while play is
     /// stopped, as it does in a real match; what is missing is the allowance for
     /// time lost, which would be added on top at the end of each period.
-    pub period_elapsed_ms: u64,
+    pub period_elapsed: Duration,
     /// Team that kicked off the match, so the other one kicks off the second
     /// half (Law 8).
     pub opening_kick_off_team: TeamId,
     pub is_ball_in_goal: bool,
     pub possession_team: Option<TeamId>,
-    pub set_piece_timer: f32, // Time left before resetting/restarting play
+    /// How long until the pending restart is taken.
+    pub restart_in: Duration,
     /// Where the ball is placed for the pending set piece (original: `buffer.restartPos`,
     /// computed at the moment play is stopped).
     pub restart_pos: Vec3,
     pub possession_player: Option<PlayerId>,
     pub previous_possessor: Option<PlayerId>,
-    pub last_possession_change_time: u64, // Time when possession last changed
+    /// Match time at which possession last changed hands.
+    pub possession_since: Duration,
     /// Intended receiver of the ball in flight (set on a pass, cleared on the
     /// next touch). The designation system gives him priority so the receiver
     /// attacks the pass (the original's receivers run onto `AI_GetPass` balls).
@@ -168,15 +171,15 @@ impl Default for MatchState {
             phase: MatchPhase::PreMatch,
             set_piece: SetPiece::KickOff,
             set_piece_team: Some(TeamId::Home),
-            period_elapsed_ms: 0,
+            period_elapsed: Duration::ZERO,
             opening_kick_off_team: TeamId::Home,
             is_ball_in_goal: false,
             possession_team: None,
-            set_piece_timer: 2.0, // Start with a 2-second kickoff delay
+            restart_in: Duration::from_secs(2),
             restart_pos: Vec3::new(0.0, 0.0, 0.11),
             possession_player: None,
             previous_possessor: None,
-            last_possession_change_time: 0,
+            possession_since: Duration::ZERO,
             pass_target: None,
             pass_aim: Vec2::ZERO,
         }

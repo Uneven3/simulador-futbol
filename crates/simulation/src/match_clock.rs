@@ -6,6 +6,7 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::TeamId;
 use football_domain::{MatchPhase, MatchRegulations, MatchState, Player, SetPiece, Velocity};
+use std::time::Duration;
 
 /// Law 7: the clock and the phases of a match.
 ///
@@ -40,22 +41,22 @@ fn advance_match_clock(
         MatchPhase::PreMatch => {
             if match_state.set_piece == SetPiece::None {
                 match_state.phase = MatchPhase::FirstHalf;
-                match_state.period_elapsed_ms = 0;
+                match_state.period_elapsed = Duration::ZERO;
                 telemetry.record(MatchFact::PhaseEntered(MatchPhase::FirstHalf));
             }
         }
 
         MatchPhase::FirstHalf => {
             let elapsed = advance_period(&time, &mut match_state);
-            if elapsed >= regulations.half_duration.as_millis() as u64 {
+            if elapsed >= regulations.half_duration {
                 match_state.phase = MatchPhase::HalfTime;
-                match_state.period_elapsed_ms = 0;
+                match_state.period_elapsed = Duration::ZERO;
                 // Law 8: the other team kicks off the second half.
                 let second_half_kick_off = match_state.opening_kick_off_team.opponent();
                 stop_play_for_kick_off(
                     &mut match_state,
                     second_half_kick_off,
-                    regulations.half_time_interval.as_secs_f32(),
+                    regulations.half_time_interval,
                 );
                 telemetry.record(MatchFact::PhaseEntered(MatchPhase::HalfTime));
             }
@@ -66,19 +67,19 @@ fn advance_match_clock(
         MatchPhase::HalfTime => {
             if match_state.set_piece == SetPiece::None {
                 match_state.phase = MatchPhase::SecondHalf;
-                match_state.period_elapsed_ms = 0;
+                match_state.period_elapsed = Duration::ZERO;
                 telemetry.record(MatchFact::PhaseEntered(MatchPhase::SecondHalf));
             }
         }
 
         MatchPhase::SecondHalf => {
             let elapsed = advance_period(&time, &mut match_state);
-            if elapsed >= regulations.half_duration.as_millis() as u64 {
+            if elapsed >= regulations.half_duration {
                 match_state.phase = MatchPhase::FullTime;
                 // Play stops for good: the referee never restarts after this,
                 // so the pending kick-off is one that will never be taken.
                 let kicking_team = match_state.opening_kick_off_team;
-                stop_play_for_kick_off(&mut match_state, kicking_team, 0.0);
+                stop_play_for_kick_off(&mut match_state, kicking_team, Duration::ZERO);
                 telemetry.record(MatchFact::PhaseEntered(MatchPhase::FullTime));
             }
         }
@@ -112,16 +113,15 @@ fn still_the_players_at_full_time(
     }
 }
 
-fn advance_period(time: &Time, match_state: &mut MatchState) -> u64 {
-    let tick_ms = (time.delta_secs_f64() * 1000.0).round() as u64;
-    match_state.period_elapsed_ms += tick_ms;
-    match_state.period_elapsed_ms
+fn advance_period(time: &Time, match_state: &mut MatchState) -> Duration {
+    match_state.period_elapsed += time.delta();
+    match_state.period_elapsed
 }
 
-fn stop_play_for_kick_off(match_state: &mut MatchState, kicking_team: TeamId, delay_seconds: f32) {
+fn stop_play_for_kick_off(match_state: &mut MatchState, kicking_team: TeamId, delay: Duration) {
     match_state.set_piece = SetPiece::KickOff;
     match_state.set_piece_team = Some(kicking_team);
-    match_state.set_piece_timer = delay_seconds;
+    match_state.restart_in = delay;
     match_state.restart_pos = Vec3::ZERO;
     match_state.possession_player = None;
     match_state.possession_team = None;

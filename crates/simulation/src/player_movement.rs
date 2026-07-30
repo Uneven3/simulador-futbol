@@ -208,7 +208,7 @@ fn player_kick_system(
 
     let ball_pos = ball_position.0;
     let ball_pos_2d = ball_position.on_pitch();
-    let current_time_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
+    let now = time.elapsed();
 
     // 0. Possession is positional: if the ball escaped the possessor, it's loose
     if let Some(possessor) = match_state.possession_player {
@@ -292,25 +292,29 @@ fn player_kick_system(
                     // stealing metronome.
                     let carrier_dist = current_position.on_pitch().distance(ball_pos_2d);
                     let wins_duel = closest_player_dist < carrier_dist * 0.8;
-                    let held_ms =
-                        current_time_ms.saturating_sub(match_state.last_possession_change_time);
-                    let ball_stealable = carrier_dist > 1.0 || held_ms > 2000;
+                    let held = now.saturating_sub(match_state.possession_since);
+                    let ball_stealable = carrier_dist > 1.0 || held > Duration::from_millis(2000);
                     if is_designated_tackler
                         && closest_player_dist < 0.50
                         && wins_duel
                         && ball_stealable
                     {
+                        // A player who just lost the ball has to wait longer to
+                        // win it back, or the two designated players trade it
+                        // every cooldown window.
                         let is_prev = match_state.previous_possessor == Some(challenger);
-                        let cooldown_limit = if is_prev { 1000 } else { 500 };
+                        let cooldown = if is_prev {
+                            Duration::from_millis(1000)
+                        } else {
+                            Duration::from_millis(500)
+                        };
 
-                        if current_time_ms - match_state.last_possession_change_time
-                            > cooldown_limit
-                        {
+                        if now.saturating_sub(match_state.possession_since) > cooldown {
                             // Tackle successful: the tackler traps the ball
                             match_state.previous_possessor = Some(current_possessor);
                             match_state.possession_player = Some(challenger);
                             match_state.possession_team = Some(challenger.team);
-                            match_state.last_possession_change_time = current_time_ms;
+                            match_state.possession_since = now;
                             match_state.pass_target = None;
                             telemetry.record(MatchFact::PossessionGained {
                                 player: challenger,
@@ -325,7 +329,7 @@ fn player_kick_system(
                                     player: challenger,
                                     body: challenger_body,
                                 },
-                                current_time_ms,
+                                now,
                                 &mut player_query,
                                 &mut touched_writer,
                                 &mut telemetry,
@@ -337,18 +341,19 @@ fn player_kick_system(
         } else {
             // Ball is loose: anyone can pick it up, except:
             // 1. Global pickup cooldown of 220ms after any kick
-            let global_cooldown_ok = current_time_ms.saturating_sub(ball.last_touch_time_ms) > 220;
+            let global_cooldown_ok =
+                now.saturating_sub(ball.last_touch_at) > Duration::from_millis(220);
             // 2. The last toucher needs 400ms to let the ball leave their feet
             let is_last_toucher = ball.last_touch_player == Some(challenger);
-            let individual_cooldown_ok =
-                !is_last_toucher || (current_time_ms.saturating_sub(ball.last_touch_time_ms) > 400);
+            let individual_cooldown_ok = !is_last_toucher
+                || (now.saturating_sub(ball.last_touch_at) > Duration::from_millis(400));
             // 3. Touch bias (original `GetLastTouchBias`): the player who played
             // the ball in the last 1.5 s keeps priority in a shoulder-to-shoulder
             // race — an opponent must arrive CLEARLY first to win the loose ball,
             // otherwise the dribbler loses every knock-on to a coin flip.
             let mut touch_bias_ok = true;
             if !is_last_toucher
-                && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500
+                && now.saturating_sub(ball.last_touch_at) < Duration::from_millis(1500)
                 && let Some(last_toucher) = ball.last_touch_player
                 && let Some(Ok((_, toucher_position, ..))) =
                     registry.body(last_toucher).map(|b| player_query.get(b))
@@ -370,7 +375,7 @@ fn player_kick_system(
                 match_state.previous_possessor = None;
                 match_state.possession_player = Some(challenger);
                 match_state.possession_team = Some(challenger.team);
-                match_state.last_possession_change_time = current_time_ms;
+                match_state.possession_since = now;
                 match_state.pass_target = None;
                 control_touch(
                     &mut ball,
@@ -379,7 +384,7 @@ fn player_kick_system(
                         player: challenger,
                         body: challenger_body,
                     },
-                    current_time_ms,
+                    now,
                     &mut player_query,
                     &mut touched_writer,
                     &mut telemetry,
@@ -412,9 +417,9 @@ fn player_kick_system(
         // pressed carrier who must idle 350 ms just feeds the stealing loop.
         // Dribble knock-ons keep the slower 350 ms touch cadence.
         let is_gk = playing_position == PlayingPosition::Goalkeeper;
-        let since_touch_ms = current_time_ms.saturating_sub(ball.last_touch_time_ms);
-        let can_decide = since_touch_ms > 150 || is_gk;
-        let can_knock_on = since_touch_ms > 350 || is_gk;
+        let since_touch = now.saturating_sub(ball.last_touch_at);
+        let can_decide = since_touch > Duration::from_millis(150) || is_gk;
+        let can_knock_on = since_touch > Duration::from_millis(350) || is_gk;
 
         if !(ball_in_reach && can_decide) {
             return;
@@ -429,7 +434,7 @@ fn player_kick_system(
             ball.set_rotation(spin.x, spin.y, spin.z, 1.0);
             ball.last_touch_team = Some(player_team);
             ball.last_touch_player = Some(possessor);
-            ball.last_touch_time_ms = current_time_ms;
+            ball.last_touch_at = now;
             touched_writer.write(BallTouched { player: possessor });
         };
 
@@ -448,14 +453,13 @@ fn player_kick_system(
             .collect();
         let side = team_side(player_team);
         let off_line = player_decisions::offside_line(&snaps, player_team, ball_pos.x, 0.0);
-        let possession_duration_ms =
-            current_time_ms.saturating_sub(match_state.last_possession_change_time);
+        let held_for = now.saturating_sub(match_state.possession_since);
         let action = player_decisions::decide_on_ball_action(
             &snaps,
             possessor,
             &ball,
             &designation,
-            possession_duration_ms,
+            held_for,
             off_line,
             &mut rng,
         );
@@ -606,7 +610,7 @@ fn player_kick_system(
         }
 
         if let Ok((.., mut player_state, _)) = player_query.get_mut(possessor_body) {
-            player_state.last_touch_at = Duration::from_millis(current_time_ms);
+            player_state.last_touch_at = now;
         }
         if release_possession {
             match_state.possession_player = None;
@@ -622,7 +626,7 @@ fn control_touch(
     ball: &mut Ball,
     ball_position: &mut Position,
     toucher: Toucher,
-    now_ms: u64,
+    now: Duration,
     player_query: &mut Query<BallSystemBody, Without<Ball>>,
     touched_writer: &mut MessageWriter<BallTouched>,
     telemetry: &mut MatchTelemetry,
@@ -654,9 +658,9 @@ fn control_touch(
     ball.set_rotation(0.0, 0.0, 0.0, 1.0);
     ball.last_touch_team = Some(player.team);
     ball.last_touch_player = Some(player);
-    ball.last_touch_time_ms = now_ms;
+    ball.last_touch_at = now;
     if let Ok((.., mut player_state, _)) = player_query.get_mut(body) {
-        player_state.last_touch_at = Duration::from_millis(now_ms);
+        player_state.last_touch_at = now;
     }
     touched_writer.write(BallTouched { player });
     telemetry.record(MatchFact::Touched {

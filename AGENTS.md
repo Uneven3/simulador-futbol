@@ -32,11 +32,14 @@ Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
 - `cargo test`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo fmt --all -- --check`
+- `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`:
+  diez semillas de diez minutos, reportadas como tasas. **Es la comparación
+  válida entre dos builds**; una sola corrida es una trayectoria, no una
+  métrica (`docs/REVISION_2026-07-30-reloj.md`). Base actual: 51 goles/90 min
+  (rango 27-81) y 19,9 cambios de posesión/min (rango 18,2-22,1).
 - `cargo test --release -p gameplayfootball_simulation long_match_stats -- --ignored --nocapture`:
-  10 minutos simulados con el forense completo (posesión, pérdidas por tipo de
-  suelta, campo en ASCII). Es la métrica de gameplay, no un test de regresión:
-  **correrla después de cualquier refactor del kernel.** La referencia actual es
-  1-0, 21 tocadores, 205 cambios de posesión y racha de 16,7 s.
+  una corrida con el forense completo (pérdidas por tipo de suelta, campo en
+  ASCII). Sirve para mirar en detalle, no para decir si algo se rompió.
 - `cargo test -p gameplayfootball -p gameplayfootball_domain -p gameplayfootball_simulation -p gameplayfootball_presentation`:
   la suite del juego. `cargo test --workspace` arrastra los otros proyectos del
   workspace y tarda muchísimo.

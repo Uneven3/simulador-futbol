@@ -220,9 +220,7 @@ mod tests {
             );
         }
 
-        let elapsed = std::time::Duration::from_millis(
-            app.world().resource::<MatchState>().period_elapsed_ms,
-        );
+        let elapsed = app.world().resource::<MatchState>().period_elapsed;
         let ledger = app.world().resource::<MatchLedger>();
         println!("=== 10 simulated minutes ===");
         println!("score: {} - {}", ledger.goals.home, ledger.goals.away);
@@ -267,6 +265,45 @@ mod tests {
             .take(20)
         {
             println!("[t{:06}] {}", recorded.tick, recorded.fact);
+        }
+    }
+
+    /// The same ten minutes under several seeds, reported as rates.
+    ///
+    /// One run of a deterministic but chaotic model says nothing: two builds
+    /// that differ by a rounding decision produce different matches without
+    /// either being worse. What can be compared is the envelope across seeds.
+    ///
+    /// `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn seeded_envelope() {
+        use crate::diagnostics::MatchLedger;
+
+        for seed in [0xC0FFEE, 1, 7, 42, 1234, 99, 2718, 31415, 5, 777] {
+            let scenario = Scenario {
+                seed,
+                ..Scenario::kick_off()
+            };
+            let mut app = App::new();
+            app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
+            app.add_plugins(MatchKernelPlugin::new(scenario));
+            app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+            for _ in 0..60_000 {
+                app.update();
+            }
+
+            let elapsed = app.world().resource::<MatchState>().period_elapsed;
+            let state = app.world().resource::<MatchState>();
+            let goals = state.home_score + state.away_score;
+            let ledger = app.world().resource::<MatchLedger>();
+            println!(
+                "seed {seed:#x}: {goals} goals ({:.0}/90min)  {:.1} changes/min  longest {:.1}s  {} touchers",
+                goals as f32 * 9.0,
+                ledger.changes_per_minute(elapsed),
+                ledger.longest_spell.as_secs_f32(),
+                ledger.distinct_touchers(),
+            );
         }
     }
 

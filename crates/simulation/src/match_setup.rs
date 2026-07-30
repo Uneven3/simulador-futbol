@@ -7,6 +7,7 @@ use football_domain::{
     Attributes, Ball, BallTouched, Facing, MatchRng, MatchState, Mentality, Player, PlayerId,
     PlayerMatchState, PlayerRegistry, PlayingPosition, Position, SetPiece, TeamId, Velocity,
 };
+use std::time::Duration;
 
 /// Installs a scenario: the state the match starts from, its seed, its pitch and
 /// its bodies.
@@ -51,14 +52,14 @@ fn initial_match_state(scenario: &Scenario) -> MatchState {
         } => {
             state.set_piece = set_piece;
             state.set_piece_team = Some(team);
-            state.set_piece_timer = delay.as_secs_f32();
+            state.restart_in = delay;
             state.restart_pos = Vec3::ZERO;
             state.opening_kick_off_team = team;
         }
         PlayState::InPlay => {
             state.set_piece = SetPiece::None;
             state.set_piece_team = None;
-            state.set_piece_timer = 0.0;
+            state.restart_in = Duration::ZERO;
         }
     }
     state

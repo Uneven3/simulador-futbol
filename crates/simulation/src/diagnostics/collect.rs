@@ -73,7 +73,7 @@ pub fn restart_label(set_piece: SetPiece, team: Option<TeamId>) -> Option<String
 /// The match as a broadcast would state it: score, clock, and what part of the
 /// match this is.
 pub fn scoreboard_fields(match_state: &MatchState, regulations: &MatchRegulations) -> Vec<Field> {
-    let elapsed = Duration::from_millis(match_state.period_elapsed_ms);
+    let elapsed = match_state.period_elapsed;
     vec![
         Field::new(
             "score",
@@ -95,7 +95,7 @@ pub(super) fn collect_snapshot(
     designation: Res<PossessionDesignation>,
     ledger: Res<MatchLedger>,
 ) {
-    let elapsed = Duration::from_millis(match_state.period_elapsed_ms);
+    let elapsed = match_state.period_elapsed;
     snapshot.set(
         SectionId::Scoreboard,
         scoreboard_fields(&match_state, &regulations),
@@ -148,7 +148,10 @@ pub(super) fn collect_snapshot(
             SectionId::Restart,
             vec![
                 Field::new("awarded", awarded),
-                Field::volatile("in", format!("{:.1}s", match_state.set_piece_timer)),
+                Field::volatile(
+                    "in",
+                    format!("{:.1}s", match_state.restart_in.as_secs_f32()),
+                ),
             ],
         ),
     }
@@ -222,7 +225,7 @@ mod tests {
             home_score: 2,
             away_score: 1,
             phase: MatchPhase::FirstHalf,
-            period_elapsed_ms: 61_000,
+            period_elapsed: Duration::from_secs(61),
             ..Default::default()
         };
 

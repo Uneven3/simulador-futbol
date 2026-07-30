@@ -20,6 +20,7 @@ fn every_player_is_reachable_from_his_identity() {
 
     assert_eq!(identities.len(), 22, "a match is eleven a side");
 
+    let world = runner.world_mut();
     let registry = world.resource::<PlayerRegistry>();
     assert_eq!(registry.len(), identities.len(), "a body went unregistered");
     for id in &identities {
@@ -45,16 +46,26 @@ fn possession_is_recorded_against_a_person() {
     let scenario = scenarios::opening_minute();
     let ticks = scenario.ticks();
     let mut runner = ScenarioRunner::headless(scenario);
+
+    // Sampled while the match runs, not at the final tick: whether the ball
+    // happens to be loose when the window closes says nothing about who held it.
+    let mut possessor = None;
     for _ in 0..ticks {
         runner.advance();
+        if let Some(holder) = runner
+            .world_mut()
+            .resource::<gameplayfootball::MatchState>()
+            .possession_player
+        {
+            possessor = Some(holder);
+            break;
+        }
     }
-
-    let world = runner.world_mut();
-    let state = world.resource::<gameplayfootball::MatchState>();
-    let Some(possessor) = state.possession_player.or(state.previous_possessor) else {
+    let Some(possessor) = possessor else {
         panic!("nobody held the ball in a minute of play");
     };
 
+    let world = runner.world_mut();
     let registry = world.resource::<PlayerRegistry>();
     let body = registry
         .body(possessor)

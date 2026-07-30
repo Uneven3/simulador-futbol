@@ -108,7 +108,7 @@ fn referee_system(
                 match_state.is_ball_in_goal = true;
                 match_state.set_piece = SetPiece::KickOff;
                 // original: 6000 ms celebration + 2000 ms preparation
-                match_state.set_piece_timer = 8.0;
+                match_state.restart_in = Duration::from_secs_f32(8.0);
                 match_state.restart_pos = Vec3::ZERO;
                 let scored_by = if side < 0.0 {
                     TeamId::Away
@@ -138,7 +138,7 @@ fn referee_system(
             // last touch by the team defending this side -> corner for the attackers
             match_state.set_piece = SetPiece::Corner;
             match_state.set_piece_team = Some(taking_team);
-            match_state.set_piece_timer = 4.0;
+            match_state.restart_in = Duration::from_secs_f32(4.0);
             match_state.restart_pos = Vec3::new(
                 pitch_half_w * last_side,
                 if pos.y > 0.0 {
@@ -155,7 +155,7 @@ fn referee_system(
         } else {
             match_state.set_piece = SetPiece::GoalKick;
             match_state.set_piece_team = Some(taking_team);
-            match_state.set_piece_timer = 4.0;
+            match_state.restart_in = Duration::from_secs_f32(4.0);
             match_state.restart_pos = Vec3::new(pitch_half_w * 0.92 * -last_side, 0.0, 0.0);
             telemetry.record(MatchFact::RestartAwarded {
                 set_piece: SetPiece::GoalKick,
@@ -168,7 +168,7 @@ fn referee_system(
         let throw_in_team = last_touch.opponent();
         match_state.set_piece = SetPiece::ThrowIn;
         match_state.set_piece_team = Some(throw_in_team);
-        match_state.set_piece_timer = 4.0;
+        match_state.restart_in = Duration::from_secs_f32(4.0);
         match_state.restart_pos = Vec3::new(
             pos.x.clamp(-pitch_half_w + 0.6, pitch_half_w - 0.6),
             if pos.y > 0.0 {
@@ -216,7 +216,7 @@ fn referee_offside_system(
         {
             match_state.set_piece = SetPiece::FreeKick;
             match_state.set_piece_team = Some(touch.team().opponent());
-            match_state.set_piece_timer = 4.0;
+            match_state.restart_in = Duration::from_secs_f32(4.0);
             match_state.restart_pos = Vec3::new(recorded_pos.x, recorded_pos.y, 0.0);
             records.players.clear();
             records.team = None;
@@ -312,8 +312,8 @@ fn referee_set_piece_system(
         return;
     }
 
-    if match_state.set_piece_timer > 0.0 {
-        match_state.set_piece_timer -= time.delta_secs();
+    if !match_state.restart_in.is_zero() {
+        match_state.restart_in = match_state.restart_in.saturating_sub(time.delta());
         // dead ball: park it at the restart spot right away, or it keeps
         // rolling into the stands while the restart timer runs
         if let Ok((mut ball_position, mut ball)) = ball_query.single_mut() {
@@ -357,7 +357,7 @@ fn referee_set_piece_system(
     match_state.possession_player = None;
     match_state.possession_team = None;
     match_state.previous_possessor = None;
-    match_state.last_possession_change_time = 0;
+    match_state.possession_since = Duration::ZERO;
     records.players.clear();
     records.team = None;
 

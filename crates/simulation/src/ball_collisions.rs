@@ -33,19 +33,22 @@ struct CollisionRng(XorShift32);
 const PLAYER_CAPSULE_RADIUS: f32 = 0.35;
 /// Original: `boundingBoxSizeOffset = -0.1f`, `+0.03f` when not in possession.
 const BOUNDING_BOX_SIZE_OFFSET: f32 = -0.07;
-const TOUCH_TIME_THRESHOLD_MS: u64 = 200;
+/// How long a touch keeps its hold on the ball.
+const TOUCH_WINDOW: Duration = Duration::from_millis(200);
+/// Two bodies cannot deflect the same ball inside this window.
+const COLLISION_COOLDOWN: Duration = Duration::from_millis(150);
 
 /// Linear last-touch bias like `GetLastTouchBias`: 1.0 at the touch, fading to
-/// 0.0 after `threshold_ms`.
-fn last_touch_bias(now_ms: u64, touch_time_ms: u64, threshold_ms: u64) -> f32 {
-    if touch_time_ms == 0 || now_ms < touch_time_ms {
+/// 0.0 after `window`.
+fn last_touch_bias(now: Duration, touched_at: Duration, window: Duration) -> f32 {
+    if touched_at.is_zero() || now < touched_at {
         return 0.0;
     }
-    let elapsed = now_ms - touch_time_ms;
-    if elapsed >= threshold_ms {
+    let elapsed = now - touched_at;
+    if elapsed >= window {
         0.0
     } else {
-        1.0 - elapsed as f32 / threshold_ms as f32
+        1.0 - elapsed.as_secs_f32() / window.as_secs_f32()
     }
 }
 
@@ -55,15 +58,15 @@ fn ball_body_collisions(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
     mut rng: ResMut<CollisionRng>,
-    mut last_collision_ms: Local<u64>,
+    mut last_collision_at: Local<Duration>,
     time: Res<Time>,
     mut ball_query: Query<(&mut Ball, &mut Position), Without<Player>>,
     mut player_query: Query<crate::player_movement::BallSystemBody, Without<Ball>>,
     mut touched_writer: MessageWriter<BallTouched>,
     mut telemetry: ResMut<MatchTelemetry>,
 ) {
-    let now_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
-    if now_ms <= *last_collision_ms + 150 {
+    let now = time.elapsed();
+    if now <= *last_collision_at + COLLISION_COOLDOWN {
         return;
     }
 
@@ -90,15 +93,11 @@ fn ball_body_collisions(
         }
 
         let opp_last_touch_bias = if ball.last_touch_team == Some(player.id.team.opponent()) {
-            last_touch_bias(now_ms, ball.last_touch_time_ms, TOUCH_TIME_THRESHOLD_MS)
+            last_touch_bias(now, ball.last_touch_at, TOUCH_WINDOW)
         } else {
             0.0
         };
-        let player_last_touch_bias = last_touch_bias(
-            now_ms,
-            player_state.last_touch_at.as_millis() as u64,
-            TOUCH_TIME_THRESHOLD_MS,
-        );
+        let player_last_touch_bias = last_touch_bias(now, player_state.last_touch_at, TOUCH_WINDOW);
 
         // cannot collide if opp didn't recently touch ball (we would be able to
         // predict ball by then), or if player itself already did (to overcome the
@@ -156,9 +155,9 @@ fn ball_body_collisions(
         if let Some((body, player)) = toucher {
             ball.last_touch_team = Some(player.team);
             ball.last_touch_player = Some(player);
-            ball.last_touch_time_ms = now_ms;
+            ball.last_touch_at = now;
             if let Ok((.., mut player_state, _)) = player_query.get_mut(body) {
-                player_state.last_touch_at = Duration::from_millis(now_ms);
+                player_state.last_touch_at = now;
             }
             // an accidental body touch also interrupts any dribble possession
             if let Some(interrupted) = match_state.possession_player {
@@ -175,6 +174,6 @@ fn ball_body_collisions(
             touched_writer.write(BallTouched { player });
         }
 
-        *last_collision_ms = now_ms;
+        *last_collision_at = now;
     }
 }
