@@ -7,10 +7,12 @@ use bevy_ecs::prelude::*;
 use bevy_log::{debug, info};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
+use std::time::Duration;
+
 use football_domain::math::{normalized_clamp, normalized_or_2d, sign_side};
 use football_domain::{
-    Ball, BallTouched, Facing, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position,
-    PossessionDesignation, SetPiece, Velocity,
+    Attributes, Ball, BallTouched, ByTeam, Facing, MatchRng, MatchState, Player, PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation,
+    SetPiece, TeamId, Velocity,
 };
 
 pub struct PlayerMovementPlugin;
@@ -47,37 +49,37 @@ fn update_possession_designation(
     mut match_state: ResMut<MatchState>,
     records: Res<football_domain::OffsideRecords>,
     mut designation: ResMut<PossessionDesignation>,
+    registry: Res<PlayerRegistry>,
     ball_query: Query<&Ball>,
-    player_query: Query<(Entity, &Position, &Player, &PlayerStats)>,
+    player_query: Query<(&Position, &Player, &Attributes)>,
 ) {
     let Ok(ball) = ball_query.single() else {
         return;
     };
 
-    let mut best: [Option<(Entity, f32)>; 2] = [None, None];
-    for (entity, position, player, stats) in player_query.iter() {
-        if player.role == PlayerRole::GK {
+    let mut best: ByTeam<Option<(PlayerId, f32)>> = ByTeam::default();
+    for (position, player, stats) in player_query.iter() {
+        if player.position == PlayingPosition::Goalkeeper {
             continue;
         }
         // a player caught in an offside position when the ball was last played
         // must not go for it (or the whistle blows the moment he touches it)
-        if records.team == Some(player.team_index)
-            && records.players.iter().any(|(e, _)| *e == entity)
+        if records.team == Some(player.id.team)
+            && records.players.iter().any(|(id, _)| *id == player.id)
         {
             continue;
         }
-        let (_, time_ms) = find_interception(position.on_pitch(), stats.speed, &ball.predictions);
-        let slot = player.team_index as usize;
-        if best[slot].is_none_or(|(_, t)| time_ms < t) {
-            best[slot] = Some((entity, time_ms));
+        let (_, time_ms) =
+            find_interception(position.on_pitch(), stats.top_speed, &ball.predictions);
+        let slot = &mut best[player.id.team];
+        if slot.is_none_or(|(_, t)| time_ms < t) {
+            *slot = Some((player.id, time_ms));
         }
     }
 
     // whoever holds the ball is his team's designated player by definition
     if let Some(possessor) = match_state.possession_player {
-        if let Ok((_, _, player, _)) = player_query.get(possessor) {
-            best[player.team_index as usize] = Some((possessor, 0.0));
-        }
+        best[possessor.team] = Some((possessor, 0.0));
     }
 
     // a pass is only "in flight" while the ball travels; once it truly dies the
@@ -92,19 +94,20 @@ fn update_possession_designation(
     // the intended receiver of a pass in flight attacks it, even if a teammate
     // is nominally a bit faster to the ball (the original's receivers run onto
     // `AI_GetPass` balls; without this the passer often re-chases his own pass)
-    if let Some(receiver) = match_state.pass_target {
-        if let Ok((_, position, player, stats)) = player_query.get(receiver) {
-            let (_, time_ms) =
-                find_interception(position.on_pitch(), stats.speed, &ball.predictions);
-            let slot = player.team_index as usize;
-            if time_ms < 3500.0 && best[slot].is_none_or(|(_, t)| time_ms < t * 1.5 + 300.0) {
-                best[slot] = Some((receiver, time_ms));
-            }
+    if let Some(receiver) = match_state.pass_target
+        && let Some(body) = registry.body(receiver)
+        && let Ok((position, player, stats)) = player_query.get(body)
+    {
+        let (_, time_ms) =
+            find_interception(position.on_pitch(), stats.top_speed, &ball.predictions);
+        let slot = &mut best[player.id.team];
+        if time_ms < 3500.0 && slot.is_none_or(|(_, t)| time_ms < t * 1.5 + 300.0) {
+            *slot = Some((receiver, time_ms));
         }
     }
 
-    for team in 0..2 {
-        designation.designated[team] = best[team].map(|(e, _)| e);
+    for team in TeamId::BOTH {
+        designation.designated[team] = best[team].map(|(id, _)| id);
         designation.time_to_ball_ms[team] = best[team].map_or(f32::MAX, |(_, t)| t);
     }
 }
@@ -115,10 +118,10 @@ fn update_possession_designation(
 /// `Player::GetAverageVelocity(10)`).
 fn apply_player_velocity(
     time: Res<Time>,
-    mut query: Query<(&mut Position, &mut Facing, &Velocity, &mut Player)>,
+    mut query: Query<(&mut Position, &mut Facing, &Velocity, &mut PlayerMatchState)>,
 ) {
     let dt = time.delta_secs();
-    for (mut position, mut facing, velocity, mut player) in query.iter_mut() {
+    for (mut position, mut facing, velocity, mut player_state) in query.iter_mut() {
         position.0.x += velocity.0.x * dt;
         position.0.y += velocity.0.y * dt;
         // Facing follows the movement instantly: turning is not yet a limited
@@ -127,7 +130,7 @@ fn apply_player_velocity(
             facing.0 = direction;
         }
         let speed = velocity.0.length();
-        player.avg_velocity += (speed - player.avg_velocity) * (dt / 10.0).min(1.0);
+        player_state.recent_speed += (speed - player_state.recent_speed) * (dt / 10.0).min(1.0);
     }
 }
 
@@ -165,8 +168,16 @@ fn player_kick_system(
     pitch: Res<football_domain::PitchConfig>,
     mut rng: ResMut<MatchRng>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
+    registry: Res<PlayerRegistry>,
     mut player_query: Query<
-        (Entity, &Position, &mut Player, &PlayerStats, &Velocity),
+        (
+            Entity,
+            &Position,
+            &Player,
+            &Attributes,
+            &mut PlayerMatchState,
+            &Velocity,
+        ),
         Without<Ball>,
     >,
     time: Res<Time>,
@@ -186,27 +197,26 @@ fn player_kick_system(
 
     // 0. Possession is positional: if the ball escaped the possessor, it's loose
     if let Some(possessor) = match_state.possession_player {
-        let lost = match player_query.get(possessor) {
-            Ok((_, position, _, _, _)) => position.on_pitch().distance(ball_pos_2d) > 3.0,
-            Err(_) => true,
+        let lost = match registry.body(possessor).map(|body| player_query.get(body)) {
+            Some(Ok((_, position, ..))) => position.on_pitch().distance(ball_pos_2d) > 3.0,
+            _ => true,
         };
         if lost {
-            debug!("POSSESSION RELEASED (ball escaped 3m) from {:?}", possessor);
+            debug!("POSSESSION RELEASED (ball escaped 3m) from {possessor}");
             match_state.possession_player = None;
         }
     }
 
     // 1. Possession Tackle Check: closest player in contact range
-    let mut closest_player_entity = None;
+    let mut closest_player: Option<(PlayerId, Entity)> = None;
     let mut closest_player_dist = f32::MAX;
-    let mut closest_player_team = 0;
 
-    for (entity, player_position, player, _, _) in player_query.iter() {
+    for (entity, player_position, player, _, _, _) in player_query.iter() {
         let dist_2d = ball_pos_2d.distance(player_position.on_pitch());
 
         // players flagged offside at the last touch hold off the ball
-        if offside_records.team == Some(player.team_index)
-            && offside_records.players.iter().any(|(e, _)| *e == entity)
+        if offside_records.team == Some(player.id.team)
+            && offside_records.players.iter().any(|(id, _)| *id == player.id)
         {
             continue;
         }
@@ -216,41 +226,39 @@ fn player_kick_system(
         // trap reach (the original's trap anims stretch a leg ~1 m via
         // GetBestCheatableAnim) — without it, reception is a coin flip against
         // the marker standing 1-2 m goal-side and almost no pass completes.
-        let reach = if match_state.pass_target == Some(entity) {
+        let reach = if match_state.pass_target == Some(player.id) {
             1.1
         } else {
             0.65
         };
         if dist_2d < reach && ball_pos.z < 1.5 {
             // the receiver's stretched reach wins ties inside his radius
-            let effective_dist = if match_state.pass_target == Some(entity) {
+            let effective_dist = if match_state.pass_target == Some(player.id) {
                 dist_2d - 0.45
             } else {
                 dist_2d
             };
             if effective_dist < closest_player_dist {
                 closest_player_dist = effective_dist;
-                closest_player_entity = Some(entity);
-                closest_player_team = player.team_index;
+                closest_player = Some((player.id, entity));
             }
         }
     }
     let closest_player_dist = closest_player_dist.max(0.0);
 
-    if let Some(possessor_entity) = closest_player_entity {
+    if let Some((challenger, challenger_body)) = closest_player {
         if let Some(current_possessor) = match_state.possession_player {
-            if possessor_entity != current_possessor {
-                if let Ok((_, current_position, current_player, _, _)) =
-                    player_query.get(current_possessor)
+            if challenger != current_possessor {
+                if let Some(Ok((_, current_position, ..))) =
+                    registry.body(current_possessor).map(|b| player_query.get(b))
                 {
                     // Teammates cannot steal the ball from each other
-                    if closest_player_team != current_player.team_index {
+                    if challenger.team != current_possessor.team {
                         // Only the designated possession player makes deliberate
                         // tackles (everyone else holds shape); tight contact
                         // (< 0.50m) and tackle cooldowns still apply
-                        let is_designated_tackler = designation.designated
-                            [closest_player_team as usize]
-                            == Some(possessor_entity);
+                        let is_designated_tackler =
+                            designation.designated[challenger.team] == Some(challenger);
                         // Shielding: in the original the carrier's body (via the
                         // ball-control animations) physically screens the ball, so
                         // a steal needs (a) the tackler genuinely closer to the
@@ -270,7 +278,7 @@ fn player_kick_system(
                             && wins_duel
                             && ball_stealable
                         {
-                            let is_prev = match_state.previous_possessor == Some(possessor_entity);
+                            let is_prev = match_state.previous_possessor == Some(challenger);
                             let cooldown_limit = if is_prev { 1000 } else { 500 };
 
                             if current_time_ms - match_state.last_possession_change_time
@@ -278,8 +286,8 @@ fn player_kick_system(
                             {
                                 // Tackle successful: the tackler traps the ball
                                 match_state.previous_possessor = Some(current_possessor);
-                                match_state.possession_player = Some(possessor_entity);
-                                match_state.possession_team = Some(closest_player_team);
+                                match_state.possession_player = Some(challenger);
+                                match_state.possession_team = Some(challenger.team);
                                 match_state.last_possession_change_time = current_time_ms;
                                 match_state.pass_target = None;
                                 let k = match_state.last_release_kind as usize;
@@ -287,16 +295,13 @@ fn player_kick_system(
                                 control_touch(
                                     &mut ball,
                                     &mut ball_position,
-                                    possessor_entity,
-                                    closest_player_team,
+                                    challenger,
+                                    challenger_body,
                                     current_time_ms,
                                     &mut player_query,
                                     &mut touched_writer,
                                 );
-                                info!(
-                                    "TEAM {} PLAYER {:?} TACKLED AND STOLE POSSESSION!",
-                                    closest_player_team, possessor_entity
-                                );
+                                info!("{challenger} TACKLED AND STOLE POSSESSION!");
                             }
                         }
                     }
@@ -307,7 +312,7 @@ fn player_kick_system(
             // 1. Global pickup cooldown of 220ms after any kick
             let global_cooldown_ok = current_time_ms.saturating_sub(ball.last_touch_time_ms) > 220;
             // 2. The last toucher needs 400ms to let the ball leave their feet
-            let is_last_toucher = ball.last_touch_player == Some(possessor_entity);
+            let is_last_toucher = ball.last_touch_player == Some(challenger);
             let individual_cooldown_ok =
                 !is_last_toucher || (current_time_ms.saturating_sub(ball.last_touch_time_ms) > 400);
             // 3. Touch bias (original `GetLastTouchBias`): the player who played
@@ -317,10 +322,10 @@ fn player_kick_system(
             let mut touch_bias_ok = true;
             if !is_last_toucher && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500 {
                 if let Some(last_toucher) = ball.last_touch_player {
-                    if let Ok((_, toucher_position, last_player, _, _)) =
-                        player_query.get(last_toucher)
+                    if let Some(Ok((_, toucher_position, ..))) =
+                        registry.body(last_toucher).map(|b| player_query.get(b))
                     {
-                        if last_player.team_index != closest_player_team {
+                        if last_toucher.team != challenger.team {
                             let toucher_dist = toucher_position.on_pitch().distance(ball_pos_2d);
                             if toucher_dist < 1.0 && closest_player_dist > toucher_dist - 0.25 {
                                 touch_bias_ok = false;
@@ -332,8 +337,8 @@ fn player_kick_system(
 
             if global_cooldown_ok && individual_cooldown_ok && touch_bias_ok {
                 debug!(
-                    "PICKUP forensics: entity={:?} dt_touch={}ms was_last_toucher={} dist={:.2} |v|={:.1} last_player={:?}",
-                    possessor_entity,
+                    "PICKUP forensics: player={} dt_touch={}ms was_last_toucher={} dist={:.2} |v|={:.1} last_player={:?}",
+                    challenger,
                     current_time_ms.saturating_sub(ball.last_touch_time_ms),
                     is_last_toucher,
                     closest_player_dist,
@@ -341,13 +346,13 @@ fn player_kick_system(
                     ball.last_touch_player,
                 );
                 match_state.previous_possessor = None;
-                match_state.possession_player = Some(possessor_entity);
-                match_state.possession_team = Some(closest_player_team);
+                match_state.possession_player = Some(challenger);
+                match_state.possession_team = Some(challenger.team);
                 match_state.last_possession_change_time = current_time_ms;
                 match_state.pass_target = None;
                 if ball
                     .last_touch_team
-                    .is_some_and(|t| t != closest_player_team)
+                    .is_some_and(|t| t != challenger.team)
                 {
                     let k = match_state.last_release_kind as usize;
                     match_state.turnovers_by_kind[k.min(3)] += 1;
@@ -364,15 +369,12 @@ fn player_kick_system(
                             match_state.last_pass_aim,
                             ball_pos_2d,
                         );
-                        let role = player_query
-                            .get(possessor_entity)
-                            .map(|(_, _, p, _, _)| format!("{:?}", p.role))
-                            .unwrap_or_default();
+                        let interceptor = challenger.to_string();
                         let lane_len = match_state
                             .last_pass_origin
                             .distance(match_state.last_pass_aim);
                         match_state.pass_turnover_log.push(format!(
-                            "u={u:.2} lane_dist={lane_dist:.1} lane_len={lane_len:.1}m interceptor={role} vz={:.1}",
+                            "u={u:.2} lane_dist={lane_dist:.1} lane_len={lane_len:.1}m interceptor={interceptor} vz={:.1}",
                             ball.momentum.length(),
                         ));
                     }
@@ -380,33 +382,32 @@ fn player_kick_system(
                 control_touch(
                     &mut ball,
                     &mut ball_position,
-                    possessor_entity,
-                    closest_player_team,
+                    challenger,
+                    challenger_body,
                     current_time_ms,
                     &mut player_query,
                     &mut touched_writer,
                 );
-                info!(
-                    "TEAM {} PLAYER {:?} GAINED POSSESSION OF LOOSE BALL!",
-                    closest_player_team, possessor_entity
-                );
+                info!("{challenger} GAINED POSSESSION OF LOOSE BALL!");
             }
         }
     }
 
     // 2. Play Actions for the player currently in possession
-    if let Some(possessor_entity) = match_state.possession_player {
-        let Ok((_, player_position, player, stats, velocity)) = player_query.get(possessor_entity)
+    if let Some(possessor) = match_state.possession_player {
+        let Some(possessor_body) = registry.body(possessor) else {
+            return;
+        };
+        let Ok((_, player_position, player, stats, _, velocity)) = player_query.get(possessor_body)
         else {
             return;
         };
         let player_pos_2d = player_position.on_pitch();
         let player_vel_2d = Vec2::new(velocity.0.x, velocity.0.y);
-        let player_team = player.team_index;
-        let player_role = player.role;
-        let player_jersey = player.jersey_number;
-        let player_speed = stats.speed;
-        let technical_shot = stats.technical_shot;
+        let player_team = possessor.team;
+        let playing_position = player.position;
+        let player_speed = stats.top_speed;
+        let technical_shot = stats.shot_technique;
 
         // A touch requires the ball at the feet
         let ball_in_reach = ball_pos_2d.distance(player_pos_2d) < 0.7 && ball_pos.z < 0.5;
@@ -415,7 +416,7 @@ fn player_kick_system(
         // — the original chains trap → pass through its command queue, and a
         // pressed carrier who must idle 350 ms just feeds the stealing loop.
         // Dribble knock-ons keep the slower 350 ms touch cadence.
-        let is_gk = player_role == PlayerRole::GK;
+        let is_gk = playing_position == PlayingPosition::Goalkeeper;
         let since_touch_ms = current_time_ms.saturating_sub(ball.last_touch_time_ms);
         let can_decide = since_touch_ms > 150 || is_gk;
         let can_knock_on = since_touch_ms > 350 || is_gk;
@@ -432,25 +433,22 @@ fn player_kick_system(
             touch_ball(ball, ball_position, momentum);
             ball.set_rotation(spin.x, spin.y, spin.z, 1.0);
             ball.last_touch_team = Some(player_team);
-            ball.last_touch_player = Some(possessor_entity);
+            ball.last_touch_player = Some(possessor);
             ball.last_touch_time_ms = current_time_ms;
-            touched_writer.write(BallTouched {
-                player: possessor_entity,
-                team: player_team,
-            });
+            touched_writer.write(BallTouched { player: possessor });
         };
 
         // Decision (port of ElizaController::GetOnTheBallCommands), evaluated in
         // the original's command-queue priority: panic → pass → shot → dribble.
         let snaps: Vec<PlayerSnap> = player_query
             .iter()
-            .map(|(entity, position, p, _, v)| PlayerSnap {
-                entity,
-                team: p.team_index,
+            .map(|(_, position, p, _, _, v)| PlayerSnap {
+                id: p.id,
+                playing_position: p.position,
                 role: p.role,
                 pos: position.on_pitch(),
                 vel: Vec2::new(v.0.x, v.0.y),
-                formation_pos: p.formation_pos,
+                formation_slot: p.formation_slot,
             })
             .collect();
         let side = team_side(player_team);
@@ -459,7 +457,7 @@ fn player_kick_system(
             current_time_ms.saturating_sub(match_state.last_possession_change_time);
         let action = eliza::decide_on_ball_action(
             &snaps,
-            possessor_entity,
+            possessor,
             &ball,
             &designation,
             possession_duration_ms,
@@ -502,10 +500,7 @@ fn player_kick_system(
                 match_state.pass_target = None;
                 match_state.last_release_kind = 3;
                 release_possession = true;
-                info!(
-                    "TEAM {} PLAYER {} SHOOTS (y = {:.1})!",
-                    player_team, player_jersey, y_aim
-                );
+                info!("{possessor} SHOOTS (y = {y_aim:.1})!");
             }
             OnBallAction::Pass { target, aim, kind } => {
                 // lift per AI_GetAutoPass (0.11 ground / high drops with range);
@@ -539,10 +534,7 @@ fn player_kick_system(
                 match_state.last_pass_origin = player_pos_2d;
                 match_state.last_release_kind = 1;
                 release_possession = true;
-                info!(
-                    "TEAM {} PLAYER {} PLAYS A {:?} PASS TO {:?}",
-                    player_team, player_jersey, kind, target
-                );
+                info!("{possessor} PLAYS A {kind:?} PASS TO {target}");
             }
             OnBallAction::PanicClear => {
                 // port of `_AddPanicPass`: blast it forward, away from the middle
@@ -564,10 +556,7 @@ fn player_kick_system(
                 match_state.pass_target = None;
                 match_state.last_release_kind = 3;
                 release_possession = true;
-                info!(
-                    "TEAM {} PLAYER {} PANIC CLEARS!",
-                    player_team, player_jersey
-                );
+                info!("{possessor} PANIC CLEARS!");
             }
             OnBallAction::Dribble => {
                 if !can_knock_on {
@@ -579,8 +568,8 @@ fn player_kick_system(
                 // desired velocity): a top-speed-based knock in traffic rolls
                 // the ball 3+ m ahead, releases possession and gifts it to the
                 // opposing designated player — the stealing-metronome bug.
-                let all_players: Vec<(u32, Vec2, Vec2)> =
-                    snaps.iter().map(|s| (s.team, s.pos, s.vel)).collect();
+                let all_players: Vec<(TeamId, Vec2, Vec2)> =
+                    snaps.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
                 let dir_2d =
                     dribble_direction(player_pos_2d, player_vel_2d, player_team, &all_players);
                 // In traffic the touch shortens to dribble pace so the ball
@@ -589,7 +578,7 @@ fn player_kick_system(
                 // it follows the carrier's speed.
                 let nearest_opp = snaps
                     .iter()
-                    .filter(|s| s.team != player_team)
+                    .filter(|s| s.team() != player_team)
                     .map(|s| s.pos.distance(player_pos_2d))
                     .fold(f32::MAX, f32::min);
                 let knock_speed = if nearest_opp < 3.0 {
@@ -609,8 +598,8 @@ fn player_kick_system(
             }
         }
 
-        if let Ok((_, _, mut p, _, _)) = player_query.get_mut(possessor_entity) {
-            p.last_touch_time_ms = current_time_ms;
+        if let Ok((.., mut player_state, _)) = player_query.get_mut(possessor_body) {
+            player_state.last_touch_at = Duration::from_millis(current_time_ms);
         }
         if release_possession {
             match_state.possession_player = None;
@@ -625,11 +614,18 @@ fn player_kick_system(
 fn control_touch(
     ball: &mut Ball,
     ball_position: &mut Position,
-    player_entity: Entity,
-    team: u32,
+    player: PlayerId,
+    body: Entity,
     now_ms: u64,
     player_query: &mut Query<
-        (Entity, &Position, &mut Player, &PlayerStats, &Velocity),
+        (
+            Entity,
+            &Position,
+            &Player,
+            &Attributes,
+            &mut PlayerMatchState,
+            &Velocity,
+        ),
         Without<Ball>,
     >,
     touched_writer: &mut MessageWriter<BallTouched>,
@@ -640,17 +636,16 @@ fn control_touch(
     // trap in the raw approach direction next to the sideline knocks the ball
     // straight out and chains endless throw-ins.
     let trap_momentum =
-        if let Ok((_, position, player, _, velocity)) = player_query.get(player_entity) {
+        if let Ok((_, position, _, _, _, velocity)) = player_query.get(body) {
             let my_pos = position.on_pitch();
             let my_vel = Vec2::new(velocity.0.x, velocity.0.y);
-            let team_index = player.team_index;
-            let all_players: Vec<(u32, Vec2, Vec2)> = player_query
+            let all_players: Vec<(TeamId, Vec2, Vec2)> = player_query
                 .iter()
-                .map(|(_, p_position, p, _, v)| {
-                    (p.team_index, p_position.on_pitch(), Vec2::new(v.0.x, v.0.y))
+                .map(|(_, p_position, p, _, _, v)| {
+                    (p.id.team, p_position.on_pitch(), Vec2::new(v.0.x, v.0.y))
                 })
                 .collect();
-            let dir = dribble_direction(my_pos, my_vel, team_index, &all_players);
+            let dir = dribble_direction(my_pos, my_vel, player.team, &all_players);
             // set the ball up at dribble pace (AI_GetBallControlMovement): a dead
             // trap parks the ball in the middle of the duel and invites the steal
             let speed = (my_vel.length() * 0.5).clamp(2.0, 3.5);
@@ -660,16 +655,13 @@ fn control_touch(
         };
     touch_ball(ball, ball_position, trap_momentum);
     ball.set_rotation(0.0, 0.0, 0.0, 1.0);
-    ball.last_touch_team = Some(team);
-    ball.last_touch_player = Some(player_entity);
+    ball.last_touch_team = Some(player.team);
+    ball.last_touch_player = Some(player);
     ball.last_touch_time_ms = now_ms;
-    if let Ok((_, _, mut player, _, _)) = player_query.get_mut(player_entity) {
-        player.last_touch_time_ms = now_ms;
+    if let Ok((.., mut player_state, _)) = player_query.get_mut(body) {
+        player_state.last_touch_at = Duration::from_millis(now_ms);
     }
-    touched_writer.write(BallTouched {
-        player: player_entity,
-        team,
-    });
+    touched_writer.write(BallTouched { player });
 }
 
 /// Port of `AI_GetBestDribbleMovement` + `AI_GetForceFieldMovement`
@@ -680,18 +672,17 @@ fn control_touch(
 pub fn dribble_direction(
     my_pos: Vec2,
     my_vel: Vec2,
-    team_index: u32,
-    all_players: &[(u32, Vec2, Vec2)], // (team, position, velocity)
+    team: TeamId,
+    all_players: &[(TeamId, Vec2, Vec2)], // (team, position, velocity)
 ) -> Vec2 {
-    // side the team defends: -1 for home (attacks +x)
-    let side: f32 = if team_index == 0 { -1.0 } else { 1.0 };
+    let side = crate::team_ai::team_side(team);
     let future_sec = 0.25;
     let offense_factor = 0.75; // 0.7 + dribble_offensiveness/mindset defaults
 
     // 5 closest opponents
     let mut opponents: Vec<(f32, Vec2)> = all_players
         .iter()
-        .filter(|(t, _, _)| *t != team_index)
+        .filter(|(t, _, _)| *t != team)
         .map(|(_, p, v)| (p.distance(my_pos), *p + *v * future_sec))
         .collect();
     opponents.sort_by(|a, b| a.0.total_cmp(&b.0));

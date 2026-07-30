@@ -2,7 +2,7 @@
 //! for. Read-only, like everything in this layer.
 
 use bevy::prelude::*;
-use football_domain::{MatchPhase, MatchRegulations, MatchState, SetPiece};
+use football_domain::{MatchPhase, MatchRegulations, MatchState, SetPiece, TeamId};
 use std::time::Duration;
 
 pub struct MatchHudPlugin;
@@ -77,7 +77,7 @@ pub fn phase_label(phase: MatchPhase) -> &'static str {
 }
 
 /// What play is stopped for, or nothing when the ball is live.
-pub fn restart_label(set_piece: SetPiece, team_index: Option<u32>) -> Option<String> {
+pub fn restart_label(set_piece: SetPiece, team: Option<TeamId>) -> Option<String> {
     let awarded = match set_piece {
         SetPiece::None => return None,
         SetPiece::KickOff => "Kick-off",
@@ -87,9 +87,9 @@ pub fn restart_label(set_piece: SetPiece, team_index: Option<u32>) -> Option<Str
         SetPiece::ThrowIn => "Throw-in",
         SetPiece::Penalty => "Penalty",
     };
-    Some(match team_index {
-        Some(0) => format!("{awarded}: home"),
-        Some(1) => format!("{awarded}: away"),
+    Some(match team {
+        Some(TeamId::Home) => format!("{awarded}: home"),
+        Some(TeamId::Away) => format!("{awarded}: away"),
         _ => awarded.to_string(),
     })
 }
@@ -173,9 +173,9 @@ mod tests {
 
     #[test]
     fn a_live_ball_has_no_restart_label() {
-        assert_eq!(restart_label(SetPiece::None, Some(0)), None);
+        assert_eq!(restart_label(SetPiece::None, Some(TeamId::Home)), None);
         assert_eq!(
-            restart_label(SetPiece::ThrowIn, Some(1)).as_deref(),
+            restart_label(SetPiece::ThrowIn, Some(TeamId::Away)).as_deref(),
             Some("Throw-in: away")
         );
     }
@@ -188,7 +188,7 @@ mod tests {
             phase: MatchPhase::FirstHalf,
             period_elapsed_ms: 61_000,
             set_piece: SetPiece::Corner,
-            set_piece_team: Some(0),
+            set_piece_team: Some(TeamId::Home),
             ..Default::default()
         };
 

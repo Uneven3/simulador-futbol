@@ -1,4 +1,4 @@
-use crate::{MatchPhase, MatchRegulations, PitchConfig, SetPiece};
+use crate::{ByTeam, MatchPhase, MatchRegulations, PitchConfig, SetPiece, TeamId};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use std::time::Duration;
@@ -28,7 +28,7 @@ pub struct BallSetup {
     pub momentum: Vec3,
     /// Team credited with the last touch before the scenario begins. The referee
     /// needs it to award a restart to the right side; `None` means untouched.
-    pub last_touched_by_team: Option<u32>,
+    pub last_touched_by_team: Option<TeamId>,
 }
 
 impl BallSetup {
@@ -49,8 +49,8 @@ impl BallSetup {
         }
     }
 
-    pub fn last_touched_by(mut self, team_index: u32) -> Self {
-        self.last_touched_by_team = Some(team_index);
+    pub fn last_touched_by(mut self, team: TeamId) -> Self {
+        self.last_touched_by_team = Some(team);
         self
     }
 }
@@ -72,10 +72,10 @@ pub enum PlayerSetup {
 /// Whether the scenario opens with the ball live or with play stopped.
 #[derive(Debug, Clone, Copy)]
 pub enum PlayState {
-    /// Stopped, waiting for a restart to be taken by `team_index`.
+    /// Stopped, waiting for a restart to be taken by `team`.
     AwaitingRestart {
         set_piece: SetPiece,
-        team_index: u32,
+        team: TeamId,
         delay: Duration,
     },
     /// Live: the ball is already in play.
@@ -85,8 +85,7 @@ pub enum PlayState {
 /// What the scenario claims should happen. Absent fields make no claim.
 #[derive(Debug, Clone, Default)]
 pub struct Expectations {
-    /// Final score as `[home, away]`.
-    pub score: Option<[u32; 2]>,
+    pub score: Option<ByTeam<u32>>,
     /// Restarts the referee must award, in order. Extra restarts after these
     /// are allowed: a scenario states what must happen, not everything that may.
     pub set_pieces: Vec<SetPiece>,
@@ -136,7 +135,7 @@ impl Scenario {
             players: PlayerSetup::DefaultFormations,
             play_state: PlayState::AwaitingRestart {
                 set_piece: SetPiece::KickOff,
-                team_index: 0,
+                team: TeamId::Home,
                 delay: Duration::from_secs(2),
             },
             window: Duration::from_secs(90 * 60),
@@ -193,7 +192,7 @@ impl Scenario {
 pub struct ScenarioOutcome {
     pub scenario_name: String,
     pub ticks_simulated: u32,
-    pub score: [u32; 2],
+    pub score: ByTeam<u32>,
     /// Restarts awarded, in the order the referee awarded them.
     pub set_pieces: Vec<SetPiece>,
     /// Phases entered, in order.
@@ -215,7 +214,7 @@ impl ScenarioOutcome {
         {
             mismatches.push(format!(
                 "score was {}-{}, expected {}-{}",
-                self.score[0], self.score[1], expected[0], expected[1]
+                self.score.home, self.score.away, expected.home, expected.away
             ));
         }
 

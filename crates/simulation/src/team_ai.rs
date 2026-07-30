@@ -23,7 +23,8 @@ use football_domain::math::{
     curve, line_distance_to_point_2d, normalized_clamp, normalized_or_2d, rotated_2d, what_side_2d,
 };
 use football_domain::{
-    Ball, MatchState, Player, PlayerRole, Position, PossessionDesignation, SetPiece, Velocity,
+    Ball, ByTeam, MatchState, Player, PlayerId, PlayerMatchState, PlayingPosition, Position,
+    PossessionDesignation, SetPiece, TacticalRole, TeamId, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -47,8 +48,11 @@ pub const PITCH_HALF_H: f32 = 36.0;
 
 /// The x-side each team defends (original `Team::GetSide()`): team 0 defends
 /// x < 0 and attacks +x, so its side is -1.
-pub fn team_side(team: u32) -> f32 {
-    if team == 0 { -1.0 } else { 1.0 }
+pub fn team_side(team: TeamId) -> f32 {
+    match team {
+        TeamId::Home => -1.0,
+        TeamId::Away => 1.0,
+    }
 }
 
 /// The engine's `clamp()` semantics: applies min first, then max, so an
@@ -85,24 +89,24 @@ const FORMATION_DEPTH: f32 = 0.45; // TeamAIController::depth
 const FORMATION_WIDTH: f32 = 0.95; // TeamAIController::width
 
 /// Per-role offsets on the base tactics (port of `mixup()`).
-fn mixup(base: f32, varname: &str, role: PlayerRole) -> f32 {
+fn mixup(base: f32, varname: &str, role: PlayingPosition) -> f32 {
     let value: Option<f32> = match role {
-        PlayerRole::CB => match varname {
+        PlayingPosition::CentreBack => match varname {
             "position_offense_width_factor" => Some(0.2), // wider defense
             _ => None,
         },
-        PlayerRole::LB | PlayerRole::RB => match varname {
+        PlayingPosition::LeftBack | PlayingPosition::RightBack => match varname {
             "position_defense_ownhalf_factor" => Some(-0.075), // go forward
             "position_offense_width_factor" => Some(0.2),
             "position_offense_ownhalf_factor" => Some(-0.1),
             _ => None,
         },
-        PlayerRole::LM | PlayerRole::RM => match varname {
+        PlayingPosition::LeftMidfielder | PlayingPosition::RightMidfielder => match varname {
             "position_defense_ownhalf_factor" => Some(-0.05),
             "position_offense_ownhalf_factor" => Some(-0.1),
             _ => None,
         },
-        PlayerRole::AM | PlayerRole::CF => match varname {
+        PlayingPosition::AttackingMidfielder | PlayingPosition::CentreForward => match varname {
             "position_defense_depth_factor" => Some(0.125),
             _ => None,
         },
@@ -125,11 +129,11 @@ pub struct TeamAi {
     pub offensiveness_bias: f32,
     pub team_possession_amount: f32,
     pub fading_team_possession_amount: f32,
-    pub attacking_run_player: Option<Entity>,
+    pub attacking_run_player: Option<PlayerId>,
     pub end_attacking_run_ms: u64,
-    pub forward_support_player: Option<Entity>,
+    pub forward_support_player: Option<PlayerId>,
     /// Opponents sorted most dangerous first (port of `tacticalOpponentInfo`).
-    pub dangerous_opponents: Vec<Entity>,
+    pub dangerous_opponents: Vec<PlayerId>,
 }
 
 impl Default for TeamAi {
@@ -149,7 +153,7 @@ impl Default for TeamAi {
 
 #[derive(Resource, Debug, Clone, Default)]
 pub struct TeamAis {
-    pub team: [TeamAi; 2],
+    pub team: ByTeam<TeamAi>,
     /// One sample per 10 ms tick of `(fading0 - 0.5) * side0 + (fading1 - 0.5) * side1`
     /// (port of `Match::possessionSideHistory`, 6 s deep).
     pub possession_side_history: VecDeque<f32>,
@@ -174,51 +178,57 @@ impl TeamAis {
 /// Minimal per-player snapshot shared by the team AI and the Eliza controller.
 #[derive(Debug, Clone, Copy)]
 pub struct PlayerSnap {
-    pub entity: Entity,
-    pub team: u32,
-    pub role: PlayerRole,
+    pub id: PlayerId,
+    pub playing_position: PlayingPosition,
+    pub role: TacticalRole,
     pub pos: Vec2,
     pub vel: Vec2,
-    pub formation_pos: Vec2,
+    pub formation_slot: Vec2,
+}
+
+impl PlayerSnap {
+    pub fn team(&self) -> TeamId {
+        self.id.team
+    }
 }
 
 /// Closest player of `team` to `position`, excluding `exclude` (port of
 /// `AI_GetClosestPlayer`). Set `skip_keeper` to ignore the GK.
 pub fn closest_player(
     snaps: &[PlayerSnap],
-    team: u32,
+    team: TeamId,
     position: Vec2,
-    exclude: Option<Entity>,
+    exclude: Option<PlayerId>,
     skip_keeper: bool,
-) -> Option<Entity> {
-    let mut best: Option<(Entity, f32)> = None;
+) -> Option<PlayerId> {
+    let mut best: Option<(PlayerId, f32)> = None;
     for s in snaps {
-        if s.team != team || Some(s.entity) == exclude {
+        if s.team() != team || Some(s.id) == exclude {
             continue;
         }
-        if skip_keeper && s.role == PlayerRole::GK {
+        if skip_keeper && s.playing_position == PlayingPosition::Goalkeeper {
             continue;
         }
         let d = s.pos.distance_squared(position);
         if best.is_none_or(|(_, bd)| d < bd) {
-            best = Some((s.entity, d));
+            best = Some((s.id, d));
         }
     }
-    best.map(|(e, _)| e)
+    best.map(|(id, _)| id)
 }
 
 /// The `count` closest players of `team` to `position` (port of
 /// `AI_GetClosestPlayers`).
 pub fn closest_players(
     snaps: &[PlayerSnap],
-    team: u32,
+    team: TeamId,
     position: Vec2,
-    exclude: Option<Entity>,
+    exclude: Option<PlayerId>,
     count: usize,
 ) -> Vec<PlayerSnap> {
     let mut list: Vec<(f32, PlayerSnap)> = snaps
         .iter()
-        .filter(|s| s.team == team && Some(s.entity) != exclude)
+        .filter(|s| s.team() == team && Some(s.id) != exclude)
         .map(|s| (s.pos.distance_squared(position), *s))
         .collect();
     list.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -236,7 +246,7 @@ pub fn team_ai_update(
     designation: Res<PossessionDesignation>,
     mut team_ais: ResMut<TeamAis>,
     ball_query: Query<&Ball>,
-    mut player_query: Query<(Entity, &Position, &mut Player, &Velocity)>,
+    mut player_query: Query<(&Position, &Player, &mut PlayerMatchState, &Velocity)>,
 ) {
     let Ok(ball) = ball_query.single() else {
         return;
@@ -246,20 +256,20 @@ pub fn team_ai_update(
 
     let snaps: Vec<PlayerSnap> = player_query
         .iter()
-        .map(|(entity, position, p, v)| PlayerSnap {
-            entity,
-            team: p.team_index,
+        .map(|(position, p, _, v)| PlayerSnap {
+            id: p.id,
+            playing_position: p.position,
             role: p.role,
             pos: position.on_pitch(),
             vel: Vec2::new(v.0.x, v.0.y),
-            formation_pos: p.formation_pos,
+            formation_slot: p.formation_slot,
         })
         .collect();
 
     // -- possession amounts (port of Team::Process) --
-    for t in 0..2usize {
+    for t in TeamId::BOTH {
         let my_time = designation.time_to_ball_ms[t].min(60000.0);
-        let opp_time = designation.time_to_ball_ms[1 - t].min(60000.0);
+        let opp_time = designation.time_to_ball_ms[t.opponent()].min(60000.0);
         let tp = (opp_time + 1500.0) / (my_time + 1500.0);
         let ai = &mut team_ais.team[t];
         ai.team_possession_amount = tp;
@@ -269,7 +279,7 @@ pub fn team_ai_update(
             ai.fading_team_possession_amount += delta;
         } else {
             // during a dead ball, possession belongs to the restarting team
-            let amount = if match_state.set_piece_team == Some(t as u32) {
+            let amount = if match_state.set_piece_team == Some(t) {
                 1.5
             } else {
                 0.5
@@ -280,8 +290,8 @@ pub fn team_ai_update(
     }
 
     // -- offensiveness bias (simplified UpdateTactics: goals + match time) --
-    for t in 0..2usize {
-        let (goals, opp_goals) = if t == 0 {
+    for t in TeamId::BOTH {
+        let (goals, opp_goals) = if t == TeamId::Home {
             (match_state.home_score as f32, match_state.away_score as f32)
         } else {
             (match_state.away_score as f32, match_state.home_score as f32)
@@ -296,22 +306,24 @@ pub fn team_ai_update(
 
     // -- possession side history (port of Match::Process) --
     if in_play {
-        let sample = (team_ais.team[0].fading_team_possession_amount - 0.5) * team_side(0)
-            + (team_ais.team[1].fading_team_possession_amount - 0.5) * team_side(1);
+        let sample = (team_ais.team[TeamId::Home].fading_team_possession_amount - 0.5)
+            * team_side(TeamId::Home)
+            + (team_ais.team[TeamId::Away].fading_team_possession_amount - 0.5)
+                * team_side(TeamId::Away);
         team_ais.possession_side_history.push_back(sample);
         if team_ais.possession_side_history.len() > 600 {
             team_ais.possession_side_history.pop_front();
         }
     }
 
-    for t in 0..2u32 {
+    for t in TeamId::BOTH {
         let side = team_side(t);
-        let opp_designated = designation.designated[(1 - t) as usize]
-            .and_then(|e| snaps.iter().find(|s| s.entity == e))
+        let opp_designated = designation.designated[t.opponent()]
+            .and_then(|id| snaps.iter().find(|s| s.id == id))
             .copied();
 
         // -- offside trap line (port of the deepestDanger computation) --
-        let offensiveness = team_ais.team[t as usize].offensiveness_bias;
+        let offensiveness = team_ais.team[t].offensiveness_bias;
         let start_distance = 30.0 + 20.0 * offensiveness;
         let force_distance = 6.0;
         let mut deepest_danger = (PITCH_HALF_W - start_distance) * side;
@@ -351,7 +363,7 @@ pub fn team_ai_update(
             deepest_danger = line_x - allow_slack_distance * side;
         }
 
-        team_ais.team[t as usize].offside_trap_x = deepest_danger;
+        team_ais.team[t].offside_trap_x = deepest_danger;
 
         // -- who's dangerous (port of tacticalOpponentInfo) --
         let most_dangerous_pos = Vec2::new((PITCH_HALF_W - 2.0) * side, 0.0) * 0.8
@@ -359,9 +371,9 @@ pub fn team_ai_update(
                 ball.predictions[10.min(ball.predictions.len() - 1)].x,
                 ball.predictions[10.min(ball.predictions.len() - 1)].y,
             ) * 0.2;
-        let mut danger: Vec<(Entity, f32)> = snaps
+        let mut danger: Vec<(PlayerId, f32)> = snaps
             .iter()
-            .filter(|s| s.team != t)
+            .filter(|s| s.team() != t)
             .map(|s| {
                 let mut factor = 1.0
                     - normalized_clamp(
@@ -370,37 +382,36 @@ pub fn team_ai_update(
                         PITCH_HALF_W * 2.0,
                     );
                 factor *= 0.95;
-                if designation.designated[(1 - t) as usize] == Some(s.entity) {
+                if designation.designated[t.opponent()] == Some(s.id) {
                     factor += 0.05;
                 }
-                (s.entity, factor)
+                (s.id, factor)
             })
             .collect();
         danger.sort_by(|a, b| b.1.total_cmp(&a.1));
-        team_ais.team[t as usize].dangerous_opponents = danger.iter().map(|(e, _)| *e).collect();
+        team_ais.team[t].dangerous_opponents = danger.iter().map(|(id, _)| *id).collect();
 
         // -- attacking runs (every 500 ms) --
         if in_play
             && now_ms % 500 < 10
-            && team_ais.team[t as usize].end_attacking_run_ms <= now_ms
+            && team_ais.team[t].end_attacking_run_ms <= now_ms
             && best_possession_team(&designation) == Some(t)
         {
-            if let Some(designated) = designation.designated[t as usize]
-                .and_then(|e| snaps.iter().find(|s| s.entity == e))
+            if let Some(designated) = designation.designated[t]
+                .and_then(|id| snaps.iter().find(|s| s.id == id))
             {
                 // SelectAttackingRunPlayer: closest to a spot 26 m ahead of the ball carrier
                 let focus = designated.pos + Vec2::new(-side * 26.0, 0.0);
-                if let Some(runner_e) =
-                    closest_player(&snaps, t, focus, Some(designated.entity), true)
+                if let Some(runner_id) = closest_player(&snaps, t, focus, Some(designated.id), true)
                 {
-                    let runner = snaps.iter().find(|s| s.entity == runner_e).unwrap();
+                    let runner = snaps.iter().find(|s| s.id == runner_id).unwrap();
                     let distance = (runner.pos - designated.pos).length();
                     let distance_rating = (1.0 - normalized_clamp(distance, 0.0, 40.0)).powf(0.5);
 
                     let spot =
                         Vec2::new(runner.pos.x, runner.pos.y * 0.8) + Vec2::new(side * 10.0, 0.0);
                     let mut opp_density_rating = 1.0;
-                    for opp in closest_players(&snaps, 1 - t, spot, None, 4) {
+                    for opp in closest_players(&snaps, t.opponent(), spot, None, 4) {
                         let opp_distance = (opp.pos - spot).length();
                         let inv =
                             curve(1.0 - normalized_clamp(opp_distance, 0.0, 15.0), 1.0).powf(0.5);
@@ -408,8 +419,8 @@ pub fn team_ai_update(
                     }
 
                     if distance_rating * opp_density_rating >= 0.5 {
-                        team_ais.team[t as usize].end_attacking_run_ms = now_ms + 4000;
-                        team_ais.team[t as usize].attacking_run_player = Some(runner_e);
+                        team_ais.team[t].end_attacking_run_ms = now_ms + 4000;
+                        team_ais.team[t].attacking_run_player = Some(runner_id);
                         debug!("team {t}: tactics induced attacking run");
                     }
                 }
@@ -418,14 +429,14 @@ pub fn team_ai_update(
 
         // -- forward support player (every 1500 ms) --
         if now_ms % 1500 < 10 {
-            if let Some(designated) = designation.designated[t as usize]
-                .and_then(|e| snaps.iter().find(|s| s.entity == e))
+            if let Some(designated) = designation.designated[t]
+                .and_then(|id| snaps.iter().find(|s| s.id == id))
             {
-                team_ais.team[t as usize].forward_support_player = closest_player(
+                team_ais.team[t].forward_support_player = closest_player(
                     &snaps,
                     t,
                     designated.pos + Vec2::new(-side * 1.5, 0.0),
-                    Some(designated.entity),
+                    Some(designated.id),
                     false,
                 );
             }
@@ -433,17 +444,17 @@ pub fn team_ai_update(
     }
 
     // -- man marking (port of CalculateManMarking) --
-    let mut assignments: Vec<(Entity, Option<Entity>)> =
-        snaps.iter().map(|s| (s.entity, None)).collect();
-    for t in 0..2u32 {
+    let mut assignments: Vec<(PlayerId, Option<PlayerId>)> =
+        snaps.iter().map(|s| (s.id, None)).collect();
+    for t in TeamId::BOTH {
         let num_marked = 3usize;
-        let dangerous = team_ais.team[t as usize].dangerous_opponents.clone();
+        let dangerous = team_ais.team[t].dangerous_opponents.clone();
         let mut available: Vec<&PlayerSnap> = snaps
             .iter()
-            .filter(|s| s.team == t && s.role != PlayerRole::GK)
+            .filter(|s| s.team() == t && s.playing_position != PlayingPosition::Goalkeeper)
             .collect();
-        for opp_entity in dangerous.iter().take(num_marked) {
-            let Some(opp) = snaps.iter().find(|s| s.entity == *opp_entity) else {
+        for opp_id in dangerous.iter().take(num_marked) {
+            let Some(opp) = snaps.iter().find(|s| s.id == *opp_id) else {
                 continue;
             };
             let mut best: Option<(usize, f32)> = None;
@@ -455,8 +466,8 @@ pub fn team_ai_update(
             }
             if let Some((i, _)) = best {
                 let marker = available.remove(i);
-                if let Some(slot) = assignments.iter_mut().find(|(e, _)| *e == marker.entity) {
-                    slot.1 = Some(*opp_entity);
+                if let Some(slot) = assignments.iter_mut().find(|(id, _)| *id == marker.id) {
+                    slot.1 = Some(*opp_id);
                 }
             }
             if available.is_empty() {
@@ -464,27 +475,28 @@ pub fn team_ai_update(
             }
         }
     }
-    for (entity, marking) in assignments {
-        if let Ok((_, _, mut player, _)) = player_query.get_mut(entity) {
-            player.man_marking = marking;
-        }
+    for (_, player, mut player_state, _) in player_query.iter_mut() {
+        player_state.marking = assignments
+            .iter()
+            .find(|(id, _)| *id == player.id)
+            .and_then(|(_, marking)| *marking);
     }
 }
 
-fn best_possession_team(designation: &PossessionDesignation) -> Option<u32> {
-    if designation.time_to_ball_ms[0] <= designation.time_to_ball_ms[1] {
-        Some(0)
+fn best_possession_team(designation: &PossessionDesignation) -> Option<TeamId> {
+    if designation.time_to_ball_ms[TeamId::Home] <= designation.time_to_ball_ms[TeamId::Away] {
+        Some(TeamId::Home)
     } else {
-        Some(1)
+        Some(TeamId::Away)
     }
 }
 
 /// One-but-deepest player of `team` on their own defensive side (used for the
 /// "slacking teammate" clamp of the trap line).
-fn own_defensive_line_x(snaps: &[PlayerSnap], team: u32) -> f32 {
+fn own_defensive_line_x(snaps: &[PlayerSnap], team: TeamId) -> f32 {
     let side = team_side(team);
     let mut deepest: Option<usize> = None;
-    let list: Vec<&PlayerSnap> = snaps.iter().filter(|s| s.team == team).collect();
+    let list: Vec<&PlayerSnap> = snaps.iter().filter(|s| s.team() == team).collect();
     for (i, s) in list.iter().enumerate() {
         if deepest.is_none_or(|d| s.pos.x * side > list[d].pos.x * side) {
             deepest = Some(i);
@@ -503,7 +515,7 @@ fn own_defensive_line_x(snaps: &[PlayerSnap], team: u32) -> f32 {
 }
 
 /// Port of `TeamAIController::CalculateMarkingQuality(player, opp)`.
-fn marking_quality(marker: &PlayerSnap, opp: &PlayerSnap, team: u32) -> f32 {
+fn marking_quality(marker: &PlayerSnap, opp: &PlayerSnap, team: TeamId) -> f32 {
     let side = team_side(team);
     let opp_position = opp.pos + opp.vel * 0.1;
     let player_position = marker.pos + marker.vel * 0.1;
@@ -556,76 +568,77 @@ fn marking_quality(marker: &PlayerSnap, opp: &PlayerSnap, team: u32) -> f32 {
 /// is the designated possession player's position (either team).
 pub fn get_adapted_formation_position(
     team_ais: &TeamAis,
-    team: u32,
+    team: TeamId,
     player_pos: Vec2,
     formation_pos: Vec2,
-    role: PlayerRole,
+    playing_position: PlayingPosition,
+    role: TacticalRole,
     focal_point: Vec2,
     ball: &Ball,
 ) -> Vec2 {
     let side = team_side(team);
-    let ai = &team_ais.team[team as usize];
+    let ai = &team_ais.team[team];
 
     let urgency_bias = 1.0 - normalized_clamp((focal_point - player_pos).length(), 2.0, 30.0);
     let ball_x = ball.average_position(3500.0 * (1.0 - urgency_bias * 0.7)).x;
     let ball_y = ball.average_position(4000.0 * (1.0 - urgency_bias * 0.5)).y;
 
-    let offense_depth = mixup(OFFENSE_DEPTH_FACTOR, "position_offense_depth_factor", role);
-    let defense_depth = mixup(DEFENSE_DEPTH_FACTOR, "position_defense_depth_factor", role);
-    let offense_width = mixup(OFFENSE_WIDTH_FACTOR, "position_offense_width_factor", role);
-    let defense_width = mixup(DEFENSE_WIDTH_FACTOR, "position_defense_width_factor", role);
+    let offense_depth = mixup(OFFENSE_DEPTH_FACTOR, "position_offense_depth_factor", playing_position);
+    let defense_depth = mixup(DEFENSE_DEPTH_FACTOR, "position_defense_depth_factor", playing_position);
+    let offense_width = mixup(OFFENSE_WIDTH_FACTOR, "position_offense_width_factor", playing_position);
+    let defense_width = mixup(DEFENSE_WIDTH_FACTOR, "position_defense_width_factor", playing_position);
     let offense_ownhalf = mixup(
         OFFENSE_OWNHALF_FACTOR,
         "position_offense_ownhalf_factor",
-        role,
+        playing_position,
     );
     let defense_ownhalf = mixup(
         DEFENSE_OWNHALF_FACTOR,
         "position_defense_ownhalf_factor",
-        role,
+        playing_position,
     );
     let offense_midfocus = mixup(
         OFFENSE_MIDFIELDFOCUS,
         "position_offense_midfieldfocus",
-        role,
+        playing_position,
     );
     let defense_midfocus = mixup(
         DEFENSE_MIDFIELDFOCUS,
         "position_defense_midfieldfocus",
-        role,
+        playing_position,
     );
     let offense_midfocus_str = mixup(
         OFFENSE_MIDFIELDFOCUS_STRENGTH,
         "position_offense_midfieldfocus_strength",
-        role,
+        playing_position,
     );
     let defense_midfocus_str = mixup(
         DEFENSE_MIDFIELDFOCUS_STRENGTH,
         "position_defense_midfieldfocus_strength",
-        role,
+        playing_position,
     );
     let mut offense_sidefocus_str = mixup(
         OFFENSE_SIDEFOCUS_STRENGTH,
         "position_offense_sidefocus_strength",
-        role,
+        playing_position,
     );
     let mut defense_sidefocus_str = mixup(
         DEFENSE_SIDEFOCUS_STRENGTH,
         "position_defense_sidefocus_strength",
-        role,
+        playing_position,
     );
     let offense_microfocus_str = mixup(
         OFFENSE_MICROFOCUS_STRENGTH,
         "position_offense_microfocus_strength",
-        role,
+        playing_position,
     );
     let defense_microfocus_str = mixup(
         DEFENSE_MICROFOCUS_STRENGTH,
         "position_defense_microfocus_strength",
-        role,
+        playing_position,
     );
 
-    let mind_set = role.mind_set();
+    let mind_set = role.attacking_bias();
     offense_sidefocus_str += (-0.5 + mind_set) * 0.2;
     defense_sidefocus_str += (0.5 - mind_set) * 0.2;
     offense_sidefocus_str =
@@ -832,9 +845,9 @@ pub fn adapted_formation_position(
 }
 
 /// Port of `TeamAIController::ApplyOffsideTrap(position)` (smooth version).
-pub fn apply_offside_trap(team_ais: &TeamAis, team: u32, position: &mut Vec2) {
+pub fn apply_offside_trap(team_ais: &TeamAis, team: TeamId, position: &mut Vec2) {
     let side = team_side(team);
-    let offside_trap_x = team_ais.team[team as usize].offside_trap_x;
+    let offside_trap_x = team_ais.team[team].offside_trap_x;
 
     let area_half_length = 2.0;
     let abs_pos_x = position.x * side;

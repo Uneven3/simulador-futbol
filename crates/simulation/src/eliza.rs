@@ -32,8 +32,8 @@ use football_domain::math::{
     rotated_2d,
 };
 use football_domain::{
-    Ball, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position, PossessionDesignation,
-    SetPiece, Velocity,
+    Attributes, Ball, MatchRng, MatchState, Mentality, Player, PlayerId, PlayerMatchState,
+    PlayingPosition, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -97,23 +97,23 @@ struct ElizaCtx<'a> {
     designation: &'a PossessionDesignation,
     /// The single player (either team) expected to reach the ball first
     /// (original `Match::GetDesignatedPossessionPlayer`).
-    match_designated: Option<Entity>,
+    match_designated: Option<PlayerId>,
     now_ms: u64,
 }
 
-fn snap_of(snaps: &[PlayerSnap], entity: Entity) -> Option<&PlayerSnap> {
-    snaps.iter().find(|s| s.entity == entity)
+fn snap_of(snaps: &[PlayerSnap], id: PlayerId) -> Option<&PlayerSnap> {
+    snaps.iter().find(|s| s.id == id)
 }
 
 /// Offside line faced by attackers of `att_team`: one-but-deepest opponent
 /// (projected `future_ms` ahead) or the ball, never inside the attackers' own
 /// half (port of `AI_GetOffsideLine`).
-pub fn offside_line(snaps: &[PlayerSnap], att_team: u32, ball_x: f32, future_ms: f32) -> f32 {
-    let def_team = 1 - att_team;
+pub fn offside_line(snaps: &[PlayerSnap], att_team: TeamId, ball_x: f32, future_ms: f32) -> f32 {
+    let def_team = att_team.opponent();
     let def_side = team_side(def_team);
     let projected: Vec<f32> = snaps
         .iter()
-        .filter(|s| s.team == def_team)
+        .filter(|s| s.team() == def_team)
         .map(|s| s.pos.x + s.vel.x * future_ms * 0.001)
         .collect();
 
@@ -152,13 +152,21 @@ pub fn eliza_movement_system(
     team_ais: Res<TeamAis>,
     ball_query: Query<&Ball, Without<Player>>,
     mut player_query: Query<
-        (Entity, &Position, &Player, &PlayerStats, &mut Velocity),
+        (
+            Entity,
+            &Position,
+            &Player,
+            &Attributes,
+            &Mentality,
+            &PlayerMatchState,
+            &mut Velocity,
+        ),
         Without<Ball>,
     >,
 ) {
     // If a set piece is active (game paused for a restart), freeze everyone.
     if match_state.set_piece != SetPiece::None {
-        for (_, _, _, _, mut velocity) in player_query.iter_mut() {
+        for (.., mut velocity) in player_query.iter_mut() {
             velocity.0 = Vec3::ZERO;
         }
         return;
@@ -171,27 +179,21 @@ pub fn eliza_movement_system(
 
     let snaps: Vec<PlayerSnap> = player_query
         .iter()
-        .map(|(entity, position, p, _, v)| PlayerSnap {
-            entity,
-            team: p.team_index,
+        .map(|(_, position, p, _, _, _, v)| PlayerSnap {
+            id: p.id,
+            playing_position: p.position,
             role: p.role,
             pos: position.on_pitch(),
             vel: Vec2::new(v.0.x, v.0.y),
-            formation_pos: p.formation_pos,
+            formation_slot: p.formation_slot,
         })
         .collect();
 
-    // (entity, man_marking, avg_velocity, work_rate)
-    let extras: Vec<(Entity, Option<Entity>, f32, f32)> = player_query
-        .iter()
-        .map(|(e, _, p, s, _)| (e, p.man_marking, p.avg_velocity, s.work_rate))
-        .collect();
-
     let match_designated = match_state.possession_player.or_else(|| {
-        if designation.time_to_ball_ms[0] <= designation.time_to_ball_ms[1] {
-            designation.designated[0]
+        if designation.time_to_ball_ms[TeamId::Home] <= designation.time_to_ball_ms[TeamId::Away] {
+            designation.designated[TeamId::Home]
         } else {
-            designation.designated[1]
+            designation.designated[TeamId::Away]
         }
     });
 
@@ -204,24 +206,25 @@ pub fn eliza_movement_system(
         now_ms,
     };
 
-    for (entity, position, player, stats, mut velocity) in player_query.iter_mut() {
+    for (_, position, player, stats, mentality, player_state, mut velocity) in
+        player_query.iter_mut()
+    {
         let me = PlayerSnap {
-            entity,
-            team: player.team_index,
+            id: player.id,
+            playing_position: player.position,
             role: player.role,
             pos: position.on_pitch(),
             vel: Vec2::new(velocity.0.x, velocity.0.y),
-            formation_pos: player.formation_pos,
+            formation_slot: player.formation_slot,
         };
-        let extra = extras.iter().find(|(e, _, _, _)| *e == entity).unwrap();
-        let man_marking = extra.1;
-        let avg_velocity = extra.2;
-        let work_rate = extra.3;
+        let man_marking = player_state.marking;
+        let avg_velocity = player_state.recent_speed;
+        let work_rate = mentality.work_rate;
 
-        let is_possessor = match_state.possession_player == Some(entity);
-        let is_designated = designation.designated[me.team as usize] == Some(entity);
+        let is_possessor = match_state.possession_player == Some(player.id);
+        let is_designated = designation.designated[me.team()] == Some(player.id);
 
-        let (dir, velo) = if me.role == PlayerRole::GK {
+        let (dir, velo) = if me.playing_position == PlayingPosition::Goalkeeper {
             goalie_movement(&ctx, &me)
         } else if is_possessor {
             carry_movement(&ctx, &me, stats)
@@ -245,24 +248,24 @@ pub fn eliza_movement_system(
 /// The possessor carries the ball: close the gap to the ball, then move along
 /// the dribble force field (the knock-ons in the kick system roll it the same
 /// way). Approximates `AI_GetBallControlMovement`.
-fn carry_movement(ctx: &ElizaCtx, me: &PlayerSnap, stats: &PlayerStats) -> (Vec2, f32) {
+fn carry_movement(ctx: &ElizaCtx, me: &PlayerSnap, stats: &Attributes) -> (Vec2, f32) {
     let ball_pos = Vec2::new(ctx.ball.predictions[0].x, ctx.ball.predictions[0].y);
     let dist = me.pos.distance(ball_pos);
     if dist > 0.5 {
-        ((ball_pos - me.pos).normalize_or_zero(), stats.speed * 0.95)
+        ((ball_pos - me.pos).normalize_or_zero(), stats.top_speed * 0.95)
     } else {
-        let all: Vec<(u32, Vec2, Vec2)> =
-            ctx.snaps.iter().map(|s| (s.team, s.pos, s.vel)).collect();
-        let dir = crate::player_movement::dribble_direction(me.pos, me.vel, me.team, &all);
+        let all: Vec<(TeamId, Vec2, Vec2)> =
+            ctx.snaps.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
+        let dir = crate::player_movement::dribble_direction(me.pos, me.vel, me.team(), &all);
         // dribble slower in traffic, open up when free
         let opp_close = ctx
             .snaps
             .iter()
-            .any(|s| s.team != me.team && s.pos.distance(me.pos) < 6.0);
+            .any(|s| s.team() != me.team() && s.pos.distance(me.pos) < 6.0);
         let velo = if opp_close {
             WALK_VELOCITY
         } else {
-            stats.speed * 0.95
+            stats.top_speed * 0.95
         };
         (dir, velo)
     }
@@ -274,24 +277,24 @@ fn carry_movement(ctx: &ElizaCtx, me: &PlayerSnap, stats: &PlayerStats) -> (Vec2
 /// (`!oppTeamHasPossession && possessionAmount > 0.5`). Otherwise he behaves
 /// like any off-the-ball player (the original's defensive designated branch
 /// has autoBias ≈ 0 for AI players).
-fn ball_winnable(ctx: &ElizaCtx, me: &PlayerSnap, possession_player: Option<Entity>) -> bool {
-    let my_time = ctx.designation.time_to_ball_ms[me.team as usize].min(60_000.0);
-    let opp_time = ctx.designation.time_to_ball_ms[(1 - me.team) as usize].min(60_000.0);
+fn ball_winnable(ctx: &ElizaCtx, me: &PlayerSnap, possession_player: Option<PlayerId>) -> bool {
+    let my_time = ctx.designation.time_to_ball_ms[me.team()].min(60_000.0);
+    let opp_time = ctx.designation.time_to_ball_ms[me.team().opponent()].min(60_000.0);
     let possession_amount = (opp_time + 200.0) / (my_time + 200.0);
 
     let opp_has_ball = possession_player
         .and_then(|e| snap_of(ctx.snaps, e))
-        .is_some_and(|s| s.team != me.team);
+        .is_some_and(|s| s.team() != me.team());
 
     possession_amount > 0.99 || (!opp_has_ball && possession_amount > 0.5)
 }
 
 /// Run to the earliest reachable point on the ball's predicted path
 /// (approximates `AI_GetToBallMovement`).
-fn to_ball_movement(me: &PlayerSnap, stats: &PlayerStats, ball: &Ball) -> (Vec2, f32) {
+fn to_ball_movement(me: &PlayerSnap, stats: &Attributes, ball: &Ball) -> (Vec2, f32) {
     let (intercept, _) =
-        crate::player_movement::find_interception(me.pos, stats.speed, &ball.predictions);
-    ((intercept - me.pos).normalize_or_zero(), stats.speed)
+        crate::player_movement::find_interception(me.pos, stats.top_speed, &ball.predictions);
+    ((intercept - me.pos).normalize_or_zero(), stats.top_speed)
 }
 
 /// Off-the-ball movement: hunting/defending (from `RequestCommand`'s movement
@@ -299,22 +302,22 @@ fn to_ball_movement(me: &PlayerSnap, stats: &PlayerStats, ball: &Ball) -> (Vec2,
 fn off_ball_movement(
     ctx: &ElizaCtx,
     me: &PlayerSnap,
-    man_marking: Option<Entity>,
+    man_marking: Option<PlayerId>,
     avg_velocity: f32,
     work_rate: f32,
 ) -> (Vec2, f32) {
-    let team = me.team;
-    let my_designation_time = ctx.designation.time_to_ball_ms[team as usize];
-    let opp_designation_time = ctx.designation.time_to_ball_ms[(1 - team) as usize];
+    let team = me.team();
+    let my_designation_time = ctx.designation.time_to_ball_ms[team];
+    let opp_designation_time = ctx.designation.time_to_ball_ms[team.opponent()];
     let team_has_best_possession = my_designation_time <= opp_designation_time;
 
     // hunt the opponent ball carrier when he's close and we're one of the two
     // closest teammates (port of the "more 'hunting' method" block)
     if !team_has_best_possession && man_marking.is_none() {
         if let Some(opp) =
-            ctx.designation.designated[(1 - team) as usize].and_then(|e| snap_of(ctx.snaps, e))
+            ctx.designation.designated[team.opponent()].and_then(|e| snap_of(ctx.snaps, e))
         {
-            let mind_set = me.role.mind_set();
+            let mind_set = me.role.attacking_bias();
             let mut hunt_threshold = 10.0 + (1.0 - mind_set) * 10.0;
             hunt_threshold *=
                 0.5 * 1.0 + 0.5 * (1.0 - normalized_clamp(avg_velocity, 0.0, SPRINT_VELOCITY));
@@ -323,7 +326,7 @@ fn off_ball_movement(
             let gap = ((opp.pos + opp.vel * 0.12) - (me.pos + me.vel * 0.04)).length();
             if gap < hunt_threshold {
                 let hunters = closest_players(ctx.snaps, team, opp.pos + opp.vel * 0.1, None, 2);
-                if hunters.iter().any(|s| s.entity == me.entity) {
+                if hunters.iter().any(|s| s.id == me.id) {
                     let defend_pos = get_defend_position(me, opp, team);
                     if need_defending_movement(team_side(team), me.pos, defend_pos) {
                         let to_target = defend_pos - me.pos;
@@ -337,13 +340,13 @@ fn off_ball_movement(
     }
 
     // default strategies (default_def / default_mid / default_off)
-    let (attack_bias_min, attack_bias_max, defensive_k, run_gate, use_trap) = match me.role {
-        PlayerRole::LB | PlayerRole::CB | PlayerRole::RB => (0.2, 0.9, 1.9, f32::MAX, true),
-        PlayerRole::CF => (0.1, 0.6, 1.3, 0.7, false),
+    let (attack_bias_min, attack_bias_max, defensive_k, run_gate, use_trap) = match me.playing_position {
+        PlayingPosition::LeftBack | PlayingPosition::CentreBack | PlayingPosition::RightBack => (0.2, 0.9, 1.9, f32::MAX, true),
+        PlayingPosition::CentreForward => (0.1, 0.6, 1.3, 0.7, false),
         _ => (0.1, 0.7, 1.5, 0.9, true),
     };
 
-    let ai = &ctx.team_ais.team[team as usize];
+    let ai = &ctx.team_ais.team[team];
     let fading = ai.fading_team_possession_amount;
 
     let focal_point = ctx
@@ -359,7 +362,8 @@ fn off_ball_movement(
         ctx.team_ais,
         team,
         me.pos,
-        me.formation_pos,
+        me.formation_slot,
+        me.playing_position,
         me.role,
         focal_point,
         ctx.ball,
@@ -368,13 +372,13 @@ fn off_ball_movement(
     // offensive component: blend towards the support position
     let attack_bias = normalized_clamp(fading - 0.5, attack_bias_min, attack_bias_max);
     let make_run = attack_bias > run_gate
-        && ai.attacking_run_player == Some(me.entity)
+        && ai.attacking_run_player == Some(me.id)
         && ai.end_attacking_run_ms > ctx.now_ms;
     let support = get_support_position_force_field(ctx, me, base_position, make_run);
     let mut desired = base_position * (1.0 - attack_bias) + support * attack_bias;
 
     // defensive component
-    let mind_set = me.role.mind_set();
+    let mind_set = me.role.attacking_bias();
     let bias = (defensive_k - mind_set - fading).clamp(0.0, 1.0).powf(0.7);
     add_defensive_component(ctx, me, man_marking, &mut desired, bias);
 
@@ -410,14 +414,14 @@ fn get_lazy_velocity(
     let start_laziness_distance = 20.0;
     let end_laziness_distance = 65.0;
 
-    let opp_pos = ctx.designation.designated[(1 - me.team) as usize]
+    let opp_pos = ctx.designation.designated[me.team().opponent()]
         .and_then(|e| snap_of(ctx.snaps, e))
         .map(|s| s.pos)
         .unwrap_or(Vec2::ZERO);
     let action_distance = (me.pos - opp_pos).length();
     let team_possession =
-        (ctx.team_ais.team[me.team as usize].fading_team_possession_amount - 0.5).clamp(0.0, 1.0);
-    let mind_set = me.role.mind_set();
+        (ctx.team_ais.team[me.team()].fading_team_possession_amount - 0.5).clamp(0.0, 1.0);
+    let mind_set = me.role.attacking_bias();
 
     let laziness_by_role = mind_set + team_possession * (1.0 - mind_set * 2.0);
     let laziness_by_position = normalized_clamp(
@@ -448,7 +452,7 @@ fn get_lazy_velocity(
 
 /// Port of `PlayerController::GetDefendPosition(opp)`: the point on the
 /// opp → goal line we can reach as soon as the opponent can.
-fn get_defend_position(me: &PlayerSnap, opp: &PlayerSnap, team: u32) -> Vec2 {
+fn get_defend_position(me: &PlayerSnap, opp: &PlayerSnap, team: TeamId) -> Vec2 {
     let side = team_side(team);
     let goal_pos = Vec2::new(PITCH_HALF_W * side, 0.0);
     let opp_position = opp.pos;
@@ -480,17 +484,17 @@ fn need_defending_movement(my_side: f32, position: Vec2, target: Vec2) -> bool {
 fn add_defensive_component(
     ctx: &ElizaCtx,
     me: &PlayerSnap,
-    man_marking: Option<Entity>,
+    man_marking: Option<PlayerId>,
     desired_position: &mut Vec2,
     bias: f32,
 ) {
     let Some(opp) = man_marking.and_then(|e| snap_of(ctx.snaps, e)) else {
         return;
     };
-    if me.role == PlayerRole::GK || bias <= 0.0 {
+    if me.playing_position == PlayingPosition::Goalkeeper || bias <= 0.0 {
         return;
     }
-    let side = team_side(me.team);
+    let side = team_side(me.team());
 
     let possession_player_shoot_threshold = 24.0;
     let generic_shoot_threshold = 8.0;
@@ -498,7 +502,7 @@ fn add_defensive_component(
     let buffer_distance = 4.0;
 
     let opp_pos = opp.pos + opp.vel * 0.5;
-    let shoot_threshold = if ctx.match_designated == Some(opp.entity) {
+    let shoot_threshold = if ctx.match_designated == Some(opp.id) {
         possession_player_shoot_threshold
     } else {
         generic_shoot_threshold
@@ -512,7 +516,7 @@ fn add_defensive_component(
         opp_pos + (goal_pos - opp_pos).normalize_or_zero() * opp_to_threshold_distance;
 
     // don't cover beyond our own offside trap line
-    let trap_x = ctx.team_ais.team[me.team as usize].offside_trap_x;
+    let trap_x = ctx.team_ais.team[me.team()].offside_trap_x;
     if shooting_point.x * side > trap_x * side {
         let (intersect, _) = line_intersection_2d(
             opp_pos,
@@ -554,18 +558,18 @@ fn get_support_position_force_field(
     base_position: Vec2,
     make_run: bool,
 ) -> Vec2 {
-    let team = me.team;
+    let team = me.team();
     let side = team_side(team);
-    let ai = &ctx.team_ais.team[team as usize];
+    let ai = &ctx.team_ais.team[team];
 
-    let designated = ctx.designation.designated[team as usize].and_then(|e| snap_of(ctx.snaps, e));
+    let designated = ctx.designation.designated[team].and_then(|e| snap_of(ctx.snaps, e));
     let current_pos = me.pos + me.vel * 0.1;
     let main_man_pos = designated
         .map(|d| d.pos + d.vel * 0.1)
         .unwrap_or(current_pos);
-    let is_designated = designated.map(|d| d.entity) == Some(me.entity);
+    let is_designated = designated.map(|d| d.id) == Some(me.id);
 
-    let dynamic_mind_set = me.role.mind_set();
+    let dynamic_mind_set = me.role.attacking_bias();
 
     let base_position_weight = 0.7;
     let overall_weight = 1.0;
@@ -576,11 +580,11 @@ fn get_support_position_force_field(
     let flock_weight = 0.45 * overall_weight;
     let web_scale = 0.75;
 
-    opponent_repel_weight *= match me.role {
-        PlayerRole::CB | PlayerRole::LB | PlayerRole::RB => 2.2,
-        PlayerRole::DM => 2.0,
-        PlayerRole::CM | PlayerRole::LM | PlayerRole::RM => 1.6,
-        PlayerRole::AM => 1.2,
+    opponent_repel_weight *= match me.playing_position {
+        PlayingPosition::CentreBack | PlayingPosition::LeftBack | PlayingPosition::RightBack => 2.2,
+        PlayingPosition::DefensiveMidfielder => 2.0,
+        PlayingPosition::CentreMidfielder | PlayingPosition::LeftMidfielder | PlayingPosition::RightMidfielder => 1.6,
+        PlayingPosition::AttackingMidfielder => 1.2,
         _ => 1.0,
     };
 
@@ -591,7 +595,7 @@ fn get_support_position_force_field(
     // actual base position
     {
         let mut origin = base_position;
-        if ai.forward_support_player == Some(me.entity) {
+        if ai.forward_support_player == Some(me.id) {
             origin.x += -side * (0.3 + 0.7 * dynamic_mind_set) * 12.0;
         } else {
             // lane version: flow forward when in the active lane
@@ -629,7 +633,7 @@ fn get_support_position_force_field(
     // stay away from opponents (anti-magnet behind them to keep the pass lane open)
     for opp in closest_players(
         ctx.snaps,
-        1 - team,
+        team.opponent(),
         main_man_pos * 0.3 + current_pos * 0.7,
         None,
         3,
@@ -649,7 +653,7 @@ fn get_support_position_force_field(
 
     // stay away from teammates
     if ai.fading_team_possession_amount >= 1.02 {
-        for mate in closest_players(ctx.snaps, team, current_pos, Some(me.entity), 6) {
+        for mate in closest_players(ctx.snaps, team, current_pos, Some(me.id), 6) {
             force_field.push(ForceSpot {
                 origin: mate.pos + mate.vel * 0.1,
                 repel: true,
@@ -715,12 +719,12 @@ fn get_support_position_force_field(
 // ---------------------------------------------------------------------------
 
 fn goalie_movement(ctx: &ElizaCtx, me: &PlayerSnap) -> (Vec2, f32) {
-    let team = me.team;
+    let team = me.team();
     let side = team_side(team);
     let ball = ctx.ball;
 
     let line_distance = 10.0;
-    let time_to_ball = ctx.designation.time_to_ball_ms[team as usize];
+    let time_to_ball = ctx.designation.time_to_ball_ms[team];
     let pred_ms = 600.0 + time_to_ball * 0.2;
     let pred_idx = ((pred_ms / 10.0) as usize).min(ball.predictions.len() - 1);
     let ball_pos = Vec2::new(ball.predictions[pred_idx].x, ball.predictions[pred_idx].y);
@@ -734,12 +738,12 @@ fn goalie_movement(ctx: &ElizaCtx, me: &PlayerSnap) -> (Vec2, f32) {
     let ball_in_box = ball_now.x * side > PITCH_HALF_W - 16.4 && ball_now.y.abs() < 20.0;
     let ball_slow =
         Vec2::new(ball.momentum.x, ball.momentum.y).length() < 4.0 && ball.predictions[0].z < 1.5;
-    let opp_time = ctx.designation.time_to_ball_ms[(1 - team) as usize];
+    let opp_time = ctx.designation.time_to_ball_ms[team.opponent()];
     if ball_in_box
         && ball_slow
         && ctx
             .match_designated
-            .is_none_or(|e| snap_of(ctx.snaps, e).map(|s| s.team) != Some(1 - team))
+            .is_none_or(|e| snap_of(ctx.snaps, e).map(|s| s.team()) != Some(team.opponent()))
         && me.pos.distance(ball_now) < 8.0
         && opp_time > 400.0
     {
@@ -771,19 +775,19 @@ fn goalie_movement(ctx: &ElizaCtx, me: &PlayerSnap) -> (Vec2, f32) {
             let mut away_from_goal_offset = 0.7f32;
             let mut away_from_goal_bias = 0.3
                 * normalized_clamp(
-                    ctx.team_ais.team[team as usize].fading_team_possession_amount,
+                    ctx.team_ais.team[team].fading_team_possession_amount,
                     1.0,
                     1.5,
                 );
 
             // keeper come-out logic: opponent rushing in with no help nearby
             let mut v0_adapted = v0;
-            if ctx.team_ais.team[team as usize].fading_team_possession_amount < 1.0 {
-                if let Some(opp) = ctx.designation.designated[(1 - team) as usize]
+            if ctx.team_ais.team[team].fading_team_possession_amount < 1.0 {
+                if let Some(opp) = ctx.designation.designated[team.opponent()]
                     .and_then(|e| snap_of(ctx.snaps, e))
                 {
                     let opp_pos = opp.pos + opp.vel * 0.32;
-                    let opp_has_ball = ctx.match_designated.is_some_and(|e| e == opp.entity);
+                    let opp_has_ball = ctx.match_designated.is_some_and(|id| id == opp.id);
                     v0_adapted = if opp_has_ball {
                         opp_pos * 0.4 + ball_pos * 0.6
                     } else {
@@ -800,7 +804,7 @@ fn goalie_movement(ctx: &ElizaCtx, me: &PlayerSnap) -> (Vec2, f32) {
                         + (goal_pos - opp_pos).normalize_or_zero() * opp_to_threshold_distance;
 
                     let mate_to_threshold =
-                        closest_player(ctx.snaps, team, shooting_point, Some(me.entity), false)
+                        closest_player(ctx.snaps, team, shooting_point, Some(me.id), false)
                             .and_then(|e| snap_of(ctx.snaps, e))
                             .map(|m| (shooting_point - (m.pos + m.vel * 0.24)).length())
                             .unwrap_or(99999.0);
@@ -810,7 +814,7 @@ fn goalie_movement(ctx: &ElizaCtx, me: &PlayerSnap) -> (Vec2, f32) {
 
                         // secondary danger: the opponent's closest helper
                         if let Some(helper) =
-                            closest_player(ctx.snaps, 1 - team, goal_pos, Some(opp.entity), false)
+                            closest_player(ctx.snaps, team.opponent(), goal_pos, Some(opp.id), false)
                                 .and_then(|e| snap_of(ctx.snaps, e))
                         {
                             let helper_pos = helper.pos + helper.vel * 0.32;
@@ -831,7 +835,7 @@ fn goalie_movement(ctx: &ElizaCtx, me: &PlayerSnap) -> (Vec2, f32) {
                                 ctx.snaps,
                                 team,
                                 helper_shooting_point,
-                                Some(me.entity),
+                                Some(me.id),
                                 false,
                             )
                             .and_then(|e| snap_of(ctx.snaps, e))
@@ -948,7 +952,7 @@ pub enum OnBallAction {
         target_y: f32,
     },
     Pass {
-        target: Entity,
+        target: PlayerId,
         aim: Vec2,
         kind: PassKind,
     },
@@ -962,21 +966,21 @@ pub enum OnBallAction {
 #[allow(clippy::too_many_arguments)]
 pub fn decide_on_ball_action(
     snaps: &[PlayerSnap],
-    me_entity: Entity,
+    me_id: PlayerId,
     ball: &Ball,
     designation: &PossessionDesignation,
     possession_duration_ms: u64,
     offside_line_x: f32,
     rng: &mut MatchRng,
 ) -> OnBallAction {
-    let Some(me) = snap_of(snaps, me_entity) else {
+    let Some(me) = snap_of(snaps, me_id) else {
         return OnBallAction::Dribble;
     };
-    let team = me.team;
+    let team = me.team();
     let side = team_side(team);
-    let mind_set = me.role.mind_set();
+    let mind_set = me.role.attacking_bias();
 
-    let opponents: Vec<&PlayerSnap> = snaps.iter().filter(|s| s.team != team).collect();
+    let opponents: Vec<&PlayerSnap> = snaps.iter().filter(|s| s.team() != team).collect();
 
     // one-touch difficulty (movement mismatch with the incoming ball)
     let movement_diff = normalized_clamp(
@@ -1017,17 +1021,17 @@ pub fn decide_on_ball_action(
 
     // collect the best pass option
     let mut best_total = 0.0f32;
-    let mut best: Option<(Entity, Vec2, PassKind, f32)> = None; // + pass rating
+    let mut best: Option<(PlayerId, Vec2, PassKind, f32)> = None; // + pass rating
     for mate in snaps
         .iter()
-        .filter(|s| s.team == team && s.entity != me_entity)
+        .filter(|s| s.team() == team && s.id != me_id)
     {
         // offside receivers are a wasted touch (our addition, see module docs)
         if mate.pos.x * -side > offside_line_x * -side - 0.5 {
             continue;
         }
         let mut mate_rating = rate(mate);
-        if mate.role == PlayerRole::GK {
+        if mate.playing_position == PlayingPosition::Goalkeeper {
             mate_rating *= 0.7; // don't like playing back to the goalie
         }
         if mate_rating <= my_tactical_rating + tactical_improvement_threshold {
@@ -1056,15 +1060,15 @@ pub fn decide_on_ball_action(
 
         if total > best_total && total > pass_threshold && pass_rating > pass_minimum {
             best_total = total;
-            best = Some((mate.entity, aim, kind, pass_rating));
+            best = Some((mate.id, aim, kind, pass_rating));
         }
     }
 
     // panic (defensive roles close to their own goal under threat)
-    let my_time = designation.time_to_ball_ms[team as usize];
-    let opp_time = designation.time_to_ball_ms[(1 - team) as usize];
+    let my_time = designation.time_to_ball_ms[team];
+    let opp_time = designation.time_to_ball_ms[team.opponent()];
     let possession_amount = (opp_time + 200.0) / (my_time.max(0.0) + 200.0);
-    if mind_set < 0.25 && me.role != PlayerRole::GK {
+    if mind_set < 0.25 && me.playing_position != PlayingPosition::Goalkeeper {
         let panic_proneness = 1.0 - mind_set * 2.0;
         let goal_closeness = 1.0
             - normalized_clamp(
@@ -1079,7 +1083,7 @@ pub fn decide_on_ball_action(
             return OnBallAction::PanicClear;
         }
     }
-    if me.role == PlayerRole::GK && possession_amount < 3.0 {
+    if me.playing_position == PlayingPosition::Goalkeeper && possession_amount < 3.0 {
         return OnBallAction::PanicClear;
     }
 
@@ -1125,10 +1129,10 @@ pub fn decide_on_ball_action(
         .count()
         >= 2;
     if hemmed {
-        let mut best_escape: Option<(Entity, Vec2, PassKind, f32)> = None;
+        let mut best_escape: Option<(PlayerId, Vec2, PassKind, f32)> = None;
         for mate in snaps
             .iter()
-            .filter(|s| s.team == team && s.entity != me_entity)
+            .filter(|s| s.team() == team && s.id != me_id)
         {
             if mate.pos.x * -side > offside_line_x * -side - 0.5 {
                 continue;
@@ -1136,7 +1140,7 @@ pub fn decide_on_ball_action(
             for kind in [PassKind::Short, PassKind::Long, PassKind::High] {
                 let (odds, aim) = passing_odds_to_player(me, mate, kind, &opponents, 1.0);
                 if best_escape.is_none_or(|(_, _, _, r)| odds > r) {
-                    best_escape = Some((mate.entity, aim, kind, odds));
+                    best_escape = Some((mate.id, aim, kind, odds));
                 }
             }
         }
@@ -1154,10 +1158,10 @@ pub fn decide_on_ball_action(
 /// (forwardSpaceRating, spaceRating, forwardRating) — port of
 /// `Player::_CalculateTacticalSituation`.
 fn tactical_situation(snaps: &[PlayerSnap], s: &PlayerSnap) -> (f32, f32, f32) {
-    let side = team_side(s.team);
+    let side = team_side(s.team());
     let opponents: Vec<&PlayerSnap> = snaps
         .iter()
-        .filter(|o| o.team != s.team && o.role != PlayerRole::GK)
+        .filter(|o| o.team() != s.team() && o.playing_position != PlayingPosition::Goalkeeper)
         .collect();
 
     let check_pos = s.pos + Vec2::new(-side, 0.0) * SPRINT_VELOCITY * 0.5;
@@ -1204,7 +1208,7 @@ fn passing_odds_to_player(
     opponents: &[&PlayerSnap],
     ball_velocity_multiplier: f32,
 ) -> (f32, Vec2) {
-    let side = team_side(me.team);
+    let side = team_side(me.team());
     let initial_distance = (mate.pos - me.pos).length();
     if kind == PassKind::High && initial_distance < 10.0 {
         return (0.0, mate.pos);

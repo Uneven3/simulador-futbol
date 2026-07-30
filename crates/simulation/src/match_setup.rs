@@ -4,8 +4,8 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::scenario::{PlayState, PlayerSetup, SIMULATION_HZ, Scenario};
 use football_domain::{
-    Ball, BallTouched, Facing, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position,
-    SetPiece, Velocity,
+    Attributes, Ball, BallTouched, Facing, MatchRng, MatchState, Mentality, Player, PlayerId,
+    PlayerMatchState, PlayerRegistry, PlayingPosition, Position, SetPiece, TeamId, Velocity,
 };
 
 /// Installs a scenario: the state the match starts from, its seed, its pitch and
@@ -32,9 +32,11 @@ impl Plugin for MatchSetupPlugin {
             .insert_resource(self.scenario.pitch.clone())
             .insert_resource(self.scenario.regulations.clone())
             .insert_resource(MatchRng::seeded(self.scenario.seed))
+            .insert_resource(PlayerRegistry::default())
             .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
             .add_message::<BallTouched>()
-            .add_systems(Startup, (spawn_scenario_ball, spawn_scenario_players));
+            .add_systems(Startup, (spawn_scenario_ball, spawn_scenario_players))
+            .add_systems(PreUpdate, (register_bodies, forget_departed_bodies));
     }
 }
 
@@ -44,14 +46,14 @@ fn initial_match_state(scenario: &Scenario) -> MatchState {
     match scenario.play_state {
         PlayState::AwaitingRestart {
             set_piece,
-            team_index,
+            team,
             delay,
         } => {
             state.set_piece = set_piece;
-            state.set_piece_team = Some(team_index);
+            state.set_piece_team = Some(team);
             state.set_piece_timer = delay.as_secs_f32();
             state.restart_pos = Vec3::ZERO;
-            state.opening_kick_off_team = team_index;
+            state.opening_kick_off_team = team;
         }
         PlayState::InPlay => {
             state.set_piece = SetPiece::None;
@@ -65,6 +67,29 @@ fn initial_match_state(scenario: &Scenario) -> MatchState {
 /// Height of an outfield body in metres. Provisional until anthropometry
 /// becomes per-player data (MVP 3).
 pub const PLAYER_HEIGHT: f32 = 1.8;
+
+/// Keeps the identity → body index in step with the world.
+///
+/// Runs once per frame rather than per tick: bodies are only created at setup
+/// today, and substitutions (MVP 2) will arrive as a request the kernel serves
+/// at a restart, not mid-tick.
+fn register_bodies(
+    mut registry: ResMut<PlayerRegistry>,
+    arrived: Query<(Entity, &Player), Added<Player>>,
+) {
+    for (body, player) in &arrived {
+        registry.insert(player.id, body);
+    }
+}
+
+fn forget_departed_bodies(
+    mut registry: ResMut<PlayerRegistry>,
+    mut departed: RemovedComponents<Player>,
+) {
+    for body in departed.read() {
+        registry.remove_body(body);
+    }
+}
 
 fn spawn_scenario_ball(mut commands: Commands, scenario: Res<Scenario>) {
     let setup = scenario.ball;
@@ -81,45 +106,41 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
         return;
     }
 
-    const ROLES: [PlayerRole; 11] = [
-        PlayerRole::GK,
-        PlayerRole::LB,
-        PlayerRole::CB,
-        PlayerRole::CB,
-        PlayerRole::RB,
-        PlayerRole::LM,
-        PlayerRole::CM,
-        PlayerRole::CM,
-        PlayerRole::RM,
-        PlayerRole::CF,
-        PlayerRole::CF,
+    /// The default 4-4-2, shirt 1 to 11 in the order football numbers them.
+    const LINE_UP: [PlayingPosition; 11] = [
+        PlayingPosition::Goalkeeper,
+        PlayingPosition::LeftBack,
+        PlayingPosition::CentreBack,
+        PlayingPosition::CentreBack,
+        PlayingPosition::RightBack,
+        PlayingPosition::LeftMidfielder,
+        PlayingPosition::CentreMidfielder,
+        PlayingPosition::CentreMidfielder,
+        PlayingPosition::RightMidfielder,
+        PlayingPosition::CentreForward,
+        PlayingPosition::CentreForward,
     ];
 
-    for team_index in 0u32..2 {
+    for team in TeamId::BOTH {
         // home defends -x and therefore faces +x
-        let attacking_direction = if team_index == 0 {
+        let attacking_direction = if team == TeamId::Home {
             Dir2::X
         } else {
             Dir2::NEG_X
         };
-        let team_name = if team_index == 0 { "Home" } else { "Away" };
 
-        for (index, role) in ROLES.iter().enumerate() {
-            let base = base_formation_position(team_index, *role, index as u32);
+        for (index, position) in LINE_UP.iter().enumerate() {
+            let id = PlayerId::new(team, (index + 1) as u8);
+            let base = base_formation_position(id, *position);
             commands.spawn((
-                Name::new(format!("{} Player {} - {:?}", team_name, index + 1, role)),
-                Player {
-                    id: index as u32,
-                    team_index,
-                    jersey_number: (index + 1) as u32,
-                    role: *role,
+                Name::new(format!("{id} - {position:?}")),
+                Player::new(id, *position, normalized_formation_position(id, *position)),
+                Attributes {
                     height: PLAYER_HEIGHT,
-                    last_touch_time_ms: 0,
-                    formation_pos: normalized_formation_position(*role, index as u32),
-                    man_marking: None,
-                    avg_velocity: 0.0,
+                    ..Default::default()
                 },
-                PlayerStats::default(),
+                Mentality::default(),
+                PlayerMatchState::default(),
                 Velocity::default(),
                 Facing(attacking_direction),
                 Position::from_pitch(base, 0.0),
@@ -131,48 +152,54 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
 /// Normalized formation entry (original `FormationEntry::position`, -1..1 in
 /// both axes) for the default 4-4-2; `AI_GetAdaptedFormationPosition` scales
 /// this into the dynamic team block.
-pub fn normalized_formation_position(role: PlayerRole, player_id: u32) -> Vec2 {
-    match role {
-        PlayerRole::GK => Vec2::new(-1.0, 0.0),
-        PlayerRole::LB => Vec2::new(-1.0, -1.0),
-        PlayerRole::CB => Vec2::new(-1.0, if player_id == 2 { -0.33 } else { 0.33 }),
-        PlayerRole::RB => Vec2::new(-1.0, 1.0),
-        PlayerRole::LM => Vec2::new(0.0, -1.0),
-        PlayerRole::CM => Vec2::new(0.0, if player_id == 6 { -0.33 } else { 0.33 }),
-        PlayerRole::RM => Vec2::new(0.0, 1.0),
-        PlayerRole::DM => Vec2::new(-0.5, 0.0),
-        PlayerRole::AM => Vec2::new(0.5, 0.0),
-        PlayerRole::CF => Vec2::new(1.0, if player_id == 9 { -0.4 } else { 0.4 }),
+///
+/// Paired positions are told apart by shirt, the way a team sheet does it: 3 is
+/// the left-sided centre back, 7 the left-sided centre midfielder, 10 the
+/// left-sided forward.
+pub fn normalized_formation_position(id: PlayerId, position: PlayingPosition) -> Vec2 {
+    match position {
+        PlayingPosition::Goalkeeper => Vec2::new(-1.0, 0.0),
+        PlayingPosition::LeftBack => Vec2::new(-1.0, -1.0),
+        PlayingPosition::CentreBack => Vec2::new(-1.0, if id.shirt == 3 { -0.33 } else { 0.33 }),
+        PlayingPosition::RightBack => Vec2::new(-1.0, 1.0),
+        PlayingPosition::LeftMidfielder => Vec2::new(0.0, -1.0),
+        PlayingPosition::CentreMidfielder => {
+            Vec2::new(0.0, if id.shirt == 7 { -0.33 } else { 0.33 })
+        }
+        PlayingPosition::RightMidfielder => Vec2::new(0.0, 1.0),
+        PlayingPosition::DefensiveMidfielder => Vec2::new(-0.5, 0.0),
+        PlayingPosition::AttackingMidfielder => Vec2::new(0.5, 0.0),
+        PlayingPosition::CentreForward => Vec2::new(1.0, if id.shirt == 10 { -0.4 } else { 0.4 }),
     }
 }
 
 /// Base (kick-off) position on the pitch in metres, used both to spawn and to
 /// re-form the teams for a restart.
-pub fn base_formation_position(team_index: u32, role: PlayerRole, player_id: u32) -> Vec2 {
-    let home_position = match role {
-        PlayerRole::GK => Vec2::new(-54.0, 0.0),
-        PlayerRole::LB => Vec2::new(-35.0, -18.0),
-        PlayerRole::CB => {
-            if player_id == 2 {
+pub fn base_formation_position(id: PlayerId, position: PlayingPosition) -> Vec2 {
+    let home_position = match position {
+        PlayingPosition::Goalkeeper => Vec2::new(-54.0, 0.0),
+        PlayingPosition::LeftBack => Vec2::new(-35.0, -18.0),
+        PlayingPosition::CentreBack => {
+            if id.shirt == 3 {
                 Vec2::new(-35.0, -6.0)
             } else {
                 Vec2::new(-35.0, 6.0)
             }
         }
-        PlayerRole::RB => Vec2::new(-35.0, 18.0),
-        PlayerRole::LM => Vec2::new(-20.0, -20.0),
-        PlayerRole::CM => {
-            if player_id == 6 {
+        PlayingPosition::RightBack => Vec2::new(-35.0, 18.0),
+        PlayingPosition::LeftMidfielder => Vec2::new(-20.0, -20.0),
+        PlayingPosition::CentreMidfielder => {
+            if id.shirt == 7 {
                 Vec2::new(-20.0, -7.0)
             } else {
                 Vec2::new(-20.0, 7.0)
             }
         }
-        PlayerRole::RM => Vec2::new(-20.0, 20.0),
-        PlayerRole::DM => Vec2::new(-25.0, 0.0),
-        PlayerRole::AM => Vec2::new(-15.0, 0.0),
-        PlayerRole::CF => {
-            if player_id == 9 {
+        PlayingPosition::RightMidfielder => Vec2::new(-20.0, 20.0),
+        PlayingPosition::DefensiveMidfielder => Vec2::new(-25.0, 0.0),
+        PlayingPosition::AttackingMidfielder => Vec2::new(-15.0, 0.0),
+        PlayingPosition::CentreForward => {
+            if id.shirt == 10 {
                 Vec2::new(-7.0, -10.0)
             } else {
                 Vec2::new(-7.0, 10.0)
@@ -180,9 +207,8 @@ pub fn base_formation_position(team_index: u32, role: PlayerRole, player_id: u32
         }
     };
 
-    if team_index == 0 {
-        home_position
-    } else {
-        Vec2::new(-home_position.x, -home_position.y) // mirrored for the away team
+    match id.team {
+        TeamId::Home => home_position,
+        TeamId::Away => Vec2::new(-home_position.x, -home_position.y),
     }
 }

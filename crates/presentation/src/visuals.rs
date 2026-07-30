@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use football_domain::{BALL_RADIUS, Ball, Facing, Player, Position};
+use football_domain::{Attributes, BALL_RADIUS, Ball, Facing, Player, Position, TeamId};
 
 /// Primitive representations of the authoritative bodies.
 ///
@@ -102,17 +102,16 @@ fn load_primitive_assets(
 fn spawn_player_visuals(
     mut commands: Commands,
     assets: Res<PrimitiveAssets>,
-    new_players: Query<(Entity, &Player, &Position), Added<Player>>,
+    new_players: Query<(Entity, &Player, &Attributes, &Position), Added<Player>>,
 ) {
-    for (simulation_entity, player, position) in new_players.iter() {
-        let kit = if player.team_index == 0 {
-            assets.home_kit.clone()
-        } else {
-            assets.away_kit.clone()
+    for (simulation_entity, player, attributes, position) in new_players.iter() {
+        let kit = match player.id.team {
+            TeamId::Home => assets.home_kit.clone(),
+            TeamId::Away => assets.away_kit.clone(),
         };
         commands
             .spawn((
-                Name::new(format!("Visual of player {}", player.jersey_number)),
+                Name::new(format!("Visual of {}", player.id)),
                 VisualOf(simulation_entity),
                 PositionSamples::resting_at(position.0),
                 Transform::from_translation(position.0),
@@ -124,13 +123,13 @@ fn spawn_player_visuals(
                 body.spawn((
                     Mesh3d(assets.body.clone()),
                     MeshMaterial3d(kit.clone()),
-                    Transform::from_xyz(0.0, 0.0, player.height * 0.5)
+                    Transform::from_xyz(0.0, 0.0, attributes.height * 0.5)
                         .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
                 ));
                 body.spawn((
                     Mesh3d(assets.facing_marker.clone()),
                     MeshMaterial3d(kit),
-                    Transform::from_xyz(BODY_RADIUS, 0.0, player.height * 0.8),
+                    Transform::from_xyz(BODY_RADIUS, 0.0, attributes.height * 0.8),
                 ));
             });
     }

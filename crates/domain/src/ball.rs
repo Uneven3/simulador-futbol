@@ -17,8 +17,8 @@ pub const BALL_HISTORY_STEPS: usize = 400;
 #[derive(Component, Debug, Clone, Reflect)]
 pub struct Ball {
     // gameplay bookkeeping
-    pub last_touch_team: Option<u32>,
-    pub last_touch_player: Option<Entity>,
+    pub last_touch_team: Option<crate::identity::TeamId>,
+    pub last_touch_player: Option<crate::identity::PlayerId>,
     pub last_touch_time_ms: u64,
     pub touches_net: bool,
 

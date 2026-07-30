@@ -7,8 +7,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::{
     BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, Player,
-    Position, SetPiece, Velocity,
+    PlayerId, PlayerMatchState, Position, SetPiece, TeamId, Velocity,
 };
+use std::time::Duration;
 
 pub struct RefereePlugin;
 
@@ -97,10 +98,11 @@ fn referee_system(
                 if side < 0.0 {
                     // Away team scores (in the left goal, defended by home)
                     match_state.away_score += 1;
-                    match_state.set_piece_team = Some(0); // home team kicks off after conceding
+                    // the conceding team kicks off (Law 8)
+                    match_state.set_piece_team = Some(TeamId::Home);
                 } else {
                     match_state.home_score += 1;
-                    match_state.set_piece_team = Some(1);
+                    match_state.set_piece_team = Some(TeamId::Away);
                 }
                 match_state.is_ball_in_goal = true;
                 match_state.set_piece = SetPiece::KickOff;
@@ -118,9 +120,9 @@ fn referee_system(
 
     // Out-of-play detection: the whole ball must be past the outer edge of the
     // line (original referee.cpp: fabs(pos) > pitchHalf + lineHalfW + 0.11)
-    let last_touch = ball.last_touch_team.unwrap_or(0);
+    let last_touch = ball.last_touch_team.unwrap_or(TeamId::Home);
     // side of the pitch the last touching team defends (-1 left for home)
-    let last_side: f32 = if last_touch == 0 { -1.0 } else { 1.0 };
+    let last_side = crate::team_ai::team_side(last_touch);
 
     // 2. Over the backline: corner or goal kick
     if pos.x.abs() > pitch_half_w + line_half_w + 0.11 {
@@ -128,7 +130,7 @@ fn referee_system(
             "BACKLINE CROSS at y={:.2} z={:.2} (goal mouth: |y|<3.7, z<2.5)",
             pos.y, pos.z
         );
-        let taking_team = 1 - last_touch;
+        let taking_team = last_touch.opponent();
         if pos.x * last_side > 0.0 {
             // last touch by the team defending this side -> corner for the attackers
             match_state.set_piece = SetPiece::Corner;
@@ -143,24 +145,18 @@ fn referee_system(
                 },
                 0.0,
             );
-            info!(
-                "Ball out over the backline: corner kick for team {}",
-                taking_team
-            );
+            info!("Ball out over the backline: corner kick for {taking_team}");
         } else {
             match_state.set_piece = SetPiece::GoalKick;
             match_state.set_piece_team = Some(taking_team);
             match_state.set_piece_timer = 4.0;
             match_state.restart_pos = Vec3::new(pitch_half_w * 0.92 * -last_side, 0.0, 0.0);
-            info!(
-                "Ball out over the backline: goal kick for team {}",
-                taking_team
-            );
+            info!("Ball out over the backline: goal kick for {taking_team}");
         }
     }
     // 3. Over the sideline: throw-in
     else if pos.y.abs() > pitch_half_h + line_half_w + 0.11 {
-        let throw_in_team = 1 - last_touch;
+        let throw_in_team = last_touch.opponent();
         match_state.set_piece = SetPiece::ThrowIn;
         match_state.set_piece_team = Some(throw_in_team);
         match_state.set_piece_timer = 4.0;
@@ -173,10 +169,7 @@ fn referee_system(
             },
             0.0,
         );
-        info!(
-            "Ball out over the sideline: throw-in for team {}",
-            throw_in_team
-        );
+        info!("Ball out over the sideline: throw-in for {throw_in_team}");
     }
 }
 
@@ -201,45 +194,45 @@ fn referee_offside_system(
         }
 
         // offside player receiving the ball?
-        if records.team == Some(touch.team) {
+        if records.team == Some(touch.team()) {
             if let Some((_, recorded_pos)) = records
                 .players
                 .iter()
-                .find(|(entity, _)| *entity == touch.player)
+                .find(|(id, _)| *id == touch.player)
                 .copied()
             {
                 match_state.set_piece = SetPiece::FreeKick;
-                match_state.set_piece_team = Some(1 - touch.team);
+                match_state.set_piece_team = Some(touch.team().opponent());
                 match_state.set_piece_timer = 4.0;
                 match_state.restart_pos = Vec3::new(recorded_pos.x, recorded_pos.y, 0.0);
                 records.players.clear();
                 records.team = None;
-                info!("OFFSIDE! Free kick for team {}", 1 - touch.team);
+                info!("OFFSIDE! Free kick for {}", touch.team().opponent());
                 continue;
             }
         }
 
         records.players.clear();
-        records.team = Some(touch.team);
+        records.team = Some(touch.team());
 
         // AI_GetOffsideLine: one-but-deepest defender, or the ball, whichever is
         // deeper; never inside the attackers' own half.
-        let defending_team = 1 - touch.team;
-        let def_side: f32 = if defending_team == 0 { -1.0 } else { 1.0 };
+        let defending_team = touch.team().opponent();
+        let def_side = crate::team_ai::team_side(defending_team);
 
-        let mut deepest: Option<(Entity, f32)> = None;
-        for (entity, position, player) in player_query.iter() {
-            if player.team_index != defending_team {
+        let mut deepest: Option<(PlayerId, f32)> = None;
+        for (_, position, player) in player_query.iter() {
+            if player.id.team != defending_team {
                 continue;
             }
             let depth = position.0.x * def_side;
             if deepest.is_none() || depth > deepest.unwrap().1 {
-                deepest = Some((entity, depth));
+                deepest = Some((player.id, depth));
             }
         }
         let mut second_deepest_x = 0.0f32;
-        for (entity, position, player) in player_query.iter() {
-            if player.team_index != defending_team || Some(entity) == deepest.map(|d| d.0) {
+        for (_, position, player) in player_query.iter() {
+            if player.id.team != defending_team || Some(player.id) == deepest.map(|d| d.0) {
                 continue;
             }
             if position.0.x * def_side > second_deepest_x * def_side {
@@ -260,13 +253,13 @@ fn referee_offside_system(
         records.judged_against_team = Some(defending_team);
 
         let att_dir = -def_side;
-        for (entity, position, player) in player_query.iter() {
-            if player.team_index != touch.team || entity == touch.player {
+        for (_, position, player) in player_query.iter() {
+            if player.id.team != touch.team() || player.id == touch.player {
                 continue;
             }
             let pos = position.0;
             if pos.x * att_dir > offside_line * att_dir + 0.20 {
-                records.players.push((entity, pos));
+                records.players.push((player.id, pos));
             }
         }
     }
@@ -282,7 +275,13 @@ fn referee_set_piece_system(
     time: Res<Time>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     mut player_query: Query<
-        (&mut Position, &mut Facing, &mut Velocity, &mut Player),
+        (
+            &mut Position,
+            &mut Facing,
+            &mut Velocity,
+            &Player,
+            &mut PlayerMatchState,
+        ),
         Without<Ball>,
     >,
 ) {
@@ -319,16 +318,17 @@ fn referee_set_piece_system(
     ball_position.0 = restart_pos + Vec3::new(0.0, 0.0, BALL_RADIUS);
 
     // Re-form both teams at their base positions, facing the opponent goal
-    for (mut position, mut facing, mut velocity, mut player) in player_query.iter_mut() {
-        let base = base_formation_position(player.team_index, player.role, player.id);
+    for (mut position, mut facing, mut velocity, player, mut player_state) in
+        player_query.iter_mut()
+    {
+        let base = base_formation_position(player.id, player.position);
         *position = Position::from_pitch(base, 0.0);
-        facing.0 = if player.team_index == 0 {
-            Dir2::X
-        } else {
-            Dir2::NEG_X
+        facing.0 = match player.id.team {
+            TeamId::Home => Dir2::X,
+            TeamId::Away => Dir2::NEG_X,
         };
         velocity.0 = Vec3::ZERO;
-        player.last_touch_time_ms = 0;
+        player_state.last_touch_at = Duration::ZERO;
     }
 
     // Clear set piece state

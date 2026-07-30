@@ -7,7 +7,7 @@
 
 use bevy::math::Vec3;
 use football_domain::scenario::{BallSetup, Expectations, PlayerSetup};
-use football_domain::{MatchPhase, MatchRegulations, Scenario, SetPiece};
+use football_domain::{ByTeam, MatchPhase, MatchRegulations, Scenario, SetPiece, TeamId};
 use std::time::Duration;
 
 /// A full match from the opening whistle, both teams formed up.
@@ -31,13 +31,13 @@ pub fn shot_crossing_the_goal_line() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(50.0, 0.0, 0.6), Vec3::new(30.0, 0.0, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         // 8 s of celebration plus the restart, per the original's timings
         .for_duration(Duration::from_secs(12))
         .expecting(Expectations {
-            score: Some([1, 0]),
+            score: Some(ByTeam::new(1, 0)),
             set_pieces: vec![SetPiece::KickOff],
             play_resumes: true,
             ..Default::default()
@@ -52,12 +52,12 @@ pub fn ball_over_the_touchline() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(0.0, 34.0, 0.11), Vec3::new(0.0, 12.0, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(8))
         .expecting(Expectations {
-            score: Some([0, 0]),
+            score: Some(ByTeam::new(0, 0)),
             set_pieces: vec![SetPiece::ThrowIn],
             play_resumes: true,
             ..Default::default()
@@ -72,12 +72,12 @@ pub fn ball_over_the_opponents_goal_line() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(52.0, 20.0, 0.11), Vec3::new(12.0, 0.0, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(8))
         .expecting(Expectations {
-            score: Some([0, 0]),
+            score: Some(ByTeam::new(0, 0)),
             set_pieces: vec![SetPiece::GoalKick],
             play_resumes: true,
             ..Default::default()
@@ -92,12 +92,12 @@ pub fn ball_over_own_goal_line() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(-52.0, 20.0, 0.11), Vec3::new(-12.0, 0.0, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(8))
         .expecting(Expectations {
-            score: Some([0, 0]),
+            score: Some(ByTeam::new(0, 0)),
             set_pieces: vec![SetPiece::Corner],
             play_resumes: true,
             ..Default::default()
@@ -137,12 +137,12 @@ pub fn goal_at_high_speed() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(45.0, 1.0, 1.0), Vec3::new(40.0, 0.5, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(12))
         .expecting(Expectations {
-            score: Some([1, 0]),
+            score: Some(ByTeam::new(1, 0)),
             set_pieces: vec![SetPiece::KickOff],
             play_resumes: true,
             ..Default::default()
@@ -156,12 +156,12 @@ pub fn shot_off_the_crossbar() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(50.0, 0.0, 2.4), Vec3::new(22.0, 0.0, 1.5))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(6))
         .expecting(Expectations {
-            score: Some([0, 0]),
+            score: Some(ByTeam::new(0, 0)),
             ..Default::default()
         })
 }
@@ -179,12 +179,12 @@ pub fn shot_off_the_post() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(52.0, 3.7, 0.5), Vec3::new(10.0, 0.0, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(6))
         .expecting(Expectations {
-            score: Some([0, 0]),
+            score: Some(ByTeam::new(0, 0)),
             play_never_stops: true,
             ..Default::default()
         })
@@ -198,12 +198,12 @@ pub fn ball_stopping_on_the_goal_line() -> Scenario {
         .with_players(PlayerSetup::BallOnly)
         .with_ball(
             BallSetup::travelling_from(Vec3::new(54.9, 0.0, 0.11), Vec3::new(0.7, 0.0, 0.0))
-                .last_touched_by(0),
+                .last_touched_by(TeamId::Home),
         )
         .already_in_play()
         .for_duration(Duration::from_secs(6))
         .expecting(Expectations {
-            score: Some([0, 0]),
+            score: Some(ByTeam::new(0, 0)),
             play_never_stops: true,
             ..Default::default()
         })

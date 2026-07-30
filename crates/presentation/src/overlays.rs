@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 use football_domain::{
-    Ball, MatchState, OffsideRecords, PitchConfig, Player, Position, PossessionDesignation,
-    SetPiece, Velocity,
+    Attributes, Ball, MatchState, OffsideRecords, PitchConfig, Player, Position,
+    PossessionDesignation, SetPiece, TeamId, Velocity,
 };
 
 pub struct DiagnosticOverlaysPlugin;
@@ -70,11 +70,10 @@ const BALL_FUTURE_COLOUR: Srgba = Srgba::new(1.0, 0.95, 0.3, 1.0);
 const REFEREE_COLOUR: Srgba = Srgba::new(1.0, 1.0, 1.0, 1.0);
 const OFFSIDE_COLOUR: Srgba = Srgba::new(1.0, 0.5, 0.0, 1.0);
 
-fn team_colour(team_index: u32) -> Srgba {
-    if team_index == 0 {
-        HOME_COLOUR
-    } else {
-        AWAY_COLOUR
+fn team_colour(team: TeamId) -> Srgba {
+    match team {
+        TeamId::Home => HOME_COLOUR,
+        TeamId::Away => AWAY_COLOUR,
     }
 }
 
@@ -111,17 +110,17 @@ pub fn velocity_arrow(position: Position, velocity: Velocity, body_height: f32) 
 fn draw_velocities(
     mut gizmos: Gizmos,
     settings: Res<OverlaySettings>,
-    players: Query<(&Position, &Velocity, &Player)>,
+    players: Query<(&Position, &Velocity, &Player, &Attributes)>,
 ) {
     if !settings.velocities {
         return;
     }
-    for (position, velocity, player) in players.iter() {
+    for (position, velocity, player, attributes) in players.iter() {
         if velocity.0.length_squared() < 0.01 {
             continue;
         }
-        let (start, end) = velocity_arrow(*position, *velocity, player.height);
-        gizmos.arrow(start, end, team_colour(player.team_index));
+        let (start, end) = velocity_arrow(*position, *velocity, attributes.height);
+        gizmos.arrow(start, end, team_colour(player.id.team));
     }
 }
 
@@ -168,24 +167,20 @@ fn draw_possession(
     settings: Res<OverlaySettings>,
     designation: Res<PossessionDesignation>,
     match_state: Res<MatchState>,
-    players: Query<(Entity, &Position, &Player)>,
+    players: Query<(&Position, &Player)>,
 ) {
     if !settings.possession {
         return;
     }
 
-    for (entity, position, player) in players.iter() {
+    for (position, player) in players.iter() {
         let ring_at_feet = Isometry3d::from_translation(position.0 + Vec3::Z * 0.02);
-        if designation.designated[player.team_index as usize] == Some(entity) {
+        if designation.designated[player.id.team] == Some(player.id) {
             gizmos
-                .circle(
-                    ring_at_feet,
-                    DESIGNATED_RING,
-                    team_colour(player.team_index),
-                )
+                .circle(ring_at_feet, DESIGNATED_RING, team_colour(player.id.team))
                 .resolution(24);
         }
-        if match_state.possession_player == Some(entity) {
+        if match_state.possession_player == Some(player.id) {
             gizmos
                 .circle(ring_at_feet, POSSESSOR_RING, REFEREE_COLOUR)
                 .resolution(24);
@@ -195,13 +190,13 @@ fn draw_possession(
     // A pass in flight is the one committed intention this model already has:
     // draw who it was meant for.
     if let Some(target) = match_state.pass_target
-        && let Ok((_, target_position, target_player)) = players.get(target)
+        && let Some((target_position, _)) = players.iter().find(|(_, p)| p.id == target)
     {
         let aim = match_state.last_pass_aim;
         gizmos.line(
             Vec3::new(aim.x, aim.y, 0.05),
             target_position.0 + Vec3::Z * 0.05,
-            team_colour(target_player.team_index),
+            team_colour(target.team),
         );
     }
 }

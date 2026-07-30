@@ -1,12 +1,7 @@
+use crate::identity::{PlayerId, TeamId};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
-pub enum TeamSide {
-    Left,
-    Right,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 pub enum SetPiece {
@@ -79,27 +74,27 @@ pub struct MatchState {
     pub away_score: u32,
     pub phase: MatchPhase,
     pub set_piece: SetPiece,
-    pub set_piece_team: Option<u32>, // 0 for home, 1 for away
+    pub set_piece_team: Option<TeamId>,
     /// Time played in the current period, in ms. It keeps running while play is
     /// stopped, as it does in a real match; what is missing is the allowance for
     /// time lost, which would be added on top at the end of each period.
     pub period_elapsed_ms: u64,
     /// Team that kicked off the match, so the other one kicks off the second
     /// half (Law 8).
-    pub opening_kick_off_team: u32,
+    pub opening_kick_off_team: TeamId,
     pub is_ball_in_goal: bool,
-    pub possession_team: Option<u32>,
+    pub possession_team: Option<TeamId>,
     pub set_piece_timer: f32, // Time left before resetting/restarting play
     /// Where the ball is placed for the pending set piece (original: `buffer.restartPos`,
     /// computed at the moment play is stopped).
     pub restart_pos: Vec3,
-    pub possession_player: Option<Entity>, // Entity currently in possession of the ball
-    pub previous_possessor: Option<Entity>, // Entity that previously had possession
-    pub last_possession_change_time: u64,  // Time when possession last changed
+    pub possession_player: Option<PlayerId>,
+    pub previous_possessor: Option<PlayerId>,
+    pub last_possession_change_time: u64, // Time when possession last changed
     /// Intended receiver of the ball in flight (set on a pass, cleared on the
     /// next touch). The designation system gives him priority so the receiver
     /// attacks the pass (the original's receivers run onto `AI_GetPass` balls).
-    pub pass_target: Option<Entity>,
+    pub pass_target: Option<PlayerId>,
     /// Diagnostics: kind of the last deliberate release
     /// (0 none, 1 pass, 2 dribble knock, 3 clear/shot).
     pub last_release_kind: u8,
@@ -143,22 +138,27 @@ impl MatchRng {
 /// run the offside bookkeeping (original: `Referee::BallTouched()`).
 #[derive(Message, Debug, Clone, Copy)]
 pub struct BallTouched {
-    pub player: Entity,
-    pub team: u32,
+    pub player: PlayerId,
+}
+
+impl BallTouched {
+    pub fn team(&self) -> TeamId {
+        self.player.team
+    }
 }
 
 /// Players of the last touching team that stood beyond the offside line at the
 /// moment of the touch, with their position then (original: `Referee::offsidePlayers`).
 #[derive(Resource, Debug, Clone, Default)]
 pub struct OffsideRecords {
-    pub team: Option<u32>,
-    pub players: Vec<(Entity, Vec3)>,
+    pub team: Option<TeamId>,
+    pub players: Vec<(PlayerId, Vec3)>,
     /// The line the referee actually judged against, in metres along x, and the
     /// team that was defending it. Published so diagnostics can show the
     /// decision instead of recomputing the rule (which would make presentation
     /// a second, silently diverging referee).
     pub judged_line_x: Option<f32>,
-    pub judged_against_team: Option<u32>,
+    pub judged_against_team: Option<TeamId>,
 }
 
 /// Original: each `Team` caches a designated possession player — the single
@@ -167,10 +167,9 @@ pub struct OffsideRecords {
 /// else holds the team shape.
 #[derive(Resource, Debug, Clone, Default)]
 pub struct PossessionDesignation {
-    /// Designated player per team (index 0 = home, 1 = away).
-    pub designated: [Option<Entity>; 2],
+    pub designated: crate::identity::ByTeam<Option<PlayerId>>,
     /// Estimated time (ms) for that player to reach the ball's path.
-    pub time_to_ball_ms: [f32; 2],
+    pub time_to_ball_ms: crate::identity::ByTeam<f32>,
 }
 
 impl Default for MatchState {
@@ -180,9 +179,9 @@ impl Default for MatchState {
             away_score: 0,
             phase: MatchPhase::PreMatch,
             set_piece: SetPiece::KickOff,
-            set_piece_team: Some(0), // home kicks off
+            set_piece_team: Some(TeamId::Home),
             period_elapsed_ms: 0,
-            opening_kick_off_team: 0,
+            opening_kick_off_team: TeamId::Home,
             is_ball_in_goal: false,
             possession_team: None,
             set_piece_timer: 2.0, // Start with a 2-second kickoff delay

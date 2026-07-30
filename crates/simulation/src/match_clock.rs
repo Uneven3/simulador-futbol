@@ -4,6 +4,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::info;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
+use football_domain::TeamId;
 use football_domain::{MatchPhase, MatchRegulations, MatchState, SetPiece};
 
 /// Law 7: the clock and the phases of a match.
@@ -47,7 +48,7 @@ fn advance_match_clock(
                 match_state.phase = MatchPhase::HalfTime;
                 match_state.period_elapsed_ms = 0;
                 // Law 8: the other team kicks off the second half.
-                let second_half_kick_off = 1 - match_state.opening_kick_off_team;
+                let second_half_kick_off = match_state.opening_kick_off_team.opponent();
                 stop_play_for_kick_off(
                     &mut match_state,
                     second_half_kick_off,
@@ -100,7 +101,11 @@ fn advance_period(time: &Time, match_state: &mut MatchState) -> u64 {
     match_state.period_elapsed_ms
 }
 
-fn stop_play_for_kick_off(match_state: &mut MatchState, kicking_team: u32, delay_seconds: f32) {
+fn stop_play_for_kick_off(
+    match_state: &mut MatchState,
+    kicking_team: TeamId,
+    delay_seconds: f32,
+) {
     match_state.set_piece = SetPiece::KickOff;
     match_state.set_piece_team = Some(kicking_team);
     match_state.set_piece_timer = delay_seconds;

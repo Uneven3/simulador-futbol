@@ -11,7 +11,9 @@ use football_domain::scenario::{PlayState, TICK};
 use football_presentation::{DiagnosticOverlaysPlugin, MatchHudPlugin, PrimitiveVisualsPlugin};
 use football_simulation::MatchKernelPlugin;
 
-pub use football_domain::{MatchPhase, MatchState, Scenario, ScenarioOutcome, SetPiece};
+pub use football_domain::{
+    ByTeam, MatchPhase, MatchState, PlayerId, Scenario, ScenarioOutcome, SetPiece, TeamId,
+};
 
 /// Runs one scenario, with or without visuals, one fixed tick per step.
 ///
@@ -109,7 +111,7 @@ impl ScenarioRunner {
         ScenarioOutcome {
             scenario_name: self.scenario.name.clone(),
             ticks_simulated: self.ticks_simulated,
-            score: [state.home_score, state.away_score],
+            score: ByTeam::new(state.home_score, state.away_score),
             set_pieces: self.awarded_set_pieces.clone(),
             phases: self.entered_phases.clone(),
             final_phase: state.phase,

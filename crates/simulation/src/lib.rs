@@ -134,7 +134,10 @@ mod tests {
             .query::<(&Position, &football_domain::Player)>();
         for (position, p) in player_query.iter(app.world()) {
             let (cx, cy) = to_cell(position.0.x, position.0.y);
-            grid[cy][cx] = if p.team_index == 0 { 'o' } else { 'x' };
+            grid[cy][cx] = match p.id.team {
+                football_domain::TeamId::Home => 'o',
+                football_domain::TeamId::Away => 'x',
+            };
         }
         let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
         if let Ok((_, position)) = ball_query.single(app.world()) {
@@ -223,11 +226,11 @@ mod tests {
         // the frozen-duel metronome shows up here: possession flipping between
         // teams every second means there is no football, just mutual stealing
         let mut possession_team_changes = 0u32;
-        let mut prev_possession_team: Option<u32> = None;
+        let mut prev_possession_team: Option<football_domain::TeamId> = None;
         let mut longest_possession_streak_ms = 0u64;
         let mut current_streak_start: Option<u64> = None;
         let mut now_ms = 0u64;
-        let mut prev_possession_player: Option<Entity> = None;
+        let mut prev_possession_player: Option<football_domain::PlayerId> = None;
         let mut flip_causes: std::collections::HashMap<&'static str, u32> =
             std::collections::HashMap::new();
         let mut flip_log: Vec<String> = Vec::new();
