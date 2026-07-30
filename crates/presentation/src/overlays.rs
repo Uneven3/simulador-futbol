@@ -20,29 +20,26 @@ pub struct DiagnosticOverlaysPlugin;
 
 impl Plugin for DiagnosticOverlaysPlugin {
     fn build(&self, app: &mut App) {
+        // The switches are the debug hub's; this plugin only draws. The guard
+        // matters for a headless run, which has no renderer: without it the
+        // overlays would take the app down instead of standing down.
         app.init_resource::<OverlaySettings>().add_systems(
             Update,
             (
-                // Both guards matter for a headless run, which has neither a
-                // keyboard nor a renderer: without them the overlays stand down
-                // instead of taking the app with them.
-                toggle_overlays.run_if(resource_exists::<ButtonInput<KeyCode>>),
-                (
-                    draw_velocities,
-                    draw_ball_future,
-                    draw_possession,
-                    draw_offside_judgement,
-                    draw_restart_spot,
-                )
-                    .run_if(resource_exists::<GizmoConfigStore>),
+                draw_velocities,
+                draw_ball_future,
+                draw_possession,
+                draw_offside_judgement,
+                draw_restart_spot,
             )
-                .chain(),
+                .run_if(resource_exists::<GizmoConfigStore>),
         );
     }
 }
 
-/// Which overlays are on. Every one can be toggled, so the same run can be read
-/// as truth, as intent, or as a refereeing decision without restarting it.
+/// Which overlays are on. Every one can be toggled from the debug hub, so the
+/// same run can be read as truth, as intent, or as a refereeing decision
+/// without restarting it.
 #[derive(Resource, Debug, Clone)]
 pub struct OverlaySettings {
     pub velocities: bool,
@@ -77,23 +74,6 @@ fn team_colour(team: TeamId) -> Srgba {
     }
 }
 
-fn toggle_overlays(keys: Res<ButtonInput<KeyCode>>, mut settings: ResMut<OverlaySettings>) {
-    if keys.just_pressed(KeyCode::F1) {
-        settings.velocities = !settings.velocities;
-    }
-    if keys.just_pressed(KeyCode::F2) {
-        settings.ball_future = !settings.ball_future;
-    }
-    if keys.just_pressed(KeyCode::F3) {
-        settings.possession = !settings.possession;
-    }
-    if keys.just_pressed(KeyCode::F4) {
-        settings.offside = !settings.offside;
-    }
-    if keys.just_pressed(KeyCode::F5) {
-        settings.restart_spot = !settings.restart_spot;
-    }
-}
 
 /// How far ahead a velocity arrow reaches. Half a second is long enough to read
 /// direction and pace at a glance, short enough not to cross the pitch.
@@ -192,7 +172,7 @@ fn draw_possession(
     if let Some(target) = match_state.pass_target
         && let Some((target_position, _)) = players.iter().find(|(_, p)| p.id == target)
     {
-        let aim = match_state.last_pass_aim;
+        let aim = match_state.pass_aim;
         gizmos.line(
             Vec3::new(aim.x, aim.y, 0.05),
             target_position.0 + Vec3::Z * 0.05,

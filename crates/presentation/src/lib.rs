@@ -6,6 +6,7 @@
 //! corrects no state.
 
 pub mod camera;
+pub mod debug_hub;
 pub mod hud;
 pub mod lighting;
 pub mod overlays;
@@ -13,6 +14,7 @@ pub mod pitch_mesh;
 pub mod visuals;
 
 pub use camera::GameCameraPlugin;
+pub use debug_hub::{DebugHub, DebugHubPlugin, DebugSwitch};
 pub use hud::MatchHudPlugin;
 pub use lighting::StadiumLightingPlugin;
 pub use overlays::{DiagnosticOverlaysPlugin, OverlaySettings};

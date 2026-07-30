@@ -1,8 +1,8 @@
 use crate::SimulationSet;
 use crate::ball_physics::touch_ball;
+use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::debug;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::math::{XorShift32, normalized_clamp, normalized_or};
@@ -69,6 +69,7 @@ fn ball_body_collisions(
         Without<Ball>,
     >,
     mut touched_writer: MessageWriter<BallTouched>,
+    mut telemetry: ResMut<MatchTelemetry>,
 ) {
     let now_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
     if now_ms <= *last_collision_ms + 150 {
@@ -169,10 +170,17 @@ fn ball_body_collisions(
                 player_state.last_touch_at = Duration::from_millis(now_ms);
             }
             // an accidental body touch also interrupts any dribble possession
-            if match_state.possession_player.is_some() {
-                debug!("POSSESSION INTERRUPTED by body deflection off {player}");
+            if let Some(interrupted) = match_state.possession_player {
+                telemetry.record(MatchFact::PossessionLost {
+                    player: interrupted,
+                    at: ball_pos.truncate(),
+                });
                 match_state.possession_player = None;
             }
+            telemetry.record(MatchFact::Touched {
+                player,
+                deliberate: false,
+            });
             touched_writer.write(BallTouched { player });
         }
 

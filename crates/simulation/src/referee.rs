@@ -1,8 +1,8 @@
 use crate::SimulationSet;
+use crate::diagnostics::{MatchFact, MatchTelemetry};
 use crate::match_setup::base_formation_position;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::{debug, info};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::{
@@ -75,6 +75,7 @@ fn check_for_goal(
 fn referee_system(
     mut match_state: ResMut<MatchState>,
     pitch_config: Res<PitchConfig>,
+    mut telemetry: ResMut<MatchTelemetry>,
     ball_query: Single<(&Position, &Ball)>,
 ) {
     // If a set piece is already pending/ticking down, don't check for new events
@@ -109,10 +110,16 @@ fn referee_system(
                 // original: 6000 ms celebration + 2000 ms preparation
                 match_state.set_piece_timer = 8.0;
                 match_state.restart_pos = Vec3::ZERO;
-                info!(
-                    "GOAL! Score: {} - {}",
-                    match_state.home_score, match_state.away_score
-                );
+                let scored_by = if side < 0.0 {
+                    TeamId::Away
+                } else {
+                    TeamId::Home
+                };
+                telemetry.record(MatchFact::Goal { scored_by });
+                telemetry.record(MatchFact::RestartAwarded {
+                    set_piece: SetPiece::KickOff,
+                    team: scored_by.opponent(),
+                });
                 return;
             }
         }
@@ -126,10 +133,6 @@ fn referee_system(
 
     // 2. Over the backline: corner or goal kick
     if pos.x.abs() > pitch_half_w + line_half_w + 0.11 {
-        debug!(
-            "BACKLINE CROSS at y={:.2} z={:.2} (goal mouth: |y|<3.7, z<2.5)",
-            pos.y, pos.z
-        );
         let taking_team = last_touch.opponent();
         if pos.x * last_side > 0.0 {
             // last touch by the team defending this side -> corner for the attackers
@@ -145,13 +148,19 @@ fn referee_system(
                 },
                 0.0,
             );
-            info!("Ball out over the backline: corner kick for {taking_team}");
+            telemetry.record(MatchFact::RestartAwarded {
+                set_piece: SetPiece::Corner,
+                team: taking_team,
+            });
         } else {
             match_state.set_piece = SetPiece::GoalKick;
             match_state.set_piece_team = Some(taking_team);
             match_state.set_piece_timer = 4.0;
             match_state.restart_pos = Vec3::new(pitch_half_w * 0.92 * -last_side, 0.0, 0.0);
-            info!("Ball out over the backline: goal kick for {taking_team}");
+            telemetry.record(MatchFact::RestartAwarded {
+                set_piece: SetPiece::GoalKick,
+                team: taking_team,
+            });
         }
     }
     // 3. Over the sideline: throw-in
@@ -169,7 +178,10 @@ fn referee_system(
             },
             0.0,
         );
-        info!("Ball out over the sideline: throw-in for {throw_in_team}");
+        telemetry.record(MatchFact::RestartAwarded {
+            set_piece: SetPiece::ThrowIn,
+            team: throw_in_team,
+        });
     }
 }
 
@@ -181,6 +193,7 @@ fn referee_offside_system(
     mut records: ResMut<OffsideRecords>,
     pitch_config: Res<PitchConfig>,
     mut touches: MessageReader<BallTouched>,
+    mut telemetry: ResMut<MatchTelemetry>,
     player_query: Query<(Entity, &Position, &Player)>,
     ball_query: Single<&Position, With<Ball>>,
 ) {
@@ -207,7 +220,13 @@ fn referee_offside_system(
                 match_state.restart_pos = Vec3::new(recorded_pos.x, recorded_pos.y, 0.0);
                 records.players.clear();
                 records.team = None;
-                info!("OFFSIDE! Free kick for {}", touch.team().opponent());
+                telemetry.record(MatchFact::OffsideGiven {
+                    against: touch.player,
+                });
+                telemetry.record(MatchFact::RestartAwarded {
+                    set_piece: SetPiece::FreeKick,
+                    team: touch.team().opponent(),
+                });
                 continue;
             }
         }
@@ -343,7 +362,7 @@ fn referee_set_piece_system(
     records.players.clear();
     records.team = None;
 
-    info!("Play restarted after {:?}", prev_set_piece);
+    let _ = prev_set_piece;
 }
 
 #[cfg(test)]

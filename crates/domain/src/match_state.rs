@@ -95,21 +95,9 @@ pub struct MatchState {
     /// next touch). The designation system gives him priority so the receiver
     /// attacks the pass (the original's receivers run onto `AI_GetPass` balls).
     pub pass_target: Option<PlayerId>,
-    /// Diagnostics: kind of the last deliberate release
-    /// (0 none, 1 pass, 2 dribble knock, 3 clear/shot).
-    pub last_release_kind: u8,
-    /// Diagnostics: turnovers attributed to the release kind that lost the ball.
-    pub turnovers_by_kind: [u32; 4],
-    /// Diagnostics: aim point of the last pass.
-    pub last_pass_aim: Vec2,
-    /// Diagnostics: pass turnovers within 2.5 m of the aim (lost receptions)
-    /// vs farther away (lane interceptions).
-    pub pass_turnovers_near: u32,
-    pub pass_turnovers_far: u32,
-    /// Diagnostics: origin of the last pass.
-    pub last_pass_origin: Vec2,
-    /// Diagnostics: first N pass-turnover descriptions (u along lane, roles).
-    pub pass_turnover_log: Vec<String>,
+    /// Where the ball in flight was aimed. Part of the intention, not a
+    /// diagnostic: it is what the receiver is running onto.
+    pub pass_aim: Vec2,
 }
 
 /// Deterministic match RNG (stand-in for the engine's global `random(min, max)`;
@@ -190,13 +178,7 @@ impl Default for MatchState {
             previous_possessor: None,
             last_possession_change_time: 0,
             pass_target: None,
-            last_release_kind: 0,
-            turnovers_by_kind: [0; 4],
-            last_pass_aim: Vec2::ZERO,
-            pass_turnovers_near: 0,
-            pass_turnovers_far: 0,
-            last_pass_origin: Vec2::ZERO,
-            pass_turnover_log: Vec::new(),
+            pass_aim: Vec2::ZERO,
         }
     }
 }

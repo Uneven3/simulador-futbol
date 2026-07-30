@@ -3,6 +3,7 @@ use bevy_ecs::prelude::*;
 
 pub mod ball_collisions;
 pub mod ball_physics;
+pub mod diagnostics;
 pub mod eliza;
 pub mod match_clock;
 pub mod match_setup;
@@ -11,6 +12,7 @@ pub mod referee;
 pub mod team_ai;
 
 pub use ball_collisions::BallCollisionPlugin;
+pub use diagnostics::MatchDiagnosticsPlugin;
 pub use ball_physics::BallPhysicsPlugin;
 pub use match_clock::MatchClockPlugin;
 pub use match_setup::MatchSetupPlugin;
@@ -26,11 +28,22 @@ use football_domain::Scenario;
 /// so no caller can reorder the pipeline by accident.
 pub struct MatchKernelPlugin {
     scenario: Scenario,
+    retained_facts: usize,
 }
 
 impl MatchKernelPlugin {
     pub fn new(scenario: Scenario) -> Self {
-        Self { scenario }
+        Self {
+            scenario,
+            retained_facts: 0,
+        }
+    }
+
+    /// Keep the last `facts` of the run for examination afterwards. A live
+    /// match has no reason to; a run being measured does.
+    pub fn retaining_facts(mut self, facts: usize) -> Self {
+        self.retained_facts = facts;
+        self
     }
 }
 
@@ -44,6 +57,7 @@ impl Plugin for MatchKernelPlugin {
             BallCollisionPlugin,
             RefereePlugin,
             PlayerMovementPlugin,
+            MatchDiagnosticsPlugin::retaining(self.retained_facts),
         ));
     }
 }
@@ -96,58 +110,10 @@ mod tests {
     fn build_headless_app() -> App {
         let mut app = App::new();
         app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-        app.add_plugins(MatchKernelPlugin::new(Scenario::kick_off()));
+        app.add_plugins(MatchKernelPlugin::new(Scenario::kick_off()).retaining_facts(4096));
         // one fixed tick per app.update()
         app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
         app
-    }
-
-    /// ASCII snapshot of the pitch: team 0 = 'o', team 1 = 'x', ball = '@'.
-    /// The cheapest way to SEE the tactical shape (block vs scrum) headless.
-    fn print_pitch_snapshot(app: &mut App, label: &str) {
-        const W: usize = 92; // columns for x in [-56, 56]
-        const H: usize = 25; // rows for y in [-37, 37]
-        let mut grid = vec![vec![' '; W]; H];
-        let to_cell = |x: f32, y: f32| -> (usize, usize) {
-            let cx = ((x + 56.0) / 112.0 * (W as f32 - 1.0)).round() as isize;
-            let cy = ((y + 37.0) / 74.0 * (H as f32 - 1.0)).round() as isize;
-            (
-                cx.clamp(0, W as isize - 1) as usize,
-                cy.clamp(0, H as isize - 1) as usize,
-            )
-        };
-        // pitch borders
-        let (x0, y0) = to_cell(-55.0, -36.0);
-        let (x1, y1) = to_cell(55.0, 36.0);
-        for x in x0..=x1 {
-            grid[y0][x] = '-';
-            grid[y1][x] = '-';
-        }
-        for row in grid.iter_mut().take(y1 + 1).skip(y0) {
-            row[x0] = '|';
-            row[x1] = '|';
-            let (xm, _) = to_cell(0.0, 0.0);
-            row[xm] = ':';
-        }
-        let mut player_query = app
-            .world_mut()
-            .query::<(&Position, &football_domain::Player)>();
-        for (position, p) in player_query.iter(app.world()) {
-            let (cx, cy) = to_cell(position.0.x, position.0.y);
-            grid[cy][cx] = match p.id.team {
-                football_domain::TeamId::Home => 'o',
-                football_domain::TeamId::Away => 'x',
-            };
-        }
-        let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
-        if let Ok((_, position)) = ball_query.single(app.world()) {
-            let (cx, cy) = to_cell(position.0.x, position.0.y);
-            grid[cy][cx] = '@';
-        }
-        println!("--- {label} ---");
-        for row in grid {
-            println!("{}", row.into_iter().collect::<String>());
-        }
     }
 
     /// The kernel spawns and runs a full match on its own. Whether it stays free
@@ -210,159 +176,84 @@ mod tests {
     /// deterministic but chaotic, so gameplay must be judged on aggregates,
     /// never on a single minute. Run explicitly with:
     /// `cargo test long_match_stats -- --ignored --nocapture`
+    ///
+    /// Everything printed here is read from the diagnostics subsystem. This
+    /// test used to run its own possession bookkeeping, its own turnover
+    /// attribution and its own ASCII pitch, which meant the numbers a run
+    /// reported existed nowhere else and could not be asked for in any other
+    /// context.
     #[test]
     #[ignore]
     fn long_match_stats() {
-        let mut app = build_headless_app();
+        use crate::diagnostics::{
+            DiagnosticChannel, MatchFact, MatchLedger, MatchSnapshot, MatchTelemetry, ReleaseKind,
+            render_pitch,
+        };
 
-        let mut set_piece_counts: std::collections::HashMap<&'static str, u32> =
-            std::collections::HashMap::new();
-        let mut prev_set_piece = SetPiece::KickOff;
-        let mut distinct_touchers = std::collections::HashSet::new();
-        let mut max_ball_x = 0.0f32;
-        let mut shots = 0u32;
-        let mut prev_touch_time = 0u64;
-        let mut touches = 0u32;
-        // the frozen-duel metronome shows up here: possession flipping between
-        // teams every second means there is no football, just mutual stealing
-        let mut possession_team_changes = 0u32;
-        let mut prev_possession_team: Option<football_domain::TeamId> = None;
-        let mut longest_possession_streak_ms = 0u64;
-        let mut current_streak_start: Option<u64> = None;
-        let mut now_ms = 0u64;
-        let mut prev_possession_player: Option<football_domain::PlayerId> = None;
-        let mut flip_causes: std::collections::HashMap<&'static str, u32> =
-            std::collections::HashMap::new();
-        let mut flip_log: Vec<String> = Vec::new();
-        let mut last_flip_ball_pos: Option<Vec3> = None;
-        let mut flip_move_sum = 0.0f32;
+        let mut app = build_headless_app();
 
         for tick in 0..60_000 {
             app.update();
-
             if tick % 3000 == 2999 {
-                print_pitch_snapshot(&mut app, &format!("t = {}s", (tick + 1) / 100));
+                println!("--- t = {}s ---", (tick + 1) / 100);
+                println!("{}", render_pitch(app.world_mut()));
             }
-
-            let match_state = app.world().resource::<MatchState>();
-            let set_piece = match_state.set_piece;
-            if set_piece != prev_set_piece && set_piece != SetPiece::None {
-                *set_piece_counts
-                    .entry(match set_piece {
-                        SetPiece::KickOff => "kickoff",
-                        SetPiece::GoalKick => "goal_kick",
-                        SetPiece::FreeKick => "free_kick",
-                        SetPiece::Corner => "corner",
-                        SetPiece::ThrowIn => "throw_in",
-                        SetPiece::Penalty => "penalty",
-                        SetPiece::None => unreachable!(),
-                    })
-                    .or_insert(0) += 1;
-            }
-            prev_set_piece = set_piece;
-            let (home, away) = (match_state.home_score, match_state.away_score);
-
-            now_ms += 10;
-            let team_now = match_state.possession_team;
-            let player_now = match_state.possession_player;
-            if team_now.is_some() && team_now != prev_possession_team {
-                if prev_possession_team.is_some() {
-                    possession_team_changes += 1;
-                    let start = current_streak_start.unwrap_or(0);
-                    longest_possession_streak_ms = longest_possession_streak_ms.max(now_ms - start);
-
-                    // flip forensics: direct steal (tackle) or loose-ball interception?
-                    let cause = if prev_possession_player.is_some() {
-                        "tackle"
-                    } else {
-                        "loose"
-                    };
-                    *flip_causes.entry(cause).or_insert(0) += 1;
-                    let ball_pos = {
-                        let mut q = app.world_mut().query::<(&Ball, &Position)>();
-                        q.single(app.world()).unwrap().1.0
-                    };
-                    let delta = last_flip_ball_pos.map(|p: Vec3| (ball_pos - p).length());
-                    if flip_log.len() < 40 {
-                        flip_log.push(format!(
-                            "t={:>5.1}s {} at ({:>5.1},{:>5.1}) moved {:>5.1}m since prev flip",
-                            now_ms as f32 / 1000.0,
-                            cause,
-                            ball_pos.x,
-                            ball_pos.y,
-                            delta.unwrap_or(0.0),
-                        ));
-                    }
-                    if let Some(d) = delta {
-                        flip_move_sum += d;
-                    }
-                    last_flip_ball_pos = Some(ball_pos);
-                }
-                current_streak_start = Some(now_ms);
-                prev_possession_team = team_now;
-            }
-            prev_possession_player = player_now;
-
-            let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
-            let (ball, ball_position) = ball_query.single(app.world()).unwrap();
-            let ball_pos = ball_position.0;
+            let ball_pos = {
+                let mut balls = app.world_mut().query_filtered::<&Position, With<Ball>>();
+                balls.single(app.world()).unwrap().0
+            };
             assert!(
                 ball_pos.is_finite(),
                 "Ball position is not finite: {ball_pos:?}"
             );
-            max_ball_x = max_ball_x.max(ball_pos.x.abs());
-            if let Some(toucher) = ball.last_touch_player {
-                distinct_touchers.insert(toucher);
-            }
-            if ball.last_touch_time_ms != prev_touch_time {
-                prev_touch_time = ball.last_touch_time_ms;
-                touches += 1;
-                // a "shot" here = a touch that fires the ball goalwards at pace
-                let v = ball.momentum;
-                let goalward = v.x.abs() > 12.0 && v.length() > 15.0;
-                let deep = ball_pos.x.abs() > 25.0 && (ball_pos.x * v.x) > 0.0;
-                if goalward && deep {
-                    shots += 1;
-                }
-            }
-
-            let _ = (home, away);
         }
 
-        let match_state = app.world().resource::<MatchState>();
+        let elapsed =
+            std::time::Duration::from_millis(app.world().resource::<MatchState>().period_elapsed_ms);
+        let ledger = app.world().resource::<MatchLedger>();
         println!("=== 10 simulated minutes ===");
+        println!("score: {} - {}", ledger.goals.home, ledger.goals.away);
+        println!("distinct touchers: {}", ledger.distinct_touchers());
         println!(
-            "score: {} - {}",
-            match_state.home_score, match_state.away_score
-        );
-        println!("set pieces: {set_piece_counts:?}");
-        println!("distinct touchers: {}", distinct_touchers.len());
-        println!("total touches: {touches}, goalward blasts: {shots}");
-        println!("max |ball.x|: {max_ball_x:.1}");
-        println!(
-            "possession team flips: {possession_team_changes} ({:.1}/min), longest streak: {:.1}s",
-            possession_team_changes as f32 / 10.0,
-            longest_possession_streak_ms as f32 / 1000.0
+            "possession changes: {} ({:.1}/min), longest spell: {:.1}s",
+            ledger.possession_changes,
+            ledger.changes_per_minute(elapsed),
+            ledger.longest_spell.as_secs_f32()
         );
         println!(
-            "flip causes: {flip_causes:?}, avg ball travel between flips: {:.1}m",
-            flip_move_sum / possession_team_changes.max(1) as f32
-        );
-        let ms = app.world().resource::<MatchState>();
-        println!(
-            "turnovers by release kind [none, pass, knock, clear/shot]: {:?}",
-            ms.turnovers_by_kind
+            "changes by cause: {} tackles, {} loose balls",
+            ledger.tackles(),
+            ledger.loose_balls()
         );
         println!(
-            "pass turnovers: {} at reception (<2.5m of aim), {} en route",
-            ms.pass_turnovers_near, ms.pass_turnovers_far
+            "turnovers by release: pass {}, knock-on {}, clearance {}, shot {}",
+            ledger.turnovers_of(ReleaseKind::Pass),
+            ledger.turnovers_of(ReleaseKind::DribbleKnock),
+            ledger.turnovers_of(ReleaseKind::Clearance),
+            ledger.turnovers_of(ReleaseKind::Shot),
         );
-        for l in &ms.pass_turnover_log {
-            println!("  {l}");
-        }
-        println!("--- first flips ---");
-        for line in &flip_log {
+        println!(
+            "lost passes: {} at reception (<2.5 m of the aim), {} en route",
+            ledger.pass_turnovers_near, ledger.pass_turnovers_far
+        );
+
+        for line in app.world().resource::<MatchSnapshot>().lines() {
             println!("{line}");
+        }
+
+        let telemetry = app.world().resource::<MatchTelemetry>();
+        println!("--- restarts awarded ---");
+        for recorded in telemetry.recorded_on(DiagnosticChannel::RefereeDecisions) {
+            println!("[t{:06}] {}", recorded.tick, recorded.fact);
+        }
+        println!("--- last lost balls ---");
+        for recorded in telemetry
+            .history()
+            .filter(|r| matches!(r.fact, MatchFact::Turnover { .. }))
+            .rev()
+            .take(20)
+        {
+            println!("[t{:06}] {}", recorded.tick, recorded.fact);
         }
     }
 

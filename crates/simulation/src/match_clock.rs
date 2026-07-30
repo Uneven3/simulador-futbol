@@ -1,7 +1,7 @@
 use crate::SimulationSet;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::info;
+use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::TeamId;
@@ -31,6 +31,7 @@ fn advance_match_clock(
     time: Res<Time>,
     regulations: Res<MatchRegulations>,
     mut match_state: ResMut<MatchState>,
+    mut telemetry: ResMut<MatchTelemetry>,
 ) {
     match match_state.phase {
         // The match begins when the referee first sets it in motion.
@@ -38,7 +39,7 @@ fn advance_match_clock(
             if match_state.set_piece == SetPiece::None {
                 match_state.phase = MatchPhase::FirstHalf;
                 match_state.period_elapsed_ms = 0;
-                info!("First half under way");
+                telemetry.record(MatchFact::PhaseEntered(MatchPhase::FirstHalf));
             }
         }
 
@@ -54,10 +55,7 @@ fn advance_match_clock(
                     second_half_kick_off,
                     regulations.half_time_interval.as_secs_f32(),
                 );
-                info!(
-                    "Half time: {} - {}",
-                    match_state.home_score, match_state.away_score
-                );
+                telemetry.record(MatchFact::PhaseEntered(MatchPhase::HalfTime));
             }
         }
 
@@ -67,7 +65,7 @@ fn advance_match_clock(
             if match_state.set_piece == SetPiece::None {
                 match_state.phase = MatchPhase::SecondHalf;
                 match_state.period_elapsed_ms = 0;
-                info!("Second half under way");
+                telemetry.record(MatchFact::PhaseEntered(MatchPhase::SecondHalf));
             }
         }
 
@@ -79,10 +77,7 @@ fn advance_match_clock(
                 // so the pending kick-off is one that will never be taken.
                 let kicking_team = match_state.opening_kick_off_team;
                 stop_play_for_kick_off(&mut match_state, kicking_team, 0.0);
-                info!(
-                    "Full time: {} - {}",
-                    match_state.home_score, match_state.away_score
-                );
+                telemetry.record(MatchFact::PhaseEntered(MatchPhase::FullTime));
             }
         }
 

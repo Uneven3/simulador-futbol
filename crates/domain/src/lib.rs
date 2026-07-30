@@ -4,6 +4,7 @@
 //! data: no system, no plugin and no engine subsystem beyond ECS and maths.
 
 pub mod ball;
+pub mod diagnostics;
 pub mod identity;
 pub mod match_state;
 pub mod math;

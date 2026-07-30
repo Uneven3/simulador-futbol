@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use football_presentation::{
-    DiagnosticOverlaysPlugin, GameCameraPlugin, MatchHudPlugin, PitchMeshPlugin,
+    DebugHubPlugin, DiagnosticOverlaysPlugin, GameCameraPlugin, MatchHudPlugin, PitchMeshPlugin,
     PrimitiveVisualsPlugin, StadiumLightingPlugin,
 };
 use football_simulation::MatchKernelPlugin;
@@ -23,6 +23,7 @@ fn main() {
         .add_plugins((
             PrimitiveVisualsPlugin,
             DiagnosticOverlaysPlugin,
+            DebugHubPlugin,
             MatchHudPlugin,
             PitchMeshPlugin,
             StadiumLightingPlugin,

@@ -4,11 +4,11 @@ use crate::eliza::{self, OnBallAction, PassKind};
 use crate::team_ai::{self, PlayerSnap, TeamAis, team_side};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::{debug, info};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use std::time::Duration;
 
+use crate::diagnostics::{MatchFact, MatchTelemetry, PossessionCause, ReleaseKind};
 use football_domain::math::{normalized_clamp, normalized_or_2d, sign_side};
 use football_domain::{
     Attributes, Ball, BallTouched, ByTeam, Facing, MatchRng, MatchState, Player, PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation,
@@ -169,6 +169,7 @@ fn player_kick_system(
     mut rng: ResMut<MatchRng>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     registry: Res<PlayerRegistry>,
+    mut telemetry: ResMut<MatchTelemetry>,
     mut player_query: Query<
         (
             Entity,
@@ -202,7 +203,10 @@ fn player_kick_system(
             _ => true,
         };
         if lost {
-            debug!("POSSESSION RELEASED (ball escaped 3m) from {possessor}");
+            telemetry.record(MatchFact::PossessionLost {
+                player: possessor,
+                at: ball_pos_2d,
+            });
             match_state.possession_player = None;
         }
     }
@@ -290,8 +294,12 @@ fn player_kick_system(
                                 match_state.possession_team = Some(challenger.team);
                                 match_state.last_possession_change_time = current_time_ms;
                                 match_state.pass_target = None;
-                                let k = match_state.last_release_kind as usize;
-                                match_state.turnovers_by_kind[k.min(3)] += 1;
+                                telemetry.record(MatchFact::PossessionGained {
+                                    player: challenger,
+                                    from: Some(current_possessor),
+                                    cause: PossessionCause::Tackle,
+                                    at: ball_pos_2d,
+                                });
                                 control_touch(
                                     &mut ball,
                                     &mut ball_position,
@@ -300,8 +308,8 @@ fn player_kick_system(
                                     current_time_ms,
                                     &mut player_query,
                                     &mut touched_writer,
+                                    &mut telemetry,
                                 );
-                                info!("{challenger} TACKLED AND STOLE POSSESSION!");
                             }
                         }
                     }
@@ -336,49 +344,17 @@ fn player_kick_system(
             }
 
             if global_cooldown_ok && individual_cooldown_ok && touch_bias_ok {
-                debug!(
-                    "PICKUP forensics: player={} dt_touch={}ms was_last_toucher={} dist={:.2} |v|={:.1} last_player={:?}",
-                    challenger,
-                    current_time_ms.saturating_sub(ball.last_touch_time_ms),
-                    is_last_toucher,
-                    closest_player_dist,
-                    ball.momentum.length(),
-                    ball.last_touch_player,
-                );
+                telemetry.record(MatchFact::PossessionGained {
+                    player: challenger,
+                    from: None,
+                    cause: PossessionCause::LooseBall,
+                    at: ball_pos_2d,
+                });
                 match_state.previous_possessor = None;
                 match_state.possession_player = Some(challenger);
                 match_state.possession_team = Some(challenger.team);
                 match_state.last_possession_change_time = current_time_ms;
                 match_state.pass_target = None;
-                if ball
-                    .last_touch_team
-                    .is_some_and(|t| t != challenger.team)
-                {
-                    let k = match_state.last_release_kind as usize;
-                    match_state.turnovers_by_kind[k.min(3)] += 1;
-                    if k == 1 {
-                        if ball_pos_2d.distance(match_state.last_pass_aim) < 2.5 {
-                            match_state.pass_turnovers_near += 1;
-                        } else {
-                            match_state.pass_turnovers_far += 1;
-                        }
-                    }
-                    if k == 1 && match_state.pass_turnover_log.len() < 20 {
-                        let (lane_dist, u) = football_domain::math::line_distance_to_point_2d(
-                            match_state.last_pass_origin,
-                            match_state.last_pass_aim,
-                            ball_pos_2d,
-                        );
-                        let interceptor = challenger.to_string();
-                        let lane_len = match_state
-                            .last_pass_origin
-                            .distance(match_state.last_pass_aim);
-                        match_state.pass_turnover_log.push(format!(
-                            "u={u:.2} lane_dist={lane_dist:.1} lane_len={lane_len:.1}m interceptor={interceptor} vz={:.1}",
-                            ball.momentum.length(),
-                        ));
-                    }
-                }
                 control_touch(
                     &mut ball,
                     &mut ball_position,
@@ -387,8 +363,8 @@ fn player_kick_system(
                     current_time_ms,
                     &mut player_query,
                     &mut touched_writer,
+                    &mut telemetry,
                 );
-                info!("{challenger} GAINED POSSESSION OF LOOSE BALL!");
             }
         }
     }
@@ -498,9 +474,12 @@ fn player_kick_system(
                     &mut touched_writer,
                 );
                 match_state.pass_target = None;
-                match_state.last_release_kind = 3;
+                telemetry.record(MatchFact::BallReleased {
+                    player: possessor,
+                    kind: ReleaseKind::Shot,
+                    aim: Vec2::new(opponent_goal_x, y_aim),
+                });
                 release_possession = true;
-                info!("{possessor} SHOOTS (y = {y_aim:.1})!");
             }
             OnBallAction::Pass { target, aim, kind } => {
                 // lift per AI_GetAutoPass (0.11 ground / high drops with range);
@@ -530,11 +509,13 @@ fn player_kick_system(
                     &mut touched_writer,
                 );
                 match_state.pass_target = Some(target);
-                match_state.last_pass_aim = aim;
-                match_state.last_pass_origin = player_pos_2d;
-                match_state.last_release_kind = 1;
+                match_state.pass_aim = aim;
+                telemetry.record(MatchFact::BallReleased {
+                    player: possessor,
+                    kind: ReleaseKind::Pass,
+                    aim,
+                });
                 release_possession = true;
-                info!("{possessor} PLAYS A {kind:?} PASS TO {target}");
             }
             OnBallAction::PanicClear => {
                 // port of `_AddPanicPass`: blast it forward, away from the middle
@@ -554,9 +535,12 @@ fn player_kick_system(
                     &mut touched_writer,
                 );
                 match_state.pass_target = None;
-                match_state.last_release_kind = 3;
+                telemetry.record(MatchFact::BallReleased {
+                    player: possessor,
+                    kind: ReleaseKind::Clearance,
+                    aim: player_pos_2d + away * 30.0,
+                });
                 release_possession = true;
-                info!("{possessor} PANIC CLEARS!");
             }
             OnBallAction::Dribble => {
                 if !can_knock_on {
@@ -594,7 +578,11 @@ fn player_kick_system(
                     Vec3::ZERO,
                     &mut touched_writer,
                 );
-                match_state.last_release_kind = 2;
+                telemetry.record(MatchFact::BallReleased {
+                    player: possessor,
+                    kind: ReleaseKind::DribbleKnock,
+                    aim: player_pos_2d + dir_2d * 3.0,
+                });
             }
         }
 
@@ -629,6 +617,7 @@ fn control_touch(
         Without<Ball>,
     >,
     touched_writer: &mut MessageWriter<BallTouched>,
+    telemetry: &mut MatchTelemetry,
 ) {
     // A controlled touch is DIRECTED: the ball is set up towards where the
     // carrier wants to go (force-field dribble direction, which is repelled by
@@ -662,6 +651,10 @@ fn control_touch(
         player_state.last_touch_at = Duration::from_millis(now_ms);
     }
     touched_writer.write(BallTouched { player });
+    telemetry.record(MatchFact::Touched {
+        player,
+        deliberate: true,
+    });
 }
 
 /// Port of `AI_GetBestDribbleMovement` + `AI_GetForceFieldMovement`

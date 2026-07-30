@@ -14,7 +14,7 @@
 //!   original as well).
 
 use bevy_ecs::prelude::*;
-use bevy_log::debug;
+use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use std::collections::VecDeque;
@@ -245,6 +245,7 @@ pub fn team_ai_update(
     match_state: Res<MatchState>,
     designation: Res<PossessionDesignation>,
     mut team_ais: ResMut<TeamAis>,
+    mut telemetry: ResMut<MatchTelemetry>,
     ball_query: Query<&Ball>,
     mut player_query: Query<(&Position, &Player, &mut PlayerMatchState, &Velocity)>,
 ) {
@@ -421,7 +422,7 @@ pub fn team_ai_update(
                     if distance_rating * opp_density_rating >= 0.5 {
                         team_ais.team[t].end_attacking_run_ms = now_ms + 4000;
                         team_ais.team[t].attacking_run_player = Some(runner_id);
-                        debug!("team {t}: tactics induced attacking run");
+                        telemetry.record(MatchFact::AttackingRun { runner: runner_id });
                     }
                 }
             }
