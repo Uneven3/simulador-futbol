@@ -1,5 +1,9 @@
-use crate::data::{BALL_RADIUS, Ball, Facing, Player, PlayerRole, PlayerStats, Position, Velocity};
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_math::prelude::*;
+use football_domain::{
+    BALL_RADIUS, Ball, Facing, Player, PlayerRole, PlayerStats, Position, Velocity,
+};
 
 /// Spawns the authoritative bodies of a match: one ball and two teams of eleven.
 ///

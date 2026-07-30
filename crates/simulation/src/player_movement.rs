@@ -1,13 +1,17 @@
-use crate::data::{
+use crate::SimulationSet;
+use crate::ball_physics::touch_ball;
+use crate::eliza::{self, OnBallAction, PassKind};
+use crate::team_ai::{self, PlayerSnap, TeamAis, team_side};
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_log::{debug, info};
+use bevy_math::prelude::*;
+use bevy_time::prelude::*;
+use football_domain::math::{normalized_clamp, normalized_or_2d, sign_side};
+use football_domain::{
     Ball, BallTouched, Facing, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position,
     PossessionDesignation, SetPiece, Velocity,
 };
-use crate::math::{normalized_clamp, normalized_or_2d, sign_side};
-use crate::simulation::SimulationSet;
-use crate::simulation::ball_physics::touch_ball;
-use crate::simulation::eliza::{self, OnBallAction, PassKind};
-use crate::simulation::team_ai::{self, PlayerSnap, TeamAis, team_side};
-use bevy::prelude::*;
 
 pub struct PlayerMovementPlugin;
 
@@ -40,7 +44,7 @@ impl Plugin for PlayerMovementPlugin {
 /// player in possession is always his team's designated player.
 fn update_possession_designation(
     mut match_state: ResMut<MatchState>,
-    records: Res<crate::data::OffsideRecords>,
+    records: Res<football_domain::OffsideRecords>,
     mut designation: ResMut<PossessionDesignation>,
     ball_query: Query<&Ball>,
     player_query: Query<(Entity, &Position, &Player, &PlayerStats)>,
@@ -156,8 +160,8 @@ fn resolve_player_overlap(mut query: Query<&mut Position, With<Player>>) {
 fn player_kick_system(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
-    offside_records: Res<crate::data::OffsideRecords>,
-    pitch: Res<crate::data::PitchConfig>,
+    offside_records: Res<football_domain::OffsideRecords>,
+    pitch: Res<football_domain::PitchConfig>,
     mut rng: ResMut<MatchRng>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     mut player_query: Query<
@@ -354,7 +358,7 @@ fn player_kick_system(
                         }
                     }
                     if k == 1 && match_state.pass_turnover_log.len() < 20 {
-                        let (lane_dist, u) = crate::math::line_distance_to_point_2d(
+                        let (lane_dist, u) = football_domain::math::line_distance_to_point_2d(
                             match_state.last_pass_origin,
                             match_state.last_pass_aim,
                             ball_pos_2d,
@@ -519,7 +523,7 @@ fn player_kick_system(
                     PassKind::Long => (0.14, 2.0),
                     PassKind::High => (0.45 - normalized_clamp(pass_dist, 0.0, 60.0) * 0.15, 1.5),
                 };
-                let momentum = crate::simulation::ball_physics::solve_pass_momentum(
+                let momentum = crate::ball_physics::solve_pass_momentum(
                     &pitch, ball_pos, aim, lift, pace_bonus,
                 );
                 kick(
@@ -588,7 +592,7 @@ fn player_kick_system(
                     .map(|s| s.pos.distance(player_pos_2d))
                     .fold(f32::MAX, f32::min);
                 let knock_speed = if nearest_opp < 3.0 {
-                    crate::simulation::team_ai::DRIBBLE_VELOCITY
+                    crate::team_ai::DRIBBLE_VELOCITY
                 } else {
                     (player_vel_2d.length().max(2.0) + 1.0).min(player_speed + 1.0)
                 };

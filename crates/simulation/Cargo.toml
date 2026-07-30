@@ -1,0 +1,26 @@
+# Simulation: the authoritative ECS kernel — physics, decision, tactics,
+# refereeing and telemetry.
+#
+# It depends on ECS, maths, time and logging, and deliberately NOT on `bevy`
+# itself: without `bevy_render`, `bevy_pbr` or `bevy_asset` in scope, a mesh or
+# material cannot be built here even by accident. Architecture law 1 is enforced
+# by Cargo, not by review.
+[package]
+name = "gameplayfootball_simulation"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+name = "football_simulation"
+
+[dependencies]
+football_domain = { package = "gameplayfootball_domain", path = "../domain" }
+
+bevy_app = "0.19"
+bevy_ecs = "0.19"
+bevy_log = "0.19"
+bevy_math = "0.19"
+bevy_time = "0.19"

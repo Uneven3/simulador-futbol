@@ -6,6 +6,9 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 ## Niveles
 
 1. **Dominio:** unidades, estado finito, ownership, reproducibilidad y no-bleed.
+   El no-bleed se sostiene hoy en `tests/layer_boundaries.rs`: la misma
+   situación, headless y con primitivas, produce posiciones idénticas tick a
+   tick, y ningún cuerpo autoritativo carga mesh.
 2. **Reglas:** escenarios IFAB y trace incidente→decisión→transición.
 3. **Física:** pelota, aceleración, frenado, giro, alcance y contactos.
 4. **Percepción:** reacción, visibilidad, distancia, memoria e incertidumbre.

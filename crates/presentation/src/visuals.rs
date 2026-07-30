@@ -1,5 +1,5 @@
-use crate::data::{BALL_RADIUS, Ball, Facing, Player, Position};
 use bevy::prelude::*;
+use football_domain::{BALL_RADIUS, Ball, Facing, Player, Position};
 
 /// Primitive representations of the authoritative bodies.
 ///

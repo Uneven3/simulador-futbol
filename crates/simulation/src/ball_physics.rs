@@ -1,9 +1,11 @@
-use crate::data::{
+use crate::SimulationSet;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_math::prelude::*;
+use football_domain::math::{QuatExt, normalized_clamp, normalized_or, sign_side};
+use football_domain::{
     BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, BALL_RADIUS, Ball, MatchState, PitchConfig, Position,
 };
-use crate::math::{QuatExt, normalized_clamp, normalized_or, sign_side};
-use crate::simulation::SimulationSet;
-use bevy::prelude::*;
 
 // Ball physics constants (Ball::Ball(), ball.cpp)
 const BOUNCE: f32 = 0.62; // 1 = full bounce, 0 = no bounce

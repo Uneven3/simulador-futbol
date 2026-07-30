@@ -1,15 +1,10 @@
 use bevy::prelude::*;
 
-mod data;
-mod math;
-mod presentation;
-mod simulation;
-
-use data::{BallTouched, MatchState, PitchConfig};
-use presentation::{
+use football_domain::{BallTouched, MatchState, PitchConfig};
+use football_presentation::{
     GameCameraPlugin, PitchMeshPlugin, PrimitiveVisualsPlugin, StadiumLightingPlugin,
 };
-use simulation::{
+use football_simulation::{
     BallCollisionPlugin, BallPhysicsPlugin, MatchSetupPlugin, PlayerMovementPlugin, RefereePlugin,
     SimulationOrderPlugin,
 };

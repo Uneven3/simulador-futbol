@@ -1,5 +1,5 @@
-use crate::data::PitchConfig;
 use bevy::prelude::*;
+use football_domain::PitchConfig;
 
 pub struct PitchMeshPlugin;
 

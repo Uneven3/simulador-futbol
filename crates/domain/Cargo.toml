@@ -1,0 +1,25 @@
+# Domain: types, units, rules, facts, intents and configuration.
+#
+# Depends on no engine subsystem beyond ECS data and maths. It cannot see
+# rendering, windowing or assets, so a rule can never be expressed in terms of
+# a mesh or a material (architecture law 3).
+[package]
+name = "gameplayfootball_domain"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+# Short import path, as required by the workspace naming rule: the package is
+# prefixed with the project slug, the library keeps the layer's name.
+[lib]
+name = "football_domain"
+
+[dependencies]
+# `bevy_reflect` on the ECS and maths crates is what makes domain types
+# introspectable (`Entity`, `Vec3`, `Quat` inside a `#[derive(Reflect)]`), which
+# the diagnostic overlays and future scenario serialization rely on.
+bevy_ecs = { version = "0.19", features = ["bevy_reflect"] }
+bevy_math = { version = "0.19", features = ["bevy_reflect"] }
+bevy_reflect = "0.19"

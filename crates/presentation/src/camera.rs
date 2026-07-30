@@ -1,4 +1,4 @@
-use crate::presentation::visuals::BallVisual;
+use crate::visuals::BallVisual;
 use bevy::prelude::*;
 
 pub struct GameCameraPlugin;

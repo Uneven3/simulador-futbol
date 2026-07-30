@@ -1,10 +1,14 @@
-use crate::data::{
+use crate::SimulationSet;
+use crate::ball_physics::touch_ball;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_log::debug;
+use bevy_math::prelude::*;
+use bevy_time::prelude::*;
+use football_domain::math::{XorShift32, normalized_clamp, normalized_or};
+use football_domain::{
     BALL_RADIUS, Ball, BallTouched, MatchState, Player, Position, PossessionDesignation, Velocity,
 };
-use crate::math::{XorShift32, normalized_clamp, normalized_or};
-use crate::simulation::SimulationSet;
-use crate::simulation::ball_physics::touch_ball;
-use bevy::prelude::*;
 
 /// Port of `Match::CheckBallCollisions()` (match.cpp), simplified: the original
 /// tests the ball against every animated limb AABB and the player's current

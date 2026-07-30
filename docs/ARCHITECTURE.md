@@ -14,13 +14,20 @@ football_app      football_presentation
 ```
 
 - **Domain:** tipos, unidades, reglas, hechos, intents y configuración.
+  `crates/domain`, paquete `gameplayfootball_domain`, lib `football_domain`.
 - **Simulation:** ECS autoritativo, física, percepción, decisión, táctica,
-  arbitraje y telemetría.
+  arbitraje y telemetría. `crates/simulation`, lib `football_simulation`.
 - **Presentation:** visuales, cámara, animación, UI, audio y overlays; solo lee.
-- **App:** composición, escenario y ciclo de vida.
+  `crates/presentation`, lib `football_presentation`.
+- **App:** composición, escenario y ciclo de vida. Es el paquete raíz
+  `gameplayfootball` (`src/main.rs` y `tests/`).
 
-Primero pueden ser módulos; el objetivo es convertirlos en crates para que
-Cargo impida dependencias inversas.
+Son crates, así que Cargo impide las dependencias inversas. Domain y simulation
+dependen de subcrates de Bevy (`bevy_ecs`, `bevy_math`, `bevy_time`,
+`bevy_app`, `bevy_log`) y **no** de `bevy`: sin `bevy_render`, `bevy_pbr` ni
+`bevy_asset` en el grafo, una regla no puede expresarse en términos de un mesh
+ni el kernel puede construir geometría. Solo presentation y app ven el motor
+completo.
 
 ## Leyes
 

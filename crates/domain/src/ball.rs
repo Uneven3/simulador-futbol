@@ -1,4 +1,6 @@
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_math::prelude::*;
+use bevy_reflect::prelude::*;
 use std::collections::VecDeque;
 
 /// Radius of a match ball in metres (IFAB Law 2: circumference 68-70 cm).

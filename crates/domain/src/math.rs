@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use bevy::math::{Quat, Vec3};
+use bevy_math::{Quat, Vec3};
 
 pub fn normalized_clamp(value: f32, min: f32, max: f32) -> f32 {
     assert!(max > min, "max must be greater than min");
@@ -47,7 +47,7 @@ impl XorShift32 {
     }
 }
 
-use bevy::math::Vec2;
+use bevy_math::Vec2;
 
 /// Port of Blunted2's `Line::GetDistanceToPoint(point, &u)` in 2D: distance from
 /// `p` to the infinite line through v0-v1, plus the unclamped parameter `u`

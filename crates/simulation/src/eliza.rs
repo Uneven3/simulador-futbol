@@ -18,20 +18,22 @@
 //!   original relies on support positioning being offside-aware, which
 //!   `get_support_position_force_field` also enforces here).
 
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_math::prelude::*;
+use bevy_time::prelude::*;
 
-use crate::data::{
-    Ball, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position, PossessionDesignation,
-    SetPiece, Velocity,
-};
-use crate::math::{
-    curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
-    rotated_2d,
-};
-use crate::simulation::team_ai::{
+use crate::team_ai::{
     DISTANCE_TO_VELOCITY_MULTIPLIER, DRIBBLE_VELOCITY, PITCH_HALF_H, PITCH_HALF_W, PlayerSnap,
     SPRINT_VELOCITY, TeamAis, WALK_VELOCITY, apply_offside_trap, closest_player, closest_players,
     cpp_clamp, get_adapted_formation_position, team_side,
+};
+use football_domain::math::{
+    curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
+    rotated_2d,
+};
+use football_domain::{
+    Ball, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position, PossessionDesignation,
+    SetPiece, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -251,8 +253,7 @@ fn carry_movement(ctx: &ElizaCtx, me: &PlayerSnap, stats: &PlayerStats) -> (Vec2
     } else {
         let all: Vec<(u32, Vec2, Vec2)> =
             ctx.snaps.iter().map(|s| (s.team, s.pos, s.vel)).collect();
-        let dir =
-            crate::simulation::player_movement::dribble_direction(me.pos, me.vel, me.team, &all);
+        let dir = crate::player_movement::dribble_direction(me.pos, me.vel, me.team, &all);
         // dribble slower in traffic, open up when free
         let opp_close = ctx
             .snaps
@@ -288,11 +289,8 @@ fn ball_winnable(ctx: &ElizaCtx, me: &PlayerSnap, possession_player: Option<Enti
 /// Run to the earliest reachable point on the ball's predicted path
 /// (approximates `AI_GetToBallMovement`).
 fn to_ball_movement(me: &PlayerSnap, stats: &PlayerStats, ball: &Ball) -> (Vec2, f32) {
-    let (intercept, _) = crate::simulation::player_movement::find_interception(
-        me.pos,
-        stats.speed,
-        &ball.predictions,
-    );
+    let (intercept, _) =
+        crate::player_movement::find_interception(me.pos, stats.speed, &ball.predictions);
     ((intercept - me.pos).normalize_or_zero(), stats.speed)
 }
 

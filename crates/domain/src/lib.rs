@@ -1,5 +1,11 @@
+//! Domain: the vocabulary of the simulated game.
+//!
+//! Types, units, rules, facts, intents and configuration. Everything here is
+//! data: no system, no plugin and no engine subsystem beyond ECS and maths.
+
 pub mod ball;
 pub mod match_state;
+pub mod math;
 pub mod player;
 pub mod spatial;
 

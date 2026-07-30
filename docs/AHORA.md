@@ -15,22 +15,27 @@ y renderizada, con entidades autoritativas separadas de sus representaciones.
 - Port reclasificado como referencia.
 - CodeGraph evaluado; instalación pendiente de un piloto A/B autorizado.
 - Estado espacial de dominio: `Position` (metros, Z-up), `Facing` y `Velocity`
-  en `data/spatial.rs`. `Transform` ya no es verdad en ninguna parte.
-- Setup autoritativo del partido en `simulation/match_setup.rs`: pelota y dos
+  en `crates/domain/src/spatial.rs`. `Transform` ya no es verdad en ninguna parte.
+- Setup autoritativo del partido en `crates/simulation/src/match_setup.rs`: pelota y dos
   onces sin meshes, materiales ni `Visibility`.
-- Presentación como consumidor: `presentation/visuals.rs` crea una entidad
+- Presentación como consumidor: `crates/presentation/src/visuals.rs` crea una entidad
   desechable por cuerpo con `VisualOf`, e interpola entre las dos últimas
   posiciones del tick fijo. Cámara y luces separadas.
-- Tests headless sin assets, y `simulation_runs_without_render_assets` deja la
-  ley 1 como test ejecutable.
+- Tests headless sin assets.
+- Fronteras como crates: `crates/domain`, `crates/simulation`,
+  `crates/presentation` y el paquete raíz como capa app. Domain y simulation no
+  dependen de `bevy` sino de sus subcrates, así que la ley 1 la impone Cargo: el
+  kernel no puede nombrar un `Mesh`. Presentation no depende de simulation.
+- `tests/layer_boundaries.rs`: la misma situación headless y con primitivas da
+  posiciones idénticas durante 600 ticks, y cada cuerpo tiene exactamente una
+  representación.
 
 ## Siguiente corte
 
-1. Crear fronteras `domain`, `simulation`, `presentation`, `app` como crates del
-   workspace, para que Cargo impida dependencias inversas.
-2. Crear `ScenarioRunner` para la misma situación headless/renderizada.
-3. Definir esquema de escenarios y portar primero gol/fuera/reanudación.
-4. Overlays diagnósticos sobre las primitivas: predicción de la pelota,
+1. Crear `ScenarioRunner` en la capa app: hoy `simulation_only_app` está
+   duplicado entre `tests/layer_boundaries.rs` y los tests del kernel.
+2. Definir esquema de escenarios y portar primero gol/fuera/reanudación.
+3. Overlays diagnósticos sobre las primitivas: predicción de la pelota,
    designación de posesión, línea de offside.
 
 ## Deuda observada
@@ -41,9 +46,9 @@ y renderizada, con entidades autoritativas separadas de sus representaciones.
 - `SimulationSet` refleja el original, no el pipeline de `ARCHITECTURE.md`.
 - `eliza`, `team_ai`, `mind_set` y comentarios "port of" dominan APIs.
 - Árbitro parcial.
-- `cargo clippy -- -D warnings` falla con 19 lints heredados del port
-  (`collapsible_if`, `needless_range_loop`, `too_many_arguments`); ninguno fue
-  introducido por el corte de capas.
+- `cargo clippy -- -D warnings` falla con 19 lints heredados del port, todos en
+  `crates/simulation` (`collapsible_if`, `needless_range_loop`,
+  `too_many_arguments`); ninguno fue introducido por los cortes de capas.
 - `PLAYER_HEIGHT` y el radio del cuerpo son constantes, no datos por jugador.
 
 ## Restricciones

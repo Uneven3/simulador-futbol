@@ -1,0 +1,21 @@
+# Presentation: visuals, camera, animation, UI, audio and overlays.
+#
+# This is the only layer allowed to see the full engine. It depends on the
+# domain to read authoritative state, and NOT on the simulation: it consumes
+# state and facts, never systems or rules. The arrow only ever points this way,
+# so deleting this crate leaves a complete, playable-by-machine match.
+[package]
+name = "gameplayfootball_presentation"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+name = "football_presentation"
+
+[dependencies]
+football_domain = { package = "gameplayfootball_domain", path = "../domain" }
+
+bevy = { workspace = true }

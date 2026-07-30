@@ -1,4 +1,5 @@
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
 
 pub mod ball_collisions;
 pub mod ball_physics;
@@ -47,17 +48,19 @@ impl Plugin for SimulationOrderPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{Ball, BallTouched, MatchState, PitchConfig, Position, SetPiece};
-    use bevy::time::TimeUpdateStrategy;
+    use bevy_app::TaskPoolPlugin;
+    use bevy_math::prelude::*;
+    use bevy_time::prelude::*;
+    use bevy_time::{TimePlugin, TimeUpdateStrategy};
+    use football_domain::{Ball, BallTouched, MatchState, PitchConfig, Position, SetPiece};
     use std::time::Duration;
 
-    /// The whole match, with no renderer and no assets: this is the shape every
-    /// scenario runs in (architecture law 1). Adding `MinimalPlugins` only is
-    /// deliberate — if any simulation system ever needs `Mesh`,
-    /// `StandardMaterial` or an `AssetServer`, these tests must fail.
+    /// A whole match with nothing but a task pool and a clock: this is the shape
+    /// every scenario runs in. There is no renderer to leave out — this crate
+    /// cannot depend on one (architecture law 1).
     fn build_headless_app() -> App {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
+        app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
         app.insert_resource(Time::<Fixed>::from_hz(100.0));
         app.insert_resource(MatchState::default());
         app.insert_resource(PitchConfig::default());
@@ -104,7 +107,9 @@ mod tests {
             let (xm, _) = to_cell(0.0, 0.0);
             row[xm] = ':';
         }
-        let mut player_query = app.world_mut().query::<(&Position, &crate::data::Player)>();
+        let mut player_query = app
+            .world_mut()
+            .query::<(&Position, &football_domain::Player)>();
         for (position, p) in player_query.iter(app.world()) {
             let (cx, cy) = to_cell(position.0.x, position.0.y);
             grid[cy][cx] = if p.team_index == 0 { 'o' } else { 'x' };
@@ -120,49 +125,26 @@ mod tests {
         }
     }
 
-    /// Architecture law 1, as an executable check: the authoritative simulation
-    /// must run without registering render assets, and no authoritative body may
-    /// carry a visual component. The previous port failed both — the player
-    /// spawner built meshes and materials, and these tests had to register
-    /// `Assets<Mesh>` to boot at all.
+    /// The kernel spawns and runs a full match on its own. Whether it stays free
+    /// of render assets is no longer a test here — this crate cannot name a
+    /// `Mesh`; see `tests/layer_boundaries.rs` in the app for the visual side.
     #[test]
-    fn simulation_runs_without_render_assets() {
+    fn kernel_runs_a_match_on_its_own() {
         let mut app = build_headless_app();
         for _ in 0..300 {
             app.update();
         }
 
-        assert!(
-            app.world().get_resource::<Assets<Mesh>>().is_none(),
-            "the simulation registered Assets<Mesh>: something in the kernel builds geometry"
-        );
-        assert!(
-            app.world()
-                .get_resource::<Assets<StandardMaterial>>()
-                .is_none(),
-            "the simulation registered Assets<StandardMaterial>"
-        );
-        assert!(
-            app.world().get_resource::<AssetServer>().is_none(),
-            "the simulation pulled in an AssetServer: it depends on asset paths"
-        );
-
-        let mut visual_query = app.world_mut().query::<&Mesh3d>();
-        assert_eq!(
-            visual_query.iter(app.world()).count(),
-            0,
-            "an authoritative body carries a mesh: visuals must live on separate entities"
-        );
-
-        // and the bodies the match needs do exist: one ball, two elevens
         let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
         assert!(
             ball_query.single(app.world()).is_ok(),
             "no ball on the pitch"
         );
-        let mut player_query =
-            app.world_mut()
-                .query::<(&crate::data::Player, &Position, &crate::data::Facing)>();
+        let mut player_query = app.world_mut().query::<(
+            &football_domain::Player,
+            &Position,
+            &football_domain::Facing,
+        )>();
         assert_eq!(
             player_query.iter(app.world()).count(),
             22,
@@ -382,7 +364,7 @@ mod tests {
             let mut crowders = 0;
             let mut player_query = app
                 .world_mut()
-                .query_filtered::<&Position, With<crate::data::Player>>();
+                .query_filtered::<&Position, With<football_domain::Player>>();
             for player_position in player_query.iter(app.world()) {
                 let d = (player_position.0 - pos).truncate().length();
                 if d < 8.0 {
@@ -398,7 +380,7 @@ mod tests {
             if tick > 500 {
                 let mut position_query = app
                     .world_mut()
-                    .query_filtered::<&Position, With<crate::data::Player>>();
+                    .query_filtered::<&Position, With<football_domain::Player>>();
                 let positions: Vec<Vec3> = position_query
                     .iter(app.world())
                     .map(|position| position.0)

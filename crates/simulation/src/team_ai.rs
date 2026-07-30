@@ -13,14 +13,17 @@
 //! - `ApplyTeamPressure` is not triggered (its trigger is commented out in the
 //!   original as well).
 
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_log::debug;
+use bevy_math::prelude::*;
+use bevy_time::prelude::*;
 use std::collections::VecDeque;
 
-use crate::data::{
-    Ball, MatchState, Player, PlayerRole, Position, PossessionDesignation, SetPiece, Velocity,
-};
-use crate::math::{
+use football_domain::math::{
     curve, line_distance_to_point_2d, normalized_clamp, normalized_or_2d, rotated_2d, what_side_2d,
+};
+use football_domain::{
+    Ball, MatchState, Player, PlayerRole, Position, PossessionDesignation, SetPiece, Velocity,
 };
 
 // ---------------------------------------------------------------------------
