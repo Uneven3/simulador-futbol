@@ -6,11 +6,11 @@
 # so deleting this crate leaves a complete, playable-by-machine match.
 [package]
 name = "gameplayfootball_presentation"
-edition.workspace = true
-license.workspace = true
-publish.workspace = true
-rust-version.workspace = true
-version.workspace = true
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+rust-version = "1.97"
+version = "0.1.0"
 
 [lib]
 name = "football_presentation"
@@ -18,4 +18,4 @@ name = "football_presentation"
 [dependencies]
 football_domain = { package = "gameplayfootball_domain", path = "../domain" }
 
-bevy = { workspace = true }
+bevy = { version = "0.19", features = ["android-native-activity", "debug", "wav"] }

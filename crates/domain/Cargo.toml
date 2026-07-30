@@ -5,11 +5,11 @@
 # a mesh or a material (architecture law 3).
 [package]
 name = "gameplayfootball_domain"
-edition.workspace = true
-license.workspace = true
-publish.workspace = true
-rust-version.workspace = true
-version.workspace = true
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+rust-version = "1.97"
+version = "0.1.0"
 
 # Short import path, as required by the workspace naming rule: the package is
 # prefixed with the project slug, the library keeps the layer's name.

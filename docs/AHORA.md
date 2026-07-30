@@ -1,13 +1,5 @@
 # Ahora
 
-## Lo primero de la próxima sesión
-
-**Crear el repositorio en GitHub** (acordado con el usuario el 2026-07-30). El
-proyecto vive solo en local: nueve commits sin remoto. Todo lo escrito en
-`docs/` está pensado para que alguien lo retome, y eso hoy no se puede.
-
-Después de eso, el objetivo activo.
-
 ## Objetivo activo
 
 **MVP 1.75 — Calibración y propiedades.** El trabajo de fondo al retomar.
@@ -96,6 +88,15 @@ milisegundos, lo que destapó que el reloj anterior perdía 1 ms en el 1 % de lo
 ticks y que el modelo estaba apoyado en ese ruido.
 
 ## Hecho
+
+### Publicación (2026-07-30)
+
+El proyecto dejó de vivir solo en local: `github.com/Uneven3/simulador-futbol`,
+con `README.md`, licencia GPLv3 y los cuatro manifiestos sin herencia del
+workspace `uneven` (versiones y `bevy` explícitos), para que un clon compile
+sin el workspace compartido. Lo único que le falta a un clon es declararse
+workspace de sí mismo, y el README dice cómo; ese bloque no se commitea porque
+Cargo rechaza que un miembro sea raíz de otro workspace.
 
 ### MVP 0 — Constitución
 
