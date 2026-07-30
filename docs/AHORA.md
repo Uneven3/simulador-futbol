@@ -37,14 +37,44 @@ Fuera quedaron, a propósito: las velocidades y los pesos del campo de fuerzas
 (`team_tactics.rs`), que son el modelo motor de MVP 3, y las constantes de
 física del balón, que se calibran contra vuelo y no contra estadística.
 
-### 2. La envolvente, como herramienta
+### 2. La envolvente, como herramienta ✅
 
-`seeded_envelope` es hoy un test `#[ignore]` con diez semillas y cuatro
-métricas. Convertirlo en algo que corra N partidos y reporte **distribuciones**:
-histograma de goles por partido, marcadores, tiros, tiros a puerta, posesión.
+Hecho el 2026-07-30. `crates/simulation/src/envelope.rs`: `EnvelopeSpec` dice
+qué situación y bajo cuántas semillas, `EnvelopeReport::run` la corre y
+`Distribution` cuenta lo que una media esconde. Dos usos previstos:
+`comparing_builds()` (diez semillas de diez minutos, barato, para comparar dos
+builds) y `against_the_real_game(n)` (partidos completos, lo único comparable
+con la distribución real).
 
-El histograma es lo importante: la referencia real son ~1,35 goles por equipo,
-casi una Poisson, y comparar histogramas dice mucho más que comparar medias.
+`render_against_poisson` dibuja el histograma observado junto al de una Poisson
+de la media real, porque dos modelos con la misma media y distinta forma solo se
+distinguen ahí. Sobre ventanas de menos de 45 minutos el informe **no** dibuja
+histograma y dice por qué: escalar diez minutos por nueve conserva la media y
+destruye la forma.
+
+El ledger tuvo que aprender a contar lo que no contaba: tiros, tiros a puerta,
+pases, pases perdidos y tiempo de posesión por equipo. "A puerta" se mide sobre
+la trayectoria que la física acaba de calcular para ese disparo — el diagnóstico
+corre después de `BallPhysics`, así que la predicción ya es la del tiro — y
+significa "iba dentro si nadie la toca", que es una propiedad del golpeo y no de
+lo que hizo la defensa.
+
+**Lo que la primera medición destapó** (diez semillas de diez minutos, tuning
+`PortBaseline`):
+
+| Métrica | Modelo | Real |
+|---|---|---|
+| goles/90 min | 51,3 (27-81) | ~2,7 |
+| tiros/90 min | 68 | ~25 |
+| tiros a puerta | **100 %** | ~33 % |
+| pases/90 min | 1732 | ~800-900 |
+| pases completados | **11 %** | ~80 % |
+
+Los dos números en negrita son nuevos y valen más que el ritmo de gol para
+saber por dónde empezar a girar. El 100 % dice que el tirador no falla nunca:
+apunta a un punto entre los palos con una dispersión de ±1 m, así que lo único
+que puede evitar el gol es que alguien se interponga. El 11 % dice que el
+partido es un intercambio de pérdidas, no una posesión.
 
 ### 2.5. Partir `player_kick_system` antes de girar nada
 
@@ -60,8 +90,10 @@ envolvente: diez semillas idénticas o el refactor no fue fiel.
 
 ### 3. Calibrar contra la distribución, no contra la media
 
-Sospechosos por orden: el portero no defiende de verdad, el umbral de tiro deja
-disparar desde cualquier sitio, y no hay faltas que interrumpan.
+Sospechosos, ya con medida detrás: el tirador nunca falla (100 % a puerta), el
+umbral de tiro deja disparar desde cualquier sitio, el portero no defiende de
+verdad, y no hay faltas que interrumpan. El 11 % de pases completados apunta a
+que la disputa del balón está rota antes que la puntería.
 
 Registrar antes/después de cada giro (ley de `VALIDATION.md`: separar
 calibración de validación, versionar parámetros, no mejorar una métrica

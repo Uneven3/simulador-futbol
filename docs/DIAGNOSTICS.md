@@ -42,7 +42,8 @@ entre corridas.
 | `MatchFact`, `DiagnosticChannel(s)` | `football_domain` (`diagnostics::facts`) | Un hecho es vocabulario; el kernel lo reporta y presentation lo lista |
 | `MatchSnapshot`, `Field`, `SectionId` | `football_domain` (`diagnostics::snapshot`) | Si viviera en simulation, el HUD no podría leerlo sin romper la ley 1 |
 | `MatchTelemetry` — stream por tick | `football_simulation` | Es telemetría del kernel; los tests headless la necesitan |
-| `MatchLedger` — lo que los hechos suman | `football_simulation` | Deriva turnovers y rachas correlacionando el stream |
+| `MatchLedger` — lo que los hechos suman | `football_simulation` | Deriva turnovers, rachas, tiros, pases y posesión correlacionando el stream |
+| `EnvelopeReport` — N partidos como distribución | `football_simulation` (`envelope`) | Una corrida es una trayectoria; lo comparable es la envolvente |
 | `collect_snapshot` — llenar el presente | `football_simulation` | Lee estado autoritativo |
 | Sink de consola | `football_simulation` | Debe funcionar sin ventana |
 | Sink de HUD y overlays | `football_presentation` | Dibujo |
@@ -54,7 +55,10 @@ entre corridas.
 
 1. **Accumulate** — el ledger absorbe los hechos del tick y añade los que se
    derivan de ellos (un turnover se deduce correlacionando la suelta con quién
-   acabó teniendo la pelota).
+   acabó teniendo la pelota). Aquí también se clasifica un tiro como *a
+   puerta*: este set corre después de `BallPhysics`, así que la predicción del
+   balón ya es la trayectoria de ese disparo, y basta leerla. Medirlo antes
+   obligaría a recalcular la física; medirlo después, a adivinar qué la desvió.
 2. **Collect** — el presente se vuelca en el snapshot.
 3. **Report** — la consola escribe lo de los canales encendidos.
 4. **Close** — se cierra el tick. Nada puede leer el stream después.

@@ -38,8 +38,16 @@ Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
 - `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`:
   diez semillas de diez minutos, reportadas como tasas. **Es la comparación
   válida entre dos builds**; una sola corrida es una trayectoria, no una
-  métrica (`docs/REVISION_2026-07-30-reloj.md`). Base actual: 51 goles/90 min
-  (rango 27-81) y 19,9 cambios de posesión/min (rango 18,2-22,1).
+  métrica (`docs/REVISION_2026-07-30-reloj.md`). Base actual: 51,3 goles/90 min
+  (rango 27-81), 68 tiros/90 min con el 100 % a puerta, 1732 pases/90 min con
+  el 11 % completados, 19,9 cambios de posesión/min (rango 18,2-22,1).
+- `cargo test --release -p gameplayfootball_simulation goal_distribution -- --ignored --nocapture`:
+  veinte partidos completos con el histograma de goles contra la Poisson real.
+  Cuesta unos dos minutos por partido: es la medición que decide si MVP 1.75
+  terminó, no una comprobación de rutina.
+
+La herramienta detrás de ambos es `crates/simulation/src/envelope.rs`
+(`EnvelopeSpec`, `EnvelopeReport`, `Distribution`); los tests solo la imprimen.
 - `cargo test --release -p gameplayfootball_simulation long_match_stats -- --ignored --nocapture`:
   una corrida con el forense completo (pérdidas por tipo de suelta, campo en
   ASCII). Sirve para mirar en detalle, no para decir si algo se rompió.

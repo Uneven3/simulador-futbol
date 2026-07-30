@@ -4,6 +4,7 @@ use bevy_ecs::prelude::*;
 pub mod ball_collisions;
 pub mod ball_physics;
 pub mod diagnostics;
+pub mod envelope;
 pub mod match_clock;
 pub mod match_setup;
 pub mod player_decisions;
@@ -278,33 +279,27 @@ mod tests {
     #[test]
     #[ignore]
     fn seeded_envelope() {
-        use crate::diagnostics::MatchLedger;
+        use crate::envelope::{EnvelopeReport, EnvelopeSpec};
 
-        for seed in [0xC0FFEE, 1, 7, 42, 1234, 99, 2718, 31415, 5, 777] {
-            let scenario = Scenario {
-                seed,
-                ..Scenario::kick_off()
-            };
-            let mut app = App::new();
-            app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-            app.add_plugins(MatchKernelPlugin::new(scenario));
-            app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
-            for _ in 0..60_000 {
-                app.update();
-            }
+        let report = EnvelopeReport::run(&EnvelopeSpec::comparing_builds());
+        println!("{}", report.render());
+    }
 
-            let elapsed = app.world().resource::<MatchState>().period_elapsed;
-            let state = app.world().resource::<MatchState>();
-            let goals = state.home_score + state.away_score;
-            let ledger = app.world().resource::<MatchLedger>();
-            println!(
-                "seed {seed:#x}: {goals} goals ({:.0}/90min)  {:.1} changes/min  longest {:.1}s  {} touchers",
-                goals as f32 * 9.0,
-                ledger.changes_per_minute(elapsed),
-                ledger.longest_spell.as_secs_f32(),
-                ledger.distinct_touchers(),
-            );
-        }
+    /// Goles por partido contra la distribución real, sobre partidos completos.
+    ///
+    /// Es la medición que decide si MVP 1.75 terminó: la referencia son ~2,7
+    /// goles por partido casi como una Poisson, y acertar la media con otra
+    /// forma no es acertar. Cuesta un par de minutos por partido, así que se
+    /// corre al calibrar, no para comparar builds.
+    ///
+    /// `cargo test --release -p gameplayfootball_simulation goal_distribution -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn goal_distribution() {
+        use crate::envelope::{EnvelopeReport, EnvelopeSpec};
+
+        let report = EnvelopeReport::run(&EnvelopeSpec::against_the_real_game(20));
+        println!("{}", report.render());
     }
 
     /// Headless integration test: runs the full simulation (players, kicks,
