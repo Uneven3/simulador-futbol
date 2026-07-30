@@ -8,7 +8,7 @@ pub mod scenarios;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use football_domain::scenario::{PlayState, TICK};
-use football_presentation::PrimitiveVisualsPlugin;
+use football_presentation::{DiagnosticOverlaysPlugin, PrimitiveVisualsPlugin};
 use football_simulation::MatchKernelPlugin;
 
 pub use football_domain::{MatchState, Scenario, ScenarioOutcome, SetPiece};
@@ -47,7 +47,9 @@ impl ScenarioRunner {
         runner.app.add_plugins(AssetPlugin::default());
         runner.app.init_asset::<Mesh>();
         runner.app.init_asset::<StandardMaterial>();
-        runner.app.add_plugins(PrimitiveVisualsPlugin);
+        runner
+            .app
+            .add_plugins((PrimitiveVisualsPlugin, DiagnosticOverlaysPlugin));
         runner
     }
 

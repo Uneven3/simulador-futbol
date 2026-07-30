@@ -195,6 +195,8 @@ fn referee_offside_system(
         if match_state.set_piece != SetPiece::None {
             records.players.clear();
             records.team = None;
+            records.judged_line_x = None;
+            records.judged_against_team = None;
             continue;
         }
 
@@ -254,6 +256,8 @@ fn referee_offside_system(
             offside_line = 0.01 * -def_side;
         }
         offside_line = offside_line.clamp(-pitch_config.half_width, pitch_config.half_width);
+        records.judged_line_x = Some(offside_line);
+        records.judged_against_team = Some(defending_team);
 
         let att_dir = -def_side;
         for (entity, position, player) in player_query.iter() {

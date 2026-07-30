@@ -168,6 +168,35 @@ mod tests {
         );
     }
 
+    /// The referee publishes the line it judged against, so diagnostics can show
+    /// the decision instead of recomputing the rule.
+    #[test]
+    fn the_referee_publishes_the_offside_line_it_judged() {
+        use football_domain::OffsideRecords;
+
+        let mut app = build_headless_app();
+        let mut judged_line = None;
+        for _ in 0..3000 {
+            app.update();
+            let records = app.world().resource::<OffsideRecords>();
+            if let Some(line_x) = records.judged_line_x {
+                judged_line = Some((line_x, records.judged_against_team));
+                break;
+            }
+        }
+
+        let (line_x, defending_team) =
+            judged_line.expect("no touch in 30 s produced an offside judgement");
+        assert!(
+            line_x.abs() <= 55.0,
+            "the judged line must lie on the pitch, got {line_x}"
+        );
+        assert!(
+            defending_team.is_some(),
+            "a judged line without the team it was judged against says nothing"
+        );
+    }
+
     /// Aggregate-statistics run (10 simulated minutes). The simulation is
     /// deterministic but chaotic, so gameplay must be judged on aggregates,
     /// never on a single minute. Run explicitly with:

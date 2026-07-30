@@ -1,0 +1,317 @@
+//! Diagnostic overlays: the primitives as a scientific instrument.
+//!
+//! Each overlay draws a value the simulation already published — the ball's own
+//! prediction buffer, the referee's judged offside line, the team AI's
+//! designated player. None of them recomputes a rule: a second implementation
+//! of a rule in this layer would diverge silently and show a decision that never
+//! happened.
+//!
+//! Overlays read authoritative [`Position`] rather than the interpolated
+//! transforms of the visuals, because an instrument should show the truth at the
+//! current tick, not a frame-smoothed version of it.
+
+use bevy::prelude::*;
+use football_domain::{
+    Ball, MatchState, OffsideRecords, PitchConfig, Player, Position, PossessionDesignation,
+    SetPiece, Velocity,
+};
+
+pub struct DiagnosticOverlaysPlugin;
+
+impl Plugin for DiagnosticOverlaysPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<OverlaySettings>().add_systems(
+            Update,
+            (
+                // Both guards matter for a headless run, which has neither a
+                // keyboard nor a renderer: without them the overlays stand down
+                // instead of taking the app with them.
+                toggle_overlays.run_if(resource_exists::<ButtonInput<KeyCode>>),
+                (
+                    draw_velocities,
+                    draw_ball_future,
+                    draw_possession,
+                    draw_offside_judgement,
+                    draw_restart_spot,
+                )
+                    .run_if(resource_exists::<GizmoConfigStore>),
+            )
+                .chain(),
+        );
+    }
+}
+
+/// Which overlays are on. Every one can be toggled, so the same run can be read
+/// as truth, as intent, or as a refereeing decision without restarting it.
+#[derive(Resource, Debug, Clone)]
+pub struct OverlaySettings {
+    pub velocities: bool,
+    pub ball_future: bool,
+    pub possession: bool,
+    pub offside: bool,
+    pub restart_spot: bool,
+}
+
+impl Default for OverlaySettings {
+    fn default() -> Self {
+        Self {
+            velocities: true,
+            ball_future: true,
+            possession: true,
+            offside: true,
+            restart_spot: true,
+        }
+    }
+}
+
+const HOME_COLOUR: Srgba = Srgba::new(1.0, 0.35, 0.4, 1.0);
+const AWAY_COLOUR: Srgba = Srgba::new(0.4, 0.6, 1.0, 1.0);
+const BALL_FUTURE_COLOUR: Srgba = Srgba::new(1.0, 0.95, 0.3, 1.0);
+const REFEREE_COLOUR: Srgba = Srgba::new(1.0, 1.0, 1.0, 1.0);
+const OFFSIDE_COLOUR: Srgba = Srgba::new(1.0, 0.5, 0.0, 1.0);
+
+fn team_colour(team_index: u32) -> Srgba {
+    if team_index == 0 {
+        HOME_COLOUR
+    } else {
+        AWAY_COLOUR
+    }
+}
+
+fn toggle_overlays(keys: Res<ButtonInput<KeyCode>>, mut settings: ResMut<OverlaySettings>) {
+    if keys.just_pressed(KeyCode::F1) {
+        settings.velocities = !settings.velocities;
+    }
+    if keys.just_pressed(KeyCode::F2) {
+        settings.ball_future = !settings.ball_future;
+    }
+    if keys.just_pressed(KeyCode::F3) {
+        settings.possession = !settings.possession;
+    }
+    if keys.just_pressed(KeyCode::F4) {
+        settings.offside = !settings.offside;
+    }
+    if keys.just_pressed(KeyCode::F5) {
+        settings.restart_spot = !settings.restart_spot;
+    }
+}
+
+/// How far ahead a velocity arrow reaches. Half a second is long enough to read
+/// direction and pace at a glance, short enough not to cross the pitch.
+pub const VELOCITY_LEAD: f32 = 0.5;
+
+/// Where a body will be in `VELOCITY_LEAD` seconds if nothing changes. The arrow
+/// is drawn at chest height so it reads over the body, not through the grass.
+pub fn velocity_arrow(position: Position, velocity: Velocity, body_height: f32) -> (Vec3, Vec3) {
+    let shoulder = Vec3::new(0.0, 0.0, body_height * 0.55);
+    let start = position.0 + shoulder;
+    (start, start + velocity.0 * VELOCITY_LEAD)
+}
+
+fn draw_velocities(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    players: Query<(&Position, &Velocity, &Player)>,
+) {
+    if !settings.velocities {
+        return;
+    }
+    for (position, velocity, player) in players.iter() {
+        if velocity.0.length_squared() < 0.01 {
+            continue;
+        }
+        let (start, end) = velocity_arrow(*position, *velocity, player.height);
+        gizmos.arrow(start, end, team_colour(player.team_index));
+    }
+}
+
+/// The ball's own prediction buffer, thinned for legibility.
+///
+/// This is not an estimate drawn for the viewer: it is the very buffer the AI
+/// reads, and in this model the prediction IS the physics, so the line shows
+/// where the ball will actually be.
+pub fn ball_future_polyline(ball: &Ball, every_n_steps: usize) -> Vec<Vec3> {
+    ball.predictions
+        .iter()
+        .step_by(every_n_steps.max(1))
+        .copied()
+        .collect()
+}
+
+fn draw_ball_future(mut gizmos: Gizmos, settings: Res<OverlaySettings>, balls: Query<&Ball>) {
+    if !settings.ball_future {
+        return;
+    }
+    for ball in balls.iter() {
+        // one point per 50 ms of the 3 s horizon
+        gizmos.linestrip(ball_future_polyline(ball, 5), BALL_FUTURE_COLOUR);
+        // and a ring where the ball will be in one second
+        if let Some(in_one_second) = ball.predictions.get(100) {
+            gizmos
+                .circle(
+                    Isometry3d::from_translation(*in_one_second),
+                    0.3,
+                    BALL_FUTURE_COLOUR,
+                )
+                .resolution(16);
+        }
+    }
+}
+
+/// Radius of the ring marking a player the team AI has designated to go for the
+/// ball; the player actually holding it gets the wider one.
+pub const DESIGNATED_RING: f32 = 0.8;
+pub const POSSESSOR_RING: f32 = 1.1;
+
+fn draw_possession(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    designation: Res<PossessionDesignation>,
+    match_state: Res<MatchState>,
+    players: Query<(Entity, &Position, &Player)>,
+) {
+    if !settings.possession {
+        return;
+    }
+
+    for (entity, position, player) in players.iter() {
+        let ring_at_feet = Isometry3d::from_translation(position.0 + Vec3::Z * 0.02);
+        if designation.designated[player.team_index as usize] == Some(entity) {
+            gizmos
+                .circle(
+                    ring_at_feet,
+                    DESIGNATED_RING,
+                    team_colour(player.team_index),
+                )
+                .resolution(24);
+        }
+        if match_state.possession_player == Some(entity) {
+            gizmos
+                .circle(ring_at_feet, POSSESSOR_RING, REFEREE_COLOUR)
+                .resolution(24);
+        }
+    }
+
+    // A pass in flight is the one committed intention this model already has:
+    // draw who it was meant for.
+    if let Some(target) = match_state.pass_target
+        && let Ok((_, target_position, target_player)) = players.get(target)
+    {
+        let aim = match_state.last_pass_aim;
+        gizmos.line(
+            Vec3::new(aim.x, aim.y, 0.05),
+            target_position.0 + Vec3::Z * 0.05,
+            team_colour(target_player.team_index),
+        );
+    }
+}
+
+/// The offside line as a segment across the pitch, at the x the referee judged.
+pub fn offside_line_segment(line_x: f32, pitch: &PitchConfig) -> (Vec3, Vec3) {
+    (
+        Vec3::new(line_x, -pitch.half_height, 0.05),
+        Vec3::new(line_x, pitch.half_height, 0.05),
+    )
+}
+
+fn draw_offside_judgement(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    records: Res<OffsideRecords>,
+    pitch: Res<PitchConfig>,
+) {
+    if !settings.offside {
+        return;
+    }
+
+    if let Some(line_x) = records.judged_line_x {
+        let (start, end) = offside_line_segment(line_x, &pitch);
+        gizmos.line(start, end, OFFSIDE_COLOUR);
+    }
+
+    // Where each recorded player stood at the moment of the touch — the position
+    // the referee will rule on, not where that player is now.
+    for (_, recorded_position) in &records.players {
+        let at_the_touch = Vec3::new(recorded_position.x, recorded_position.y, 0.05);
+        gizmos
+            .circle(
+                Isometry3d::from_translation(at_the_touch),
+                0.5,
+                OFFSIDE_COLOUR,
+            )
+            .resolution(12);
+    }
+}
+
+fn draw_restart_spot(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    match_state: Res<MatchState>,
+) {
+    if !settings.restart_spot || match_state.set_piece == SetPiece::None {
+        return;
+    }
+    let spot = match_state.restart_pos + Vec3::Z * 0.05;
+    gizmos
+        .circle(Isometry3d::from_translation(spot), 0.6, REFEREE_COLOUR)
+        .resolution(20);
+    gizmos.line(spot, spot + Vec3::Z * 2.0, REFEREE_COLOUR);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use football_domain::BALL_RADIUS;
+
+    #[test]
+    fn a_velocity_arrow_leads_the_body_by_half_a_second() {
+        let position = Position(Vec3::new(10.0, -5.0, 0.0));
+        let velocity = Velocity(Vec3::new(8.0, 0.0, 0.0));
+        let (start, end) = velocity_arrow(position, velocity, 1.8);
+
+        assert_eq!(start.truncate(), position.on_pitch());
+        assert!(start.z > 0.9, "the arrow must sit at chest height");
+        assert_eq!(end.x - start.x, 4.0, "8 m/s for half a second is 4 m");
+    }
+
+    #[test]
+    fn a_still_body_gets_an_arrow_of_no_length() {
+        let position = Position(Vec3::ZERO);
+        let (start, end) = velocity_arrow(position, Velocity(Vec3::ZERO), 1.8);
+        assert_eq!(start, end);
+    }
+
+    #[test]
+    fn the_ball_future_is_the_ball_own_prediction() {
+        let ball = Ball::placed_at(Vec3::new(0.0, 0.0, BALL_RADIUS), Vec3::new(10.0, 0.0, 0.0));
+        let polyline = ball_future_polyline(&ball, 5);
+
+        assert_eq!(polyline.len(), ball.predictions.len() / 5);
+        assert_eq!(
+            polyline[0], ball.predictions[0],
+            "the line must start where the ball is"
+        );
+        assert_eq!(polyline[1], ball.predictions[5], "one point per 5 steps");
+    }
+
+    #[test]
+    fn thinning_the_ball_future_by_zero_does_not_divide_by_zero() {
+        let ball = Ball::placed_at(Vec3::ZERO, Vec3::ZERO);
+        assert_eq!(
+            ball_future_polyline(&ball, 0).len(),
+            ball.predictions.len(),
+            "a step of zero must fall back to every point"
+        );
+    }
+
+    #[test]
+    fn the_offside_line_spans_the_pitch_at_the_judged_x() {
+        let pitch = PitchConfig::default();
+        let (start, end) = offside_line_segment(12.5, &pitch);
+
+        assert_eq!(start.x, 12.5);
+        assert_eq!(end.x, 12.5);
+        assert_eq!(start.y, -pitch.half_height);
+        assert_eq!(end.y, pitch.half_height);
+    }
+}

@@ -38,11 +38,21 @@ y renderizada, con entidades autoritativas separadas de sus representaciones.
 - `ScenarioRunner` en `src/lib.rs` (capa app) con `headless` y
   `with_primitives`, y catálogo en `src/scenarios.rs`: gol, saque de banda,
   saque de meta, córner y minuto inicial. `tests/scenarios.rs` los corre.
+- Overlays diagnósticos en `crates/presentation/src/overlays.rs`, alternables
+  con F1-F5: velocidad, futuro físico de la pelota (su propio buffer de
+  predicción), designación de posesión y poseedor, pase en vuelo, línea de
+  offside juzgada y punto de reanudación. La geometría son funciones puras con
+  tests; los sistemas solo las pasan a `Gizmos`.
+- El árbitro publica la línea que juzgó (`OffsideRecords.judged_line_x`) para
+  que la presentación muestre la decisión en vez de recalcular la regla.
 
 ## Siguiente corte
 
-1. Overlays diagnósticos sobre las primitivas: predicción de la pelota,
-   designación de posesión, línea de offside.
+MVP 1 pide que reloj y fases sean inspeccionables, y es lo único que falta:
+
+1. Reloj de partido y fases: `MatchState.timer_ms` y `MatchState.phase` existen
+   pero ningún sistema los avanza (el partido corre siempre en `PreMatch`), y no
+   hay HUD que los muestre.
 2. Escenarios como archivo (RON) cuando exista un consumidor real: hoy son datos
    en Rust y no se añadió `serde` sin contrato que lo justifique.
 3. Colocación explícita de jugadores en el escenario (`PlayerSetup` solo tiene
@@ -61,6 +71,9 @@ y renderizada, con entidades autoritativas separadas de sus representaciones.
   `crates/simulation` (`collapsible_if`, `needless_range_loop`,
   `too_many_arguments`); ninguno fue introducido por los cortes de capas.
 - `PLAYER_HEIGHT` y el radio del cuerpo son constantes, no datos por jugador.
+- De la lista de overlays del norte faltan los que aún no tienen dato: campo
+  visual, observaciones y edad de memoria (MVP 4), y responsabilidades tácticas
+  más allá de la designación de posesión (MVP 5).
 
 ## Restricciones
 

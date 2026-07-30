@@ -103,6 +103,12 @@ pub struct BallTouched {
 pub struct OffsideRecords {
     pub team: Option<u32>,
     pub players: Vec<(Entity, Vec3)>,
+    /// The line the referee actually judged against, in metres along x, and the
+    /// team that was defending it. Published so diagnostics can show the
+    /// decision instead of recomputing the rule (which would make presentation
+    /// a second, silently diverging referee).
+    pub judged_line_x: Option<f32>,
+    pub judged_against_team: Option<u32>,
 }
 
 /// Original: each `Team` caches a designated possession player — the single
