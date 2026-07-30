@@ -2,27 +2,76 @@
 
 ## Objetivo activo
 
-**MVP 1.5 cerrado salvo un punto** (las allocations por tick). Los seis
-criterios de terminado se cumplen.
+**MVP 1.75 — Calibración y propiedades.** El trabajo empieza aquí al retomar.
 
-Antes de MVP 2 hay que decidir una cosa que MVP 1.5 destapó: **el modelo marca
-51 goles cada 90 minutos** (rango 27-81 sobre diez semillas) contra ~2,7 de un
-partido real. Está en `REVISION_2026-07-30-reloj.md`. Calibrarlo estaba
-previsto para MVP 3, pero un simulador que marca veinte veces de más no puede
-demostrar ninguna regla intermedia de forma convincente.
+MVP 1.5 destapó el problema: **el modelo marca 51 goles cada 90 minutos**
+(rango 27-81 sobre diez semillas) contra ~2,7 de un partido real
+(`REVISION_2026-07-30-reloj.md`). Calibrarlo estaba previsto para MVP 3, pero un
+simulador a un orden de magnitud de la única referencia externa trivial de
+conseguir no puede demostrar de forma convincente ninguna regla intermedia. Y
+no hay ni un test que lo note: los que existen validan reglas IFAB, no
+plausibilidad.
 
-Estado: **MVP 0 y MVP 1 cerrados** (`REVISION_2026-07-30.md`); MVP 1.5 en
-`CIERRE_MVP_1_5.md`, que lleva la cuenta de qué se hizo y por qué.
+Estado: **MVP 0, 1 y 1.5 cerrados** (`REVISION_2026-07-30.md`,
+`CIERRE_MVP_1_5.md`), salvo un punto de higiene abajo.
 
-## Lo que falta de MVP 1.5
+## MVP 1.75, en orden
 
-### 1. Allocations por tick (ley 14) — pendiente
+El instrumental está tomado de OpenFootManager; qué se toma, qué no y por qué
+está en `REFERENCIA_OPENFOOTMANAGER.md`. Su motor (cinco zonas, acciones por
+minuto) **no** es transferible; su aparato de validación sí.
 
-18 `collect()`/`vec!` por tick entre `player_decisions`, `team_tactics` y
-`player_movement` (eran 25; el resto se fue con la identidad). Los
-`Vec<PlayerReading>` se reconstruyen en cada sistema y en cada toque. La ley lo
-prohíbe explícitamente. No es urgente para el resultado, sí para el coste de un
-MVP 6 que corra muchas variantes de la misma situación.
+### 1. Las envolventes son dato, no literales
+
+Hoy las decisiones que fijan el resultado viven como números sueltos dentro de
+`player_decisions.rs`: el umbral de tiro, el `possession_amount > 0.99`, los
+24 m de amenaza, los cooldowns de toque y de robo. No se pueden barrer sin
+editar código, y nadie sabe cuáles son sin leerlo.
+
+Extraerlas a un `MatchTuning` versionado, como ya lo es `MatchRegulations`, con
+**un solo lugar** donde vive cada valor por defecto. Sin esto no hay nada que
+girar, y los tres pasos siguientes no se pueden hacer.
+
+### 2. La envolvente, como herramienta
+
+`seeded_envelope` es hoy un test `#[ignore]` con diez semillas y cuatro
+métricas. Convertirlo en algo que corra N partidos y reporte **distribuciones**:
+histograma de goles por partido, marcadores, tiros, tiros a puerta, posesión.
+
+El histograma es lo importante: la referencia real son ~1,35 goles por equipo,
+casi una Poisson, y comparar histogramas dice mucho más que comparar medias.
+
+### 3. Calibrar contra la distribución, no contra la media
+
+Sospechosos por orden: el portero no defiende de verdad, el umbral de tiro deja
+disparar desde cualquier sitio, y no hay faltas que interrumpan.
+
+Registrar antes/después de cada giro (ley de `VALIDATION.md`: separar
+calibración de validación, versionar parámetros, no mejorar una métrica
+ocultando regresiones).
+
+### 4. Tests de propiedad causal
+
+Los que faltan y son el norte del proyecto: afirmar **dirección de efecto sobre
+N corridas**, no valores exactos. Por ejemplo: subir la línea defensiva aumenta
+los fueras de juego; presionar alto sube las recuperaciones en campo rival; dos
+equipos iguales terminan parejos.
+
+Son inmunes al caos que nos mordió con el reloj: una propiedad afirmada sobre
+cien corridas sobrevive a una perturbación de 1 ms; un marcador 1-0 no.
+
+**Criterio de terminado:** el ritmo de gol dentro de lo defendible, el
+histograma parecido al real, y al menos tres propiedades tácticas afirmadas
+como test.
+
+## Lo que quedó pendiente de MVP 1.5
+
+**Allocations por tick (ley 14).** 18 `collect()`/`vec!` por tick entre
+`player_decisions`, `team_tactics` y `player_movement` (eran 25; el resto se fue
+con la identidad). Los `Vec<PlayerReading>` se reconstruyen en cada sistema y en
+cada toque. No es urgente para el resultado, sí para el coste de un MVP 6 que
+corra muchas variantes de la misma situación — y para MVP 1.75, que va a correr
+cientos de partidos por medición.
 
 ## Criterio de terminado de MVP 1.5
 

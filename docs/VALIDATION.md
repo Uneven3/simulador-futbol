@@ -14,6 +14,33 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 4. **Percepción:** reacción, visibilidad, distancia, memoria e incertidumbre.
 5. **Colectivo:** bloques, líneas, pitch control, coberturas y transiciones.
 6. **Partido:** posesiones, pérdidas, pases, tiros, goles y distribuciones.
+7. **Propiedades causales:** una decisión táctica produce el efecto esperado, en
+   dirección y no en valor.
+
+## Cómo se compara una corrida con otra
+
+Una corrida es una trayectoria, no una métrica. La simulación es determinista
+pero caótica: una perturbación de un milisegundo produce otro partido sin que
+el modelo haya cambiado. Medido: al arreglar un redondeo del reloj, el marcador
+pasó de 1-0 a 3-3 con la misma semilla (`REVISION_2026-07-30-reloj.md`).
+
+Por eso **nunca se compara una corrida**, se compara la envolvente sobre varias
+semillas, y a ser posible una distribución y no una media. `seeded_envelope`
+hace la versión mínima de esto.
+
+Y por eso las **propiedades causales** son la forma de test que resiste: "el
+equipo fuerte gana más veces que el débil sobre cien partidos" sigue siendo
+cierto tras cualquier refactor que no cambie el modelo. Un marcador exacto, no.
+
+## Referencias externas mínimas
+
+Antes de cualquier afirmación de plausibilidad:
+
+- **~2,7 goles por partido**, ~1,35 por equipo, distribuidos casi como una
+  Poisson. Es la referencia más barata que existe y el modelo está a un orden de
+  magnitud de ella (51 por 90 minutos, medido sobre diez semillas).
+- Las demás (tiros, posesión, pases completados) salen de los datasets de la
+  sección siguiente.
 
 ## Fuentes
 
@@ -49,6 +76,8 @@ hoy el catálogo son datos en Rust (`src/scenarios.rs`).
 
 ## Disciplina
 
+- los parámetros que fijan el resultado son **dato versionado**, no literales
+  dentro de la lógica, y cada valor por defecto vive en un solo sitio;
 - separar calibración y validación;
 - versionar parámetros/datasets;
 - registrar antes/después;

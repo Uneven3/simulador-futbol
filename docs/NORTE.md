@@ -68,6 +68,10 @@ entrega mediante MVP verticales.
 
 ## MVP
 
+Los `.5` y `.75` son trabajo de consolidación: no añaden capacidades, pagan lo
+que ya está construido. Se numeran así para no invalidar las referencias
+cruzadas a los MVP 2-7.
+
 ### MVP 0 — Constitución y ontología
 
 Documentos core, vocabulario, fronteras, catálogo IFAB y formato de escenarios.
@@ -79,6 +83,27 @@ Separar entidades autoritativas de visuales. Ejecutar la misma situación
 headless y con primitivas. Campo, balón, equipos, reloj, fases, gol/fuera y
 reanudaciones básicas deben ser inspeccionables.
 
+### MVP 1.75 — Calibración y propiedades
+
+Antes de añadir más reglas hay que hacer que las que ya existen produzcan
+números defendibles. El modelo marca 51 goles cada 90 minutos contra ~2,7
+reales (`REVISION_2026-07-30-reloj.md`), y no hay ningún test que lo note.
+
+Cuatro pasos, en orden:
+
+1. **Las envolventes son dato**, no literales dentro de la IA: un `MatchTuning`
+   versionado como lo es `MatchRegulations`. Sin esto no hay nada que girar.
+2. **La envolvente es una herramienta**, no un test ignorado: N partidos, con
+   histograma de goles por partido, marcadores, tiros y posesión.
+3. **Calibrar contra la distribución real**, no contra una media: ~1,35 goles
+   por equipo y partido, casi Poisson.
+4. **Tests de propiedad causal**: afirmar dirección de efecto sobre N corridas,
+   no valores exactos.
+
+Termina cuando el ritmo de gol está dentro de lo defendible, el histograma se
+parece al real, y existen al menos tres propiedades tácticas afirmadas como
+test. El instrumental está descrito en `REFERENCIA_OPENFOOTMANAGER.md`.
+
 ### MVP 2 — Partido reglamentariamente completo
 
 Sustituciones, offside, faltas, ventaja, disciplina, tiros libres, penales,
@@ -88,7 +113,9 @@ escenario.
 ### MVP 3 — Movimiento plausible
 
 Aceleración, frenado, giro, orientación, fatiga, alcance, colisiones y
-compromiso temporal. Calibrar envolventes con datos/literatura.
+compromiso temporal, con los atributos motores que los alimentan. La
+calibración de este modelo hereda el instrumental de MVP 1.75: envolvente
+sobre semillas y propiedades causales, no una corrida de ejemplo.
 
 ### MVP 4 — Percepción y creencias
 

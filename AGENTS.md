@@ -21,7 +21,10 @@ la especificación del producto.
 `docs/REVISION_2026-07-30.md` es la revisión del cierre de MVP 1: qué se
 verificó, qué no y qué se encontró. Las revisiones se fechan y no se editan.
 `docs/CIERRE_MVP_1_5.md` cuenta qué resolvió la consolidación y por qué se
-decidió cada cosa.
+decidió cada cosa. `docs/REVISION_2026-07-30-reloj.md` es el hallazgo que fija
+el trabajo actual: el modelo marca 51 goles cada 90 minutos.
+`docs/REFERENCIA_OPENFOOTMANAGER.md` revisa qué instrumental de validación se
+toma de ese proyecto y qué no.
 
 La documentación histórica vive en `docs/references/gameplay_football/`.
 Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
@@ -69,7 +72,11 @@ de agente y la app queda muda, lo que parece una regresión y no lo es.
 - Se distingue: verdad física → observación → creencia → intención → ejecución.
 - Se distingue: incidente físico → observación arbitral → juicio → transición.
 - La edición IFAB y variantes de competición son datos versionados.
-- Un comportamiento no se declara realista sin métrica y referencia.
+- Un comportamiento no se declara realista sin métrica y referencia. La métrica
+  es una envolvente sobre semillas, nunca una corrida: la simulación es
+  determinista pero caótica.
+- Los parámetros que fijan el resultado son dato versionado, no literales dentro
+  de la lógica.
 - Toda aleatoriedad de simulación usa semillas reproducibles.
 - APIs nuevas no heredan nombres del original (`Eliza`, clases C++ o `AI_`). Los
   comentarios sí citan el original: son trazabilidad hacia
