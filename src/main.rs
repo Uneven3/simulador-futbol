@@ -6,9 +6,11 @@ mod presentation;
 mod simulation;
 
 use data::{BallTouched, MatchState, PitchConfig};
-use presentation::{GameCameraPlugin, PitchMeshPlugin, RenderSetupPlugin};
+use presentation::{
+    GameCameraPlugin, PitchMeshPlugin, PrimitiveVisualsPlugin, StadiumLightingPlugin,
+};
 use simulation::{
-    BallCollisionPlugin, BallPhysicsPlugin, PlayerMovementPlugin, RefereePlugin,
+    BallCollisionPlugin, BallPhysicsPlugin, MatchSetupPlugin, PlayerMovementPlugin, RefereePlugin,
     SimulationOrderPlugin,
 };
 
@@ -29,15 +31,20 @@ fn main() {
         .insert_resource(MatchState::default())
         .insert_resource(PitchConfig::default())
         .add_message::<BallTouched>()
-        // Game Layers
+        // Authoritative simulation: runs identically without any of the below
         .add_plugins((
+            MatchSetupPlugin,
             SimulationOrderPlugin,
             BallPhysicsPlugin,
             BallCollisionPlugin,
             RefereePlugin,
             PlayerMovementPlugin,
+        ))
+        // Presentation: reads the simulation, never writes it
+        .add_plugins((
+            PrimitiveVisualsPlugin,
             PitchMeshPlugin,
-            RenderSetupPlugin,
+            StadiumLightingPlugin,
             GameCameraPlugin,
         ))
         .run();

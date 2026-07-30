@@ -1,8 +1,9 @@
 use crate::data::{
-    Ball, BallTouched, MatchState, OffsideRecords, PitchConfig, Player, SetPiece, Velocity,
+    BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, Player,
+    Position, SetPiece, Velocity,
 };
 use crate::simulation::SimulationSet;
-use crate::simulation::player_movement::get_base_formation_position;
+use crate::simulation::match_setup::base_formation_position;
 use bevy::prelude::*;
 
 pub struct RefereePlugin;
@@ -69,16 +70,16 @@ fn check_for_goal(
 fn referee_system(
     mut match_state: ResMut<MatchState>,
     pitch_config: Res<PitchConfig>,
-    ball_query: Single<(&Transform, &Ball)>,
+    ball_query: Single<(&Position, &Ball)>,
 ) {
     // If a set piece is already pending/ticking down, don't check for new events
     if match_state.set_piece != SetPiece::None {
         return;
     }
 
-    let (transform, ball) = *ball_query;
+    let (position, ball) = *ball_query;
 
-    let pos = transform.translation;
+    let pos = position.0;
     let prev = ball.previous_position;
     let predict_10ms = ball.predictions[1];
     let pitch_half_w = pitch_config.half_width;
@@ -183,8 +184,8 @@ fn referee_offside_system(
     mut records: ResMut<OffsideRecords>,
     pitch_config: Res<PitchConfig>,
     mut touches: MessageReader<BallTouched>,
-    player_query: Query<(Entity, &Transform, &Player)>,
-    ball_query: Single<&Transform, With<Ball>>,
+    player_query: Query<(Entity, &Position, &Player)>,
+    ball_query: Single<&Position, With<Ball>>,
 ) {
     for touch in touches.read() {
         if match_state.set_piece != SetPiece::None {
@@ -221,27 +222,27 @@ fn referee_offside_system(
         let def_side: f32 = if defending_team == 0 { -1.0 } else { 1.0 };
 
         let mut deepest: Option<(Entity, f32)> = None;
-        for (entity, transform, player) in player_query.iter() {
+        for (entity, position, player) in player_query.iter() {
             if player.team_index != defending_team {
                 continue;
             }
-            let depth = transform.translation.x * def_side;
+            let depth = position.0.x * def_side;
             if deepest.is_none() || depth > deepest.unwrap().1 {
                 deepest = Some((entity, depth));
             }
         }
         let mut second_deepest_x = 0.0f32;
-        for (entity, transform, player) in player_query.iter() {
+        for (entity, position, player) in player_query.iter() {
             if player.team_index != defending_team || Some(entity) == deepest.map(|d| d.0) {
                 continue;
             }
-            if transform.translation.x * def_side > second_deepest_x * def_side {
-                second_deepest_x = transform.translation.x;
+            if position.0.x * def_side > second_deepest_x * def_side {
+                second_deepest_x = position.0.x;
             }
         }
 
         let mut offside_line = second_deepest_x;
-        let ball_x = ball_query.translation.x;
+        let ball_x = ball_query.0.x;
         if ball_x * def_side > offside_line * def_side {
             offside_line = ball_x;
         }
@@ -251,11 +252,11 @@ fn referee_offside_system(
         offside_line = offside_line.clamp(-pitch_config.half_width, pitch_config.half_width);
 
         let att_dir = -def_side;
-        for (entity, transform, player) in player_query.iter() {
+        for (entity, position, player) in player_query.iter() {
             if player.team_index != touch.team || entity == touch.player {
                 continue;
             }
-            let pos = transform.translation;
+            let pos = position.0;
             if pos.x * att_dir > offside_line * att_dir + 0.20 {
                 records.players.push((entity, pos));
             }
@@ -271,8 +272,11 @@ fn referee_set_piece_system(
     mut match_state: ResMut<MatchState>,
     mut records: ResMut<OffsideRecords>,
     time: Res<Time>,
-    mut ball_query: Query<(&mut Transform, &mut Ball), Without<Player>>,
-    mut player_query: Query<(&mut Transform, &mut Velocity, &mut Player), Without<Ball>>,
+    mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
+    mut player_query: Query<
+        (&mut Position, &mut Facing, &mut Velocity, &mut Player),
+        Without<Ball>,
+    >,
 ) {
     if match_state.set_piece == SetPiece::None {
         return;
@@ -282,32 +286,34 @@ fn referee_set_piece_system(
         match_state.set_piece_timer -= time.delta_secs();
         // dead ball: park it at the restart spot right away, or it keeps
         // rolling into the stands while the restart timer runs
-        if let Ok((mut ball_transform, mut ball)) = ball_query.single_mut() {
+        if let Ok((mut ball_position, mut ball)) = ball_query.single_mut() {
             let restart_pos = match_state.restart_pos;
-            if ball_transform.translation.distance(restart_pos) > 0.3 {
+            if ball_position.0.distance(restart_pos) > 0.3 {
                 ball.reset(restart_pos);
-                ball_transform.translation = restart_pos + Vec3::new(0.0, 0.0, 0.11);
-                ball_transform.rotation = Quat::IDENTITY;
+                ball_position.0 = restart_pos + Vec3::new(0.0, 0.0, BALL_RADIUS);
             }
         }
         return;
     }
 
     // Timer expired! Execute reset.
-    let Ok((mut ball_transform, mut ball)) = ball_query.single_mut() else {
+    let Ok((mut ball_position, mut ball)) = ball_query.single_mut() else {
         return;
     };
 
     let restart_pos = match_state.restart_pos;
     ball.reset(restart_pos);
-    ball_transform.translation = restart_pos + Vec3::new(0.0, 0.0, 0.11);
-    ball_transform.rotation = Quat::IDENTITY;
+    ball_position.0 = restart_pos + Vec3::new(0.0, 0.0, BALL_RADIUS);
 
-    // Teleport players to base positions
-    for (mut transform, mut velocity, mut player) in player_query.iter_mut() {
-        let base_pos = get_base_formation_position(player.team_index, player.role, player.id);
-        let height = player.height;
-        transform.translation = Vec3::new(base_pos.x, base_pos.y, height / 2.0);
+    // Re-form both teams at their base positions, facing the opponent goal
+    for (mut position, mut facing, mut velocity, mut player) in player_query.iter_mut() {
+        let base = base_formation_position(player.team_index, player.role, player.id);
+        *position = Position::from_pitch(base, 0.0);
+        facing.0 = if player.team_index == 0 {
+            Dir2::X
+        } else {
+            Dir2::NEG_X
+        };
         velocity.0 = Vec3::ZERO;
         player.last_touch_time_ms = 0;
     }

@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 use std::collections::VecDeque;
 
+/// Radius of a match ball in metres (IFAB Law 2: circumference 68-70 cm).
+pub const BALL_RADIUS: f32 = 0.11;
+
 /// Original: `ballPredictionSize_ms = 3000` (gamedefines.hpp), one entry per 10 ms.
 pub const BALL_PREDICTION_STEPS: usize = 300;
 /// Original: `ballHistorySize_ms = 4000`, one entry per 10 ms tick.

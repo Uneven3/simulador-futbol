@@ -1,7 +1,9 @@
 pub mod camera;
+pub mod lighting;
 pub mod pitch_mesh;
-pub mod render;
+pub mod visuals;
 
 pub use camera::GameCameraPlugin;
+pub use lighting::StadiumLightingPlugin;
 pub use pitch_mesh::PitchMeshPlugin;
-pub use render::RenderSetupPlugin;
+pub use visuals::PrimitiveVisualsPlugin;

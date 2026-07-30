@@ -1,4 +1,6 @@
-use crate::data::{Ball, BallTouched, MatchState, Player, PossessionDesignation, Velocity};
+use crate::data::{
+    BALL_RADIUS, Ball, BallTouched, MatchState, Player, Position, PossessionDesignation, Velocity,
+};
 use crate::math::{XorShift32, normalized_clamp, normalized_or};
 use crate::simulation::SimulationSet;
 use crate::simulation::ball_physics::touch_ball;
@@ -48,8 +50,8 @@ fn ball_body_collisions(
     mut rng: ResMut<CollisionRng>,
     mut last_collision_ms: Local<u64>,
     time: Res<Time>,
-    mut ball_query: Query<(&mut Ball, &mut Transform), Without<Player>>,
-    mut player_query: Query<(Entity, &Transform, &mut Player, &Velocity), Without<Ball>>,
+    mut ball_query: Query<(&mut Ball, &mut Position), Without<Player>>,
+    mut player_query: Query<(Entity, &Position, &mut Player, &Velocity), Without<Ball>>,
     mut touched_writer: MessageWriter<BallTouched>,
 ) {
     let now_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
@@ -57,17 +59,17 @@ fn ball_body_collisions(
         return;
     }
 
-    let Ok((mut ball, mut ball_transform)) = ball_query.single_mut() else {
+    let Ok((mut ball, mut ball_position)) = ball_query.single_mut() else {
         return;
     };
-    let ball_pos = ball_transform.translation;
+    let ball_pos = ball_position.0;
 
     let mut bounce_vec = Vec3::ZERO;
     let mut bias = 0.0f32;
     let mut bounce_count = 0;
     let mut toucher: Option<(Entity, u32)> = None;
 
-    for (entity, transform, player, velocity) in player_query.iter() {
+    for (entity, position, player, velocity) in player_query.iter() {
         // Original: the designated team possession player triggers a CONTROLLED
         // ball collision instead of an accidental deflection — his deliberate
         // touches happen in the kick system (pickup/tackle/knock-on). Without
@@ -95,22 +97,24 @@ fn ball_body_collisions(
             continue;
         }
 
-        // capsule body: vertical segment between foot and head sphere centers
-        let base = transform.translation;
+        // capsule body standing on the pitch: vertical segment between the foot
+        // and head sphere centres, anchored at the player's support point
+        let base = position.0;
         let seg_lo = Vec3::new(base.x, base.y, PLAYER_CAPSULE_RADIUS);
         let seg_hi = Vec3::new(base.x, base.y, player.height - PLAYER_CAPSULE_RADIUS);
         let closest_z = ball_pos.z.clamp(seg_lo.z, seg_hi.z);
         let closest = Vec3::new(base.x, base.y, closest_z);
         let dist = (ball_pos - closest).length();
 
-        let hit_radius = 0.11 + PLAYER_CAPSULE_RADIUS + BOUNDING_BOX_SIZE_OFFSET;
+        let hit_radius = BALL_RADIUS + PLAYER_CAPSULE_RADIUS + BOUNDING_BOX_SIZE_OFFSET;
         if dist < hit_radius {
             let movement_bias = opp_last_touch_bias * 0.8 + 0.2;
             let body_center = Vec3::new(base.x, base.y, player.height * 0.5);
             bounce_vec += normalized_or(ball_pos - body_center, Vec3::ZERO) * movement_bias
                 + velocity.0 * (1.0 - movement_bias);
             bounce_count += 1;
-            bias += (1.0 - ((dist - 0.11) / PLAYER_CAPSULE_RADIUS).clamp(0.0, 1.0)) * 0.9 + 0.1;
+            bias +=
+                (1.0 - ((dist - BALL_RADIUS) / PLAYER_CAPSULE_RADIUS).clamp(0.0, 1.0)) * 0.9 + 0.1;
             toucher = Some((entity, player.team_index));
         }
     }
@@ -130,7 +134,7 @@ fn ball_body_collisions(
         }
         result_vector *= 0.7;
 
-        touch_ball(&mut ball, &mut ball_transform, result_vector);
+        touch_ball(&mut ball, &mut ball_position, result_vector);
         let (rx, ry, rz) = (
             rng.0.range(-30.0, 30.0),
             rng.0.range(-30.0, 30.0),

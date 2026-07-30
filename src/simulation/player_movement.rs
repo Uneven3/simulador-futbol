@@ -1,5 +1,5 @@
 use crate::data::{
-    Ball, BallTouched, MatchRng, MatchState, Player, PlayerRole, PlayerStats,
+    Ball, BallTouched, Facing, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position,
     PossessionDesignation, SetPiece, Velocity,
 };
 use crate::math::{normalized_clamp, normalized_or_2d, sign_side};
@@ -16,7 +16,6 @@ impl Plugin for PlayerMovementPlugin {
         app.insert_resource(PossessionDesignation::default())
             .init_resource::<TeamAis>()
             .init_resource::<MatchRng>()
-            .add_systems(Startup, spawn_teams)
             .add_systems(
                 FixedUpdate,
                 (
@@ -44,14 +43,14 @@ fn update_possession_designation(
     records: Res<crate::data::OffsideRecords>,
     mut designation: ResMut<PossessionDesignation>,
     ball_query: Query<&Ball>,
-    player_query: Query<(Entity, &Transform, &Player, &PlayerStats)>,
+    player_query: Query<(Entity, &Position, &Player, &PlayerStats)>,
 ) {
     let Ok(ball) = ball_query.single() else {
         return;
     };
 
     let mut best: [Option<(Entity, f32)>; 2] = [None, None];
-    for (entity, transform, player, stats) in player_query.iter() {
+    for (entity, position, player, stats) in player_query.iter() {
         if player.role == PlayerRole::GK {
             continue;
         }
@@ -62,8 +61,7 @@ fn update_possession_designation(
         {
             continue;
         }
-        let pos_2d = Vec2::new(transform.translation.x, transform.translation.y);
-        let (_, time_ms) = find_interception(pos_2d, stats.speed, &ball.predictions);
+        let (_, time_ms) = find_interception(position.on_pitch(), stats.speed, &ball.predictions);
         let slot = player.team_index as usize;
         if best[slot].is_none_or(|(_, t)| time_ms < t) {
             best[slot] = Some((entity, time_ms));
@@ -90,9 +88,9 @@ fn update_possession_designation(
     // is nominally a bit faster to the ball (the original's receivers run onto
     // `AI_GetPass` balls; without this the passer often re-chases his own pass)
     if let Some(receiver) = match_state.pass_target {
-        if let Ok((_, transform, player, stats)) = player_query.get(receiver) {
-            let pos_2d = Vec2::new(transform.translation.x, transform.translation.y);
-            let (_, time_ms) = find_interception(pos_2d, stats.speed, &ball.predictions);
+        if let Ok((_, position, player, stats)) = player_query.get(receiver) {
+            let (_, time_ms) =
+                find_interception(position.on_pitch(), stats.speed, &ball.predictions);
             let slot = player.team_index as usize;
             if time_ms < 3500.0 && best[slot].is_none_or(|(_, t)| time_ms < t * 1.5 + 300.0) {
                 best[slot] = Some((receiver, time_ms));
@@ -106,137 +104,38 @@ fn update_possession_designation(
     }
 }
 
-/// Spawns 11 players for each team (Home: Red, Away: Blue) in a classic 4-4-2 formation.
-fn spawn_teams(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let player_height = 1.8;
-    let player_radius = 0.35;
-
-    // Red material for Home team
-    let home_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.85, 0.1, 0.15),
-        perceptual_roughness: 0.5,
-        ..default()
-    });
-
-    // Blue material for Away team
-    let away_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.1, 0.25, 0.85),
-        perceptual_roughness: 0.5,
-        ..default()
-    });
-
-    let player_mesh = meshes.add(Capsule3d::new(
-        player_radius,
-        player_height - 2.0 * player_radius,
-    ));
-
-    for team_index in 0u32..2 {
-        let material = if team_index == 0 {
-            &home_material
-        } else {
-            &away_material
-        };
-        let roles = [
-            PlayerRole::GK,
-            PlayerRole::LB,
-            PlayerRole::CB,
-            PlayerRole::CB,
-            PlayerRole::RB,
-            PlayerRole::LM,
-            PlayerRole::CM,
-            PlayerRole::CM,
-            PlayerRole::RM,
-            PlayerRole::CF,
-            PlayerRole::CF,
-        ];
-
-        for (i, role) in roles.iter().enumerate() {
-            let pos = get_base_formation_position(team_index, *role, i as u32);
-            let team_name = if team_index == 0 { "Home" } else { "Away" };
-
-            commands
-                .spawn((
-                    Name::new(format!("{} Player {} - {:?}", team_name, i + 1, role)),
-                    Player {
-                        id: i as u32,
-                        team_index,
-                        jersey_number: (i + 1) as u32,
-                        role: *role,
-                        height: player_height,
-                        last_touch_time_ms: 0,
-                        formation_pos: normalized_formation_pos(*role, i as u32),
-                        man_marking: None,
-                        avg_velocity: 0.0,
-                    },
-                    PlayerStats::default(),
-                    Velocity::default(),
-                    Transform::from_xyz(pos.x, pos.y, player_height / 2.0),
-                    Visibility::default(),
-                ))
-                .with_children(|parent| {
-                    // Bevy capsules are Y-up; this game is Z-up, so the body
-                    // mesh needs a 90° X rotation or the players lie flat.
-                    parent.spawn((
-                        Mesh3d(player_mesh.clone()),
-                        MeshMaterial3d(material.clone()),
-                        Transform::from_rotation(Quat::from_rotation_x(
-                            std::f32::consts::FRAC_PI_2,
-                        )),
-                    ));
-                });
-        }
-    }
-}
-
 /// Kinematic integration of player velocities (players are not physics bodies,
-/// as in the original engine). Also maintains the ~10 s average velocity used
-/// by `GetLazyVelocity` (original `Player::GetAverageVelocity(10)`).
+/// as in the original engine). Also derives the body's facing from the movement
+/// and maintains the ~10 s average velocity used by `GetLazyVelocity` (original
+/// `Player::GetAverageVelocity(10)`).
 fn apply_player_velocity(
     time: Res<Time>,
-    mut query: Query<(&mut Transform, &Velocity, &mut Player)>,
+    mut query: Query<(&mut Position, &mut Facing, &Velocity, &mut Player)>,
 ) {
     let dt = time.delta_secs();
-    for (mut transform, velocity, mut player) in query.iter_mut() {
-        transform.translation.x += velocity.0.x * dt;
-        transform.translation.y += velocity.0.y * dt;
+    for (mut position, mut facing, velocity, mut player) in query.iter_mut() {
+        position.0.x += velocity.0.x * dt;
+        position.0.y += velocity.0.y * dt;
+        // Facing follows the movement instantly: turning is not yet a limited
+        // capability (MVP 3). A standing player keeps his previous facing.
+        if let Ok(direction) = Dir2::new(Vec2::new(velocity.0.x, velocity.0.y)) {
+            facing.0 = direction;
+        }
         let speed = velocity.0.length();
         player.avg_velocity += (speed - player.avg_velocity) * (dt / 10.0).min(1.0);
     }
 }
 
-/// Normalized formation entry (original `FormationEntry::position`, -1..1 in
-/// both axes) for the default 4-4-2; `AI_GetAdaptedFormationPosition` scales
-/// this into the dynamic team block.
-fn normalized_formation_pos(role: PlayerRole, player_id: u32) -> Vec2 {
-    match role {
-        PlayerRole::GK => Vec2::new(-1.0, 0.0),
-        PlayerRole::LB => Vec2::new(-1.0, -1.0),
-        PlayerRole::CB => Vec2::new(-1.0, if player_id == 2 { -0.33 } else { 0.33 }),
-        PlayerRole::RB => Vec2::new(-1.0, 1.0),
-        PlayerRole::LM => Vec2::new(0.0, -1.0),
-        PlayerRole::CM => Vec2::new(0.0, if player_id == 6 { -0.33 } else { 0.33 }),
-        PlayerRole::RM => Vec2::new(0.0, 1.0),
-        PlayerRole::DM => Vec2::new(-0.5, 0.0),
-        PlayerRole::AM => Vec2::new(0.5, 0.0),
-        PlayerRole::CF => Vec2::new(1.0, if player_id == 9 { -0.4 } else { 0.4 }),
-    }
-}
-
-/// Positional separation between player bodies: two capsules of radius 0.35
+/// Positional separation between player bodies: two bodies of radius 0.35 m
 /// cannot occupy the same spot, so overlapping pairs get pushed apart. This is
-/// the cheap stand-in for player-player collision until Avian takes over the
-/// bodies in Phase 3-4; without it, both designated players superimpose on the
-/// contested ball.
-fn resolve_player_overlap(mut query: Query<&mut Transform, With<Player>>) {
-    const MIN_DIST: f32 = 0.7; // 2 x capsule radius
+/// the cheap stand-in for body contact until the motor model of MVP 3; without
+/// it, both designated players superimpose on the contested ball.
+fn resolve_player_overlap(mut query: Query<&mut Position, With<Player>>) {
+    const MIN_DIST: f32 = 0.7; // two body radii
 
     let mut combinations = query.iter_combinations_mut();
     while let Some([mut a, mut b]) = combinations.fetch_next() {
-        let mut delta = b.translation - a.translation;
+        let mut delta = b.0 - a.0;
         delta.z = 0.0;
         let dist = delta.length();
         if dist >= MIN_DIST {
@@ -245,47 +144,8 @@ fn resolve_player_overlap(mut query: Query<&mut Transform, With<Player>>) {
         // fully overlapping: pick an arbitrary but deterministic axis
         let dir = if dist < 1e-5 { Vec3::X } else { delta / dist };
         let push = (MIN_DIST - dist) * 0.5;
-        a.translation -= dir * push;
-        b.translation += dir * push;
-    }
-}
-
-pub fn get_base_formation_position(team_index: u32, role: PlayerRole, player_id: u32) -> Vec2 {
-    let pos_t0 = match role {
-        PlayerRole::GK => Vec2::new(-54.0, 0.0),
-        PlayerRole::LB => Vec2::new(-35.0, -18.0),
-        PlayerRole::CB => {
-            if player_id == 2 {
-                Vec2::new(-35.0, -6.0)
-            } else {
-                Vec2::new(-35.0, 6.0)
-            }
-        }
-        PlayerRole::RB => Vec2::new(-35.0, 18.0),
-        PlayerRole::LM => Vec2::new(-20.0, -20.0),
-        PlayerRole::CM => {
-            if player_id == 6 {
-                Vec2::new(-20.0, -7.0)
-            } else {
-                Vec2::new(-20.0, 7.0)
-            }
-        }
-        PlayerRole::RM => Vec2::new(-20.0, 20.0),
-        PlayerRole::DM => Vec2::new(-25.0, 0.0),
-        PlayerRole::AM => Vec2::new(-15.0, 0.0),
-        PlayerRole::CF => {
-            if player_id == 9 {
-                Vec2::new(-7.0, -10.0)
-            } else {
-                Vec2::new(-7.0, 10.0)
-            }
-        }
-    };
-
-    if team_index == 0 {
-        pos_t0
-    } else {
-        Vec2::new(-pos_t0.x, -pos_t0.y) // mirror for Team 1
+        a.0 -= dir * push;
+        b.0 += dir * push;
     }
 }
 
@@ -299,9 +159,9 @@ fn player_kick_system(
     offside_records: Res<crate::data::OffsideRecords>,
     pitch: Res<crate::data::PitchConfig>,
     mut rng: ResMut<MatchRng>,
-    mut ball_query: Query<(&mut Transform, &mut Ball), Without<Player>>,
+    mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     mut player_query: Query<
-        (Entity, &Transform, &mut Player, &PlayerStats, &Velocity),
+        (Entity, &Position, &mut Player, &PlayerStats, &Velocity),
         Without<Ball>,
     >,
     time: Res<Time>,
@@ -311,21 +171,18 @@ fn player_kick_system(
         return;
     }
 
-    let Ok((mut ball_transform, mut ball)) = ball_query.single_mut() else {
+    let Ok((mut ball_position, mut ball)) = ball_query.single_mut() else {
         return;
     };
 
-    let ball_pos = ball_transform.translation;
-    let ball_pos_2d = Vec2::new(ball_pos.x, ball_pos.y);
+    let ball_pos = ball_position.0;
+    let ball_pos_2d = ball_position.on_pitch();
     let current_time_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
 
     // 0. Possession is positional: if the ball escaped the possessor, it's loose
     if let Some(possessor) = match_state.possession_player {
         let lost = match player_query.get(possessor) {
-            Ok((_, transform, _, _, _)) => {
-                let pos_2d = Vec2::new(transform.translation.x, transform.translation.y);
-                pos_2d.distance(ball_pos_2d) > 3.0
-            }
+            Ok((_, position, _, _, _)) => position.on_pitch().distance(ball_pos_2d) > 3.0,
             Err(_) => true,
         };
         if lost {
@@ -339,10 +196,8 @@ fn player_kick_system(
     let mut closest_player_dist = f32::MAX;
     let mut closest_player_team = 0;
 
-    for (entity, player_transform, player, _, _) in player_query.iter() {
-        let player_pos = player_transform.translation;
-        let player_pos_2d = Vec2::new(player_pos.x, player_pos.y);
-        let dist_2d = ball_pos_2d.distance(player_pos_2d);
+    for (entity, player_position, player, _, _) in player_query.iter() {
+        let dist_2d = ball_pos_2d.distance(player_position.on_pitch());
 
         // players flagged offside at the last touch hold off the ball
         if offside_records.team == Some(player.team_index)
@@ -380,7 +235,7 @@ fn player_kick_system(
     if let Some(possessor_entity) = closest_player_entity {
         if let Some(current_possessor) = match_state.possession_player {
             if possessor_entity != current_possessor {
-                if let Ok((_, current_transform, current_player, _, _)) =
+                if let Ok((_, current_position, current_player, _, _)) =
                     player_query.get(current_possessor)
                 {
                     // Teammates cannot steal the ball from each other
@@ -400,11 +255,7 @@ fn player_kick_system(
                         // Without this, the two designated players trade the ball
                         // every cooldown window and the match degenerates into a
                         // stealing metronome.
-                        let carrier_dist = Vec2::new(
-                            current_transform.translation.x,
-                            current_transform.translation.y,
-                        )
-                        .distance(ball_pos_2d);
+                        let carrier_dist = current_position.on_pitch().distance(ball_pos_2d);
                         let wins_duel = closest_player_dist < carrier_dist * 0.8;
                         let held_ms =
                             current_time_ms.saturating_sub(match_state.last_possession_change_time);
@@ -430,7 +281,7 @@ fn player_kick_system(
                                 match_state.turnovers_by_kind[k.min(3)] += 1;
                                 control_touch(
                                     &mut ball,
-                                    &mut ball_transform,
+                                    &mut ball_position,
                                     possessor_entity,
                                     closest_player_team,
                                     current_time_ms,
@@ -461,10 +312,11 @@ fn player_kick_system(
             let mut touch_bias_ok = true;
             if !is_last_toucher && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500 {
                 if let Some(last_toucher) = ball.last_touch_player {
-                    if let Ok((_, t, last_player, _, _)) = player_query.get(last_toucher) {
+                    if let Ok((_, toucher_position, last_player, _, _)) =
+                        player_query.get(last_toucher)
+                    {
                         if last_player.team_index != closest_player_team {
-                            let toucher_dist =
-                                Vec2::new(t.translation.x, t.translation.y).distance(ball_pos_2d);
+                            let toucher_dist = toucher_position.on_pitch().distance(ball_pos_2d);
                             if toucher_dist < 1.0 && closest_player_dist > toucher_dist - 0.25 {
                                 touch_bias_ok = false;
                             }
@@ -522,7 +374,7 @@ fn player_kick_system(
                 }
                 control_touch(
                     &mut ball,
-                    &mut ball_transform,
+                    &mut ball_position,
                     possessor_entity,
                     closest_player_team,
                     current_time_ms,
@@ -539,12 +391,11 @@ fn player_kick_system(
 
     // 2. Play Actions for the player currently in possession
     if let Some(possessor_entity) = match_state.possession_player {
-        let Ok((_, player_transform, player, stats, velocity)) = player_query.get(possessor_entity)
+        let Ok((_, player_position, player, stats, velocity)) = player_query.get(possessor_entity)
         else {
             return;
         };
-        let player_pos = player_transform.translation;
-        let player_pos_2d = Vec2::new(player_pos.x, player_pos.y);
+        let player_pos_2d = player_position.on_pitch();
         let player_vel_2d = Vec2::new(velocity.0.x, velocity.0.y);
         let player_team = player.team_index;
         let player_role = player.role;
@@ -569,11 +420,11 @@ fn player_kick_system(
         }
 
         let kick = |ball: &mut Ball,
-                    ball_transform: &mut Transform,
+                    ball_position: &mut Position,
                     momentum: Vec3,
                     spin: Vec3,
                     touched_writer: &mut MessageWriter<BallTouched>| {
-            touch_ball(ball, ball_transform, momentum);
+            touch_ball(ball, ball_position, momentum);
             ball.set_rotation(spin.x, spin.y, spin.z, 1.0);
             ball.last_touch_team = Some(player_team);
             ball.last_touch_player = Some(possessor_entity);
@@ -588,11 +439,11 @@ fn player_kick_system(
         // the original's command-queue priority: panic → pass → shot → dribble.
         let snaps: Vec<PlayerSnap> = player_query
             .iter()
-            .map(|(entity, t, p, _, v)| PlayerSnap {
+            .map(|(entity, position, p, _, v)| PlayerSnap {
                 entity,
                 team: p.team_index,
                 role: p.role,
-                pos: Vec2::new(t.translation.x, t.translation.y),
+                pos: position.on_pitch(),
                 vel: Vec2::new(v.0.x, v.0.y),
                 formation_pos: p.formation_pos,
             })
@@ -638,7 +489,7 @@ fn player_kick_system(
 
                 kick(
                     &mut ball,
-                    &mut ball_transform,
+                    &mut ball_position,
                     kick_dir * kick_power,
                     spin,
                     &mut touched_writer,
@@ -673,7 +524,7 @@ fn player_kick_system(
                 );
                 kick(
                     &mut ball,
-                    &mut ball_transform,
+                    &mut ball_position,
                     momentum,
                     Vec3::ZERO,
                     &mut touched_writer,
@@ -700,7 +551,7 @@ fn player_kick_system(
                 let kick_dir = Vec3::new(away.x, away.y, 0.3).normalize_or_zero();
                 kick(
                     &mut ball,
-                    &mut ball_transform,
+                    &mut ball_position,
                     kick_dir * 17.0,
                     Vec3::ZERO,
                     &mut touched_writer,
@@ -744,7 +595,7 @@ fn player_kick_system(
                 let knock = Vec3::new(dir_2d.x, dir_2d.y, 0.0) * knock_speed;
                 kick(
                     &mut ball,
-                    &mut ball_transform,
+                    &mut ball_position,
                     knock,
                     Vec3::ZERO,
                     &mut touched_writer,
@@ -768,12 +619,12 @@ fn player_kick_system(
 /// duels unresolvable — the ball keeps escaping the 350 ms kick window.
 fn control_touch(
     ball: &mut Ball,
-    ball_transform: &mut Transform,
+    ball_position: &mut Position,
     player_entity: Entity,
     team: u32,
     now_ms: u64,
     player_query: &mut Query<
-        (Entity, &Transform, &mut Player, &PlayerStats, &Velocity),
+        (Entity, &Position, &mut Player, &PlayerStats, &Velocity),
         Without<Ball>,
     >,
     touched_writer: &mut MessageWriter<BallTouched>,
@@ -784,18 +635,14 @@ fn control_touch(
     // trap in the raw approach direction next to the sideline knocks the ball
     // straight out and chains endless throw-ins.
     let trap_momentum =
-        if let Ok((_, transform, player, _, velocity)) = player_query.get(player_entity) {
-            let my_pos = Vec2::new(transform.translation.x, transform.translation.y);
+        if let Ok((_, position, player, _, velocity)) = player_query.get(player_entity) {
+            let my_pos = position.on_pitch();
             let my_vel = Vec2::new(velocity.0.x, velocity.0.y);
             let team_index = player.team_index;
             let all_players: Vec<(u32, Vec2, Vec2)> = player_query
                 .iter()
-                .map(|(_, t, p, _, v)| {
-                    (
-                        p.team_index,
-                        Vec2::new(t.translation.x, t.translation.y),
-                        Vec2::new(v.0.x, v.0.y),
-                    )
+                .map(|(_, p_position, p, _, v)| {
+                    (p.team_index, p_position.on_pitch(), Vec2::new(v.0.x, v.0.y))
                 })
                 .collect();
             let dir = dribble_direction(my_pos, my_vel, team_index, &all_players);
@@ -806,7 +653,7 @@ fn control_touch(
         } else {
             ball.momentum * 0.2
         };
-    touch_ball(ball, ball_transform, trap_momentum);
+    touch_ball(ball, ball_position, trap_momentum);
     ball.set_rotation(0.0, 0.0, 0.0, 1.0);
     ball.last_touch_team = Some(team);
     ball.last_touch_player = Some(player_entity);

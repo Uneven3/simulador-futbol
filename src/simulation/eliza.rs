@@ -21,8 +21,8 @@
 use bevy::prelude::*;
 
 use crate::data::{
-    Ball, MatchRng, MatchState, Player, PlayerRole, PlayerStats, PossessionDesignation, SetPiece,
-    Velocity,
+    Ball, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position, PossessionDesignation,
+    SetPiece, Velocity,
 };
 use crate::math::{
     curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
@@ -148,9 +148,9 @@ pub fn eliza_movement_system(
     match_state: Res<MatchState>,
     designation: Res<PossessionDesignation>,
     team_ais: Res<TeamAis>,
-    ball_query: Query<(&Transform, &Ball), Without<Player>>,
+    ball_query: Query<&Ball, Without<Player>>,
     mut player_query: Query<
-        (Entity, &Transform, &Player, &PlayerStats, &mut Velocity),
+        (Entity, &Position, &Player, &PlayerStats, &mut Velocity),
         Without<Ball>,
     >,
 ) {
@@ -162,18 +162,18 @@ pub fn eliza_movement_system(
         return;
     }
 
-    let Ok((_ball_transform, ball)) = ball_query.single() else {
+    let Ok(ball) = ball_query.single() else {
         return;
     };
     let now_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
 
     let snaps: Vec<PlayerSnap> = player_query
         .iter()
-        .map(|(entity, t, p, _, v)| PlayerSnap {
+        .map(|(entity, position, p, _, v)| PlayerSnap {
             entity,
             team: p.team_index,
             role: p.role,
-            pos: Vec2::new(t.translation.x, t.translation.y),
+            pos: position.on_pitch(),
             vel: Vec2::new(v.0.x, v.0.y),
             formation_pos: p.formation_pos,
         })
@@ -202,12 +202,12 @@ pub fn eliza_movement_system(
         now_ms,
     };
 
-    for (entity, transform, player, stats, mut velocity) in player_query.iter_mut() {
+    for (entity, position, player, stats, mut velocity) in player_query.iter_mut() {
         let me = PlayerSnap {
             entity,
             team: player.team_index,
             role: player.role,
-            pos: Vec2::new(transform.translation.x, transform.translation.y),
+            pos: position.on_pitch(),
             vel: Vec2::new(velocity.0.x, velocity.0.y),
             formation_pos: player.formation_pos,
         };

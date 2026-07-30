@@ -3,12 +3,14 @@ use bevy::prelude::*;
 pub mod ball_collisions;
 pub mod ball_physics;
 pub mod eliza;
+pub mod match_setup;
 pub mod player_movement;
 pub mod referee;
 pub mod team_ai;
 
 pub use ball_collisions::BallCollisionPlugin;
 pub use ball_physics::BallPhysicsPlugin;
+pub use match_setup::MatchSetupPlugin;
 pub use player_movement::PlayerMovementPlugin;
 pub use referee::RefereePlugin;
 
@@ -45,21 +47,23 @@ impl Plugin for SimulationOrderPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{Ball, BallTouched, MatchState, PitchConfig, SetPiece};
+    use crate::data::{Ball, BallTouched, MatchState, PitchConfig, Position, SetPiece};
     use bevy::time::TimeUpdateStrategy;
     use std::time::Duration;
 
+    /// The whole match, with no renderer and no assets: this is the shape every
+    /// scenario runs in (architecture law 1). Adding `MinimalPlugins` only is
+    /// deliberate — if any simulation system ever needs `Mesh`,
+    /// `StandardMaterial` or an `AssetServer`, these tests must fail.
     fn build_headless_app() -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
-        app.add_plugins(bevy::asset::AssetPlugin::default());
-        app.init_asset::<Mesh>();
-        app.init_asset::<StandardMaterial>();
         app.insert_resource(Time::<Fixed>::from_hz(100.0));
         app.insert_resource(MatchState::default());
         app.insert_resource(PitchConfig::default());
         app.add_message::<BallTouched>();
         app.add_plugins((
+            MatchSetupPlugin,
             SimulationOrderPlugin,
             BallPhysicsPlugin,
             BallCollisionPlugin,
@@ -70,8 +74,6 @@ mod tests {
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             10,
         )));
-        app.world_mut()
-            .spawn((Ball::default(), Transform::from_xyz(0.0, 0.0, 0.11)));
         app
     }
 
@@ -102,22 +104,70 @@ mod tests {
             let (xm, _) = to_cell(0.0, 0.0);
             row[xm] = ':';
         }
-        let mut player_query = app
-            .world_mut()
-            .query::<(&Transform, &crate::data::Player)>();
-        for (t, p) in player_query.iter(app.world()) {
-            let (cx, cy) = to_cell(t.translation.x, t.translation.y);
+        let mut player_query = app.world_mut().query::<(&Position, &crate::data::Player)>();
+        for (position, p) in player_query.iter(app.world()) {
+            let (cx, cy) = to_cell(position.0.x, position.0.y);
             grid[cy][cx] = if p.team_index == 0 { 'o' } else { 'x' };
         }
-        let mut ball_query = app.world_mut().query::<(&Ball, &Transform)>();
-        if let Ok((_, t)) = ball_query.single(app.world()) {
-            let (cx, cy) = to_cell(t.translation.x, t.translation.y);
+        let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
+        if let Ok((_, position)) = ball_query.single(app.world()) {
+            let (cx, cy) = to_cell(position.0.x, position.0.y);
             grid[cy][cx] = '@';
         }
         println!("--- {label} ---");
         for row in grid {
             println!("{}", row.into_iter().collect::<String>());
         }
+    }
+
+    /// Architecture law 1, as an executable check: the authoritative simulation
+    /// must run without registering render assets, and no authoritative body may
+    /// carry a visual component. The previous port failed both — the player
+    /// spawner built meshes and materials, and these tests had to register
+    /// `Assets<Mesh>` to boot at all.
+    #[test]
+    fn simulation_runs_without_render_assets() {
+        let mut app = build_headless_app();
+        for _ in 0..300 {
+            app.update();
+        }
+
+        assert!(
+            app.world().get_resource::<Assets<Mesh>>().is_none(),
+            "the simulation registered Assets<Mesh>: something in the kernel builds geometry"
+        );
+        assert!(
+            app.world()
+                .get_resource::<Assets<StandardMaterial>>()
+                .is_none(),
+            "the simulation registered Assets<StandardMaterial>"
+        );
+        assert!(
+            app.world().get_resource::<AssetServer>().is_none(),
+            "the simulation pulled in an AssetServer: it depends on asset paths"
+        );
+
+        let mut visual_query = app.world_mut().query::<&Mesh3d>();
+        assert_eq!(
+            visual_query.iter(app.world()).count(),
+            0,
+            "an authoritative body carries a mesh: visuals must live on separate entities"
+        );
+
+        // and the bodies the match needs do exist: one ball, two elevens
+        let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
+        assert!(
+            ball_query.single(app.world()).is_ok(),
+            "no ball on the pitch"
+        );
+        let mut player_query =
+            app.world_mut()
+                .query::<(&crate::data::Player, &Position, &crate::data::Facing)>();
+        assert_eq!(
+            player_query.iter(app.world()).count(),
+            22,
+            "both teams must be on the pitch"
+        );
     }
 
     /// Aggregate-statistics run (10 simulated minutes). The simulation is
@@ -193,8 +243,8 @@ mod tests {
                     };
                     *flip_causes.entry(cause).or_insert(0) += 1;
                     let ball_pos = {
-                        let mut q = app.world_mut().query::<(&Ball, &Transform)>();
-                        q.single(app.world()).unwrap().1.translation
+                        let mut q = app.world_mut().query::<(&Ball, &Position)>();
+                        q.single(app.world()).unwrap().1.0
                     };
                     let delta = last_flip_ball_pos.map(|p: Vec3| (ball_pos - p).length());
                     if flip_log.len() < 40 {
@@ -217,14 +267,14 @@ mod tests {
             }
             prev_possession_player = player_now;
 
-            let mut ball_query = app.world_mut().query::<(&Ball, &Transform)>();
-            let (ball, transform) = ball_query.single(app.world()).unwrap();
+            let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
+            let (ball, ball_position) = ball_query.single(app.world()).unwrap();
+            let ball_pos = ball_position.0;
             assert!(
-                transform.translation.is_finite(),
-                "Ball position is not finite: {:?}",
-                transform.translation
+                ball_pos.is_finite(),
+                "Ball position is not finite: {ball_pos:?}"
             );
-            max_ball_x = max_ball_x.max(transform.translation.x.abs());
+            max_ball_x = max_ball_x.max(ball_pos.x.abs());
             if let Some(toucher) = ball.last_touch_player {
                 distinct_touchers.insert(toucher);
             }
@@ -234,8 +284,7 @@ mod tests {
                 // a "shot" here = a touch that fires the ball goalwards at pace
                 let v = ball.momentum;
                 let goalward = v.x.abs() > 12.0 && v.length() > 15.0;
-                let deep =
-                    transform.translation.x.abs() > 25.0 && (transform.translation.x * v.x) > 0.0;
+                let deep = ball_pos.x.abs() > 25.0 && (ball_pos.x * v.x) > 0.0;
                 if goalward && deep {
                     shots += 1;
                 }
@@ -288,29 +337,7 @@ mod tests {
     /// (or triggers a proper set piece when it leaves).
     #[test]
     fn test_headless_match_flow() {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
-        app.add_plugins(bevy::asset::AssetPlugin::default());
-        app.init_asset::<Mesh>();
-        app.init_asset::<StandardMaterial>();
-        app.insert_resource(Time::<Fixed>::from_hz(100.0));
-        app.insert_resource(MatchState::default());
-        app.insert_resource(PitchConfig::default());
-        app.add_message::<BallTouched>();
-        app.add_plugins((
-            SimulationOrderPlugin,
-            BallPhysicsPlugin,
-            BallCollisionPlugin,
-            RefereePlugin,
-            PlayerMovementPlugin,
-        ));
-        // one fixed tick (10 ms) per app.update()
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-            10,
-        )));
-
-        app.world_mut()
-            .spawn((Ball::default(), Transform::from_xyz(0.0, 0.0, 0.11)));
+        let mut app = build_headless_app();
 
         let mut kickoff_restarted = false;
         let mut possession_seen = false;
@@ -332,16 +359,16 @@ mod tests {
                 possession_seen = true;
             }
 
-            let mut ball_query = app.world_mut().query::<(&Ball, &Transform)>();
-            let (ball, transform) = ball_query.single(app.world()).unwrap();
+            let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
+            let (ball, ball_position) = ball_query.single(app.world()).unwrap();
             if ball.last_touch_team.is_some() {
                 kick_seen = true;
             }
             if let Some(toucher) = ball.last_touch_player {
                 distinct_touchers.insert(toucher);
             }
-            max_ball_x = max_ball_x.max(transform.translation.x.abs());
-            let pos = transform.translation;
+            let pos = ball_position.0;
+            max_ball_x = max_ball_x.max(pos.x.abs());
             assert!(
                 pos.x.abs() < 70.0 && pos.y.abs() < 50.0 && pos.z > -0.01 && pos.z < 40.0,
                 "Ball escaped the play area: {pos:?}"
@@ -355,9 +382,9 @@ mod tests {
             let mut crowders = 0;
             let mut player_query = app
                 .world_mut()
-                .query_filtered::<&Transform, With<crate::data::Player>>();
-            for player_transform in player_query.iter(app.world()) {
-                let d = (player_transform.translation - pos).truncate().length();
+                .query_filtered::<&Position, With<crate::data::Player>>();
+            for player_position in player_query.iter(app.world()) {
+                let d = (player_position.0 - pos).truncate().length();
                 if d < 8.0 {
                     crowders += 1;
                 }
@@ -369,12 +396,12 @@ mod tests {
             // Bodies must not superimpose (positional separation stands in for
             // player-player collision). Skip the first seconds of warmup.
             if tick > 500 {
-                let mut transform_query = app
+                let mut position_query = app
                     .world_mut()
-                    .query_filtered::<&Transform, With<crate::data::Player>>();
-                let positions: Vec<Vec3> = transform_query
+                    .query_filtered::<&Position, With<crate::data::Player>>();
+                let positions: Vec<Vec3> = position_query
                     .iter(app.world())
-                    .map(|t| t.translation)
+                    .map(|position| position.0)
                     .collect();
                 for i in 0..positions.len() {
                     for j in (i + 1)..positions.len() {

@@ -2,7 +2,8 @@
 
 ## Objetivo activo
 
-Completar **MVP 0** y preparar el corte mínimo de **MVP 1 — Kernel observable**.
+Completar **MVP 1 — Kernel observable**: la misma situación debe correr headless
+y renderizada, con entidades autoritativas separadas de sus representaciones.
 
 ## Hecho
 
@@ -13,28 +14,37 @@ Completar **MVP 0** y preparar el corte mínimo de **MVP 1 — Kernel observable
 - Estrategia de validación.
 - Port reclasificado como referencia.
 - CodeGraph evaluado; instalación pendiente de un piloto A/B autorizado.
+- Estado espacial de dominio: `Position` (metros, Z-up), `Facing` y `Velocity`
+  en `data/spatial.rs`. `Transform` ya no es verdad en ninguna parte.
+- Setup autoritativo del partido en `simulation/match_setup.rs`: pelota y dos
+  onces sin meshes, materiales ni `Visibility`.
+- Presentación como consumidor: `presentation/visuals.rs` crea una entidad
+  desechable por cuerpo con `VisualOf`, e interpola entre las dos últimas
+  posiciones del tick fijo. Cámara y luces separadas.
+- Tests headless sin assets, y `simulation_runs_without_render_assets` deja la
+  ley 1 como test ejecutable.
 
 ## Siguiente corte
 
-1. Crear fronteras `domain`, `simulation`, `presentation`, `app`, idealmente
-   mediante workspace/crates.
-2. Extraer el spawn visual de `simulation/player_movement.rs`.
-3. Separar pelota autoritativa de esfera visual.
-4. Crear `VisualOf` y sincronización/interpolación de primitivas.
-5. Crear `ScenarioRunner` para la misma situación headless/renderizada.
-6. Definir esquema de escenarios y portar primero gol/fuera/reanudación.
-7. Hacer que tests headless no registren assets.
+1. Crear fronteras `domain`, `simulation`, `presentation`, `app` como crates del
+   workspace, para que Cargo impida dependencias inversas.
+2. Crear `ScenarioRunner` para la misma situación headless/renderizada.
+3. Definir esquema de escenarios y portar primero gol/fuera/reanudación.
+4. Overlays diagnósticos sobre las primitivas: predicción de la pelota,
+   designación de posesión, línea de offside.
 
 ## Deuda observada
 
-- `PlayerMovementPlugin` crea meshes, materiales y `Visibility`.
-- `RenderSetupPlugin` crea a la vez pelota autoritativa y mesh.
 - `Player` mezcla identidad, rol, historial, marca y promedio de movimiento.
 - `PlayerRole` mezcla posición y mentalidad.
 - `Ball.predictions` es verdad compartida, no creencia individual.
-- `SimulationSet` refleja el original, no el nuevo modelo.
-- `eliza`, `team_ai`, `mind_set` y comentarios “port of” dominan APIs.
-- Árbitro parcial; tests headless inicializan assets por bleed visual.
+- `SimulationSet` refleja el original, no el pipeline de `ARCHITECTURE.md`.
+- `eliza`, `team_ai`, `mind_set` y comentarios "port of" dominan APIs.
+- Árbitro parcial.
+- `cargo clippy -- -D warnings` falla con 19 lints heredados del port
+  (`collapsible_if`, `needless_range_loop`, `too_many_arguments`); ninguno fue
+  introducido por el corte de capas.
+- `PLAYER_HEIGHT` y el radio del cuerpo son constantes, no datos por jugador.
 
 ## Restricciones
 

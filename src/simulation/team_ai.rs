@@ -17,7 +17,7 @@ use bevy::prelude::*;
 use std::collections::VecDeque;
 
 use crate::data::{
-    Ball, MatchState, Player, PlayerRole, PossessionDesignation, SetPiece, Velocity,
+    Ball, MatchState, Player, PlayerRole, Position, PossessionDesignation, SetPiece, Velocity,
 };
 use crate::math::{
     curve, line_distance_to_point_2d, normalized_clamp, normalized_or_2d, rotated_2d, what_side_2d,
@@ -233,7 +233,7 @@ pub fn team_ai_update(
     designation: Res<PossessionDesignation>,
     mut team_ais: ResMut<TeamAis>,
     ball_query: Query<&Ball>,
-    mut player_query: Query<(Entity, &Transform, &mut Player, &Velocity)>,
+    mut player_query: Query<(Entity, &Position, &mut Player, &Velocity)>,
 ) {
     let Ok(ball) = ball_query.single() else {
         return;
@@ -243,11 +243,11 @@ pub fn team_ai_update(
 
     let snaps: Vec<PlayerSnap> = player_query
         .iter()
-        .map(|(entity, t, p, v)| PlayerSnap {
+        .map(|(entity, position, p, v)| PlayerSnap {
             entity,
             team: p.team_index,
             role: p.role,
-            pos: Vec2::new(t.translation.x, t.translation.y),
+            pos: position.on_pitch(),
             vel: Vec2::new(v.0.x, v.0.y),
             formation_pos: p.formation_pos,
         })

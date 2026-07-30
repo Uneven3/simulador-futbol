@@ -1,4 +1,4 @@
-use crate::data::Ball;
+use crate::presentation::visuals::BallVisual;
 use bevy::prelude::*;
 
 pub struct GameCameraPlugin;
@@ -26,9 +26,11 @@ fn setup_camera(mut commands: Commands) {
     ));
 }
 
+/// Follows the ball's *representation* rather than its authoritative position,
+/// so the camera inherits the same interpolation as everything else on screen.
 fn camera_follow_system(
-    ball: Single<&Transform, (With<Ball>, Without<GameCamera>)>,
-    mut camera: Single<&mut Transform, (With<GameCamera>, Without<Ball>)>,
+    ball: Single<&Transform, (With<BallVisual>, Without<GameCamera>)>,
+    mut camera: Single<&mut Transform, (With<GameCamera>, Without<BallVisual>)>,
     time: Res<Time>,
 ) {
     let ball_pos = ball.translation;

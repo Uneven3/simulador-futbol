@@ -1,4 +1,6 @@
-use crate::data::{BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, Ball, MatchState, PitchConfig};
+use crate::data::{
+    BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, BALL_RADIUS, Ball, MatchState, PitchConfig, Position,
+};
 use crate::math::{QuatExt, normalized_clamp, normalized_or, sign_side};
 use crate::simulation::SimulationSet;
 use bevy::prelude::*;
@@ -32,14 +34,14 @@ pub struct BallSpatialInfo {
 /// Port of `Ball::Process()`: like the original, the analytical prediction IS the
 /// real ball physics — the state at prediction step 1 becomes the actual state.
 fn ball_process(
-    mut query: Query<(&mut Ball, &mut Transform)>,
+    mut query: Query<(&mut Ball, &mut Position)>,
     pitch_config: Res<PitchConfig>,
     match_state: Res<MatchState>,
 ) {
-    for (mut ball, mut transform) in query.iter_mut() {
+    for (mut ball, mut position) in query.iter_mut() {
         let ball = &mut *ball;
         let info = calculate_prediction(
-            transform.translation,
+            position.0,
             ball.orientation,
             ball.momentum,
             ball.rotation_ms,
@@ -48,17 +50,16 @@ fn ball_process(
             &mut ball.predictions,
         );
 
-        ball.previous_position = transform.translation;
+        ball.previous_position = position.0;
         ball.momentum = info.momentum;
         ball.rotation_ms = info.rotation_ms;
         ball.orientation = info.orient_prediction;
         ball.touches_net = info.touches_net;
 
         // positionBuffer = Predict(10)
-        transform.translation = ball.predictions[1];
-        transform.rotation = ball.orientation;
+        position.0 = ball.predictions[1];
 
-        ball.position_history.push_back(transform.translation);
+        ball.position_history.push_back(position.0);
         if ball.position_history.len() > BALL_HISTORY_STEPS {
             ball.position_history.pop_front();
         }
@@ -67,9 +68,9 @@ fn ball_process(
 
 /// Port of `Ball::Touch(target)`: a deliberate touch replaces the ball's momentum.
 /// The prediction is refreshed on the next 10 ms tick (`ball_process` runs every tick).
-pub fn touch_ball(ball: &mut Ball, transform: &mut Transform, target_momentum: Vec3) {
-    if transform.translation.z < 0.11 {
-        transform.translation.z = 0.11;
+pub fn touch_ball(ball: &mut Ball, position: &mut Position, target_momentum: Vec3) {
+    if position.0.z < BALL_RADIUS {
+        position.0.z = BALL_RADIUS;
     }
     ball.momentum = target_momentum;
 }

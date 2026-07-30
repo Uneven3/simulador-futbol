@@ -48,10 +48,6 @@ pub struct Player {
     pub avg_velocity: f32,
 }
 
-/// Kinematic velocity in m/s; integrated into Transform each fixed tick.
-#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
-pub struct Velocity(pub Vec3);
-
 #[derive(Component, Debug, Clone, Reflect)]
 pub struct PlayerStats {
     /// Top speed in m/s (original `sprintVelocity` = 8.0).
