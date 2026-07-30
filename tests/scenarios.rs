@@ -47,6 +47,97 @@ fn hitting_the_woodwork_is_not_a_goal() {
     ScenarioRunner::headless(scenarios::shot_off_the_post()).assert_scenario_holds();
 }
 
+/// Half a metre wide of the post is not a goal, and the scenario that proves
+/// the goal must be told apart from the one that proves the miss.
+#[test]
+fn a_shot_into_the_side_netting_is_not_a_goal() {
+    ScenarioRunner::headless(scenarios::shot_into_the_side_netting()).assert_scenario_holds();
+}
+
+/// A scenario is a claim, and a claim nobody could satisfy is worse than none:
+/// it fails forever, or passes for the wrong reason.
+#[test]
+fn a_scenario_that_contradicts_itself_is_caught_before_it_runs() {
+    use gameplayfootball::ByTeam;
+
+    let impossible = scenarios::shot_crossing_the_goal_line().expecting(
+        gameplayfootball::scenario::Expectations {
+            score: Some(ByTeam::new(1, 0)),
+            play_never_stops: true,
+            ..Default::default()
+        },
+    );
+    assert!(
+        !impossible.contradictions().is_empty(),
+        "a scenario expecting both a goal and uninterrupted play was accepted"
+    );
+
+    // The opening scenario describes a match, not a situation: asserting it
+    // would simulate 540,000 ticks.
+    assert!(
+        !gameplayfootball::Scenario::kick_off().contradictions().is_empty(),
+        "a 90-minute window was accepted into a suite"
+    );
+
+    for scenario in scenarios::all() {
+        let name = scenario.name.clone();
+        assert!(
+            scenario.contradictions().is_empty(),
+            "catalogued scenario '{name}' contradicts itself: {:?}",
+            scenario.contradictions()
+        );
+    }
+}
+
+/// After the final whistle nobody plays on. The ball is still integrated — it
+/// rolls to a stop, as it does when the whistle catches it — but no player
+/// decides anything and the score cannot change.
+#[test]
+fn nobody_plays_on_after_the_final_whistle() {
+    use bevy::prelude::{Vec3, With};
+    use football_domain::{Player, Position, Velocity};
+
+    let scenario = scenarios::short_match();
+    let ticks = scenario.ticks();
+    let mut runner = ScenarioRunner::headless(scenario);
+    for _ in 0..ticks {
+        runner.advance();
+    }
+
+    let world = runner.world_mut();
+    assert_eq!(
+        world.resource::<gameplayfootball::MatchState>().phase,
+        MatchPhase::FullTime
+    );
+
+    let moving = world
+        .query::<&Velocity>()
+        .iter(world)
+        .filter(|velocity| velocity.0.length() > 0.01)
+        .count();
+    assert_eq!(
+        moving, 0,
+        "{moving} players were still running after full time"
+    );
+
+    // And they stay where the whistle found them.
+    let before: Vec<Vec3> = world
+        .query_filtered::<&Position, With<Player>>()
+        .iter(world)
+        .map(|position| position.0)
+        .collect();
+    for _ in 0..100 {
+        runner.advance();
+    }
+    let world = runner.world_mut();
+    let after: Vec<Vec3> = world
+        .query_filtered::<&Position, With<Player>>()
+        .iter(world)
+        .map(|position| position.0)
+        .collect();
+    assert_eq!(before, after, "a body moved after the match had ended");
+}
+
 #[test]
 fn a_ball_stopping_on_the_line_is_still_in_play() {
     ScenarioRunner::headless(scenarios::ball_stopping_on_the_goal_line()).assert_scenario_holds();

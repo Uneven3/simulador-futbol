@@ -1,7 +1,7 @@
 use crate::SimulationSet;
 use crate::ball_physics::touch_ball;
-use crate::eliza::{self, OnBallAction, PassKind};
-use crate::team_ai::{self, PlayerSnap, TeamAis, team_side};
+use crate::player_decisions::{self, OnBallAction, PassKind};
+use crate::team_tactics::{self, PlayerReading, TeamTactics, team_side};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
@@ -15,6 +15,26 @@ use football_domain::{
     SetPiece, TeamId, Velocity,
 };
 
+/// Everything the ball systems need to read off a body, plus the one thing they
+/// write: when he last touched the ball.
+pub type BallSystemBody = (
+    Entity,
+    &'static Position,
+    &'static Player,
+    &'static Attributes,
+    &'static mut PlayerMatchState,
+    &'static Velocity,
+);
+
+/// Who touched the ball and which body he is right now. The pair travels
+/// together because one is the identity and the other is only how to reach it
+/// this tick.
+#[derive(Clone, Copy)]
+struct Toucher {
+    player: PlayerId,
+    body: Entity,
+}
+
 pub struct PlayerMovementPlugin;
 
 impl Plugin for PlayerMovementPlugin {
@@ -22,14 +42,14 @@ impl Plugin for PlayerMovementPlugin {
         // `MatchRng` is deliberately not defaulted here: the seed belongs to the
         // scenario, which `MatchSetupPlugin` installs (law 11).
         app.insert_resource(PossessionDesignation::default())
-            .init_resource::<TeamAis>()
+            .init_resource::<TeamTactics>()
             .add_systems(
                 FixedUpdate,
                 (
                     (
                         update_possession_designation,
-                        team_ai::team_ai_update,
-                        eliza::eliza_movement_system,
+                        team_tactics::update_team_tactics,
+                        player_decisions::select_player_movement,
                         apply_player_velocity,
                         resolve_player_overlap,
                     )
@@ -161,6 +181,9 @@ fn resolve_player_overlap(mut query: Query<&mut Position, With<Player>>) {
 /// Possession acquisition, tackles, dribble knock-ons and pass/shot decisions.
 /// Every ball contact is a discrete touch that sets the ball's momentum — the
 /// ball is never glued to a player (original interaction model).
+// A Bevy system states its dependencies as parameters; the seven-argument rule
+// is about call sites, and this one has none.
+#[allow(clippy::too_many_arguments)]
 fn player_kick_system(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
@@ -170,17 +193,7 @@ fn player_kick_system(
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     registry: Res<PlayerRegistry>,
     mut telemetry: ResMut<MatchTelemetry>,
-    mut player_query: Query<
-        (
-            Entity,
-            &Position,
-            &Player,
-            &Attributes,
-            &mut PlayerMatchState,
-            &Velocity,
-        ),
-        Without<Ball>,
-    >,
+    mut player_query: Query<BallSystemBody, Without<Ball>>,
     time: Res<Time>,
     mut touched_writer: MessageWriter<BallTouched>,
 ) {
@@ -252,8 +265,8 @@ fn player_kick_system(
 
     if let Some((challenger, challenger_body)) = closest_player {
         if let Some(current_possessor) = match_state.possession_player {
-            if challenger != current_possessor {
-                if let Some(Ok((_, current_position, ..))) =
+            if challenger != current_possessor
+                && let Some(Ok((_, current_position, ..))) =
                     registry.body(current_possessor).map(|b| player_query.get(b))
                 {
                     // Teammates cannot steal the ball from each other
@@ -303,8 +316,10 @@ fn player_kick_system(
                                 control_touch(
                                     &mut ball,
                                     &mut ball_position,
-                                    challenger,
-                                    challenger_body,
+                                    Toucher {
+                                        player: challenger,
+                                        body: challenger_body,
+                                    },
                                     current_time_ms,
                                     &mut player_query,
                                     &mut touched_writer,
@@ -314,7 +329,6 @@ fn player_kick_system(
                         }
                     }
                 }
-            }
         } else {
             // Ball is loose: anyone can pick it up, except:
             // 1. Global pickup cooldown of 220ms after any kick
@@ -328,20 +342,16 @@ fn player_kick_system(
             // race — an opponent must arrive CLEARLY first to win the loose ball,
             // otherwise the dribbler loses every knock-on to a coin flip.
             let mut touch_bias_ok = true;
-            if !is_last_toucher && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500 {
-                if let Some(last_toucher) = ball.last_touch_player {
-                    if let Some(Ok((_, toucher_position, ..))) =
+            if !is_last_toucher && current_time_ms.saturating_sub(ball.last_touch_time_ms) < 1500
+                && let Some(last_toucher) = ball.last_touch_player
+                    && let Some(Ok((_, toucher_position, ..))) =
                         registry.body(last_toucher).map(|b| player_query.get(b))
-                    {
-                        if last_toucher.team != challenger.team {
+                        && last_toucher.team != challenger.team {
                             let toucher_dist = toucher_position.on_pitch().distance(ball_pos_2d);
                             if toucher_dist < 1.0 && closest_player_dist > toucher_dist - 0.25 {
                                 touch_bias_ok = false;
                             }
                         }
-                    }
-                }
-            }
 
             if global_cooldown_ok && individual_cooldown_ok && touch_bias_ok {
                 telemetry.record(MatchFact::PossessionGained {
@@ -358,8 +368,10 @@ fn player_kick_system(
                 control_touch(
                     &mut ball,
                     &mut ball_position,
-                    challenger,
-                    challenger_body,
+                    Toucher {
+                        player: challenger,
+                        body: challenger_body,
+                    },
                     current_time_ms,
                     &mut player_query,
                     &mut touched_writer,
@@ -416,9 +428,9 @@ fn player_kick_system(
 
         // Decision (port of ElizaController::GetOnTheBallCommands), evaluated in
         // the original's command-queue priority: panic → pass → shot → dribble.
-        let snaps: Vec<PlayerSnap> = player_query
+        let snaps: Vec<PlayerReading> = player_query
             .iter()
-            .map(|(_, position, p, _, _, v)| PlayerSnap {
+            .map(|(_, position, p, _, _, v)| PlayerReading {
                 id: p.id,
                 playing_position: p.position,
                 role: p.role,
@@ -428,10 +440,10 @@ fn player_kick_system(
             })
             .collect();
         let side = team_side(player_team);
-        let off_line = eliza::offside_line(&snaps, player_team, ball_pos.x, 0.0);
+        let off_line = player_decisions::offside_line(&snaps, player_team, ball_pos.x, 0.0);
         let possession_duration_ms =
             current_time_ms.saturating_sub(match_state.last_possession_change_time);
-        let action = eliza::decide_on_ball_action(
+        let action = player_decisions::decide_on_ball_action(
             &snaps,
             possessor,
             &ball,
@@ -566,7 +578,7 @@ fn player_kick_system(
                     .map(|s| s.pos.distance(player_pos_2d))
                     .fold(f32::MAX, f32::min);
                 let knock_speed = if nearest_opp < 3.0 {
-                    crate::team_ai::DRIBBLE_VELOCITY
+                    crate::team_tactics::DRIBBLE_VELOCITY
                 } else {
                     (player_vel_2d.length().max(2.0) + 1.0).min(player_speed + 1.0)
                 };
@@ -602,23 +614,13 @@ fn player_kick_system(
 fn control_touch(
     ball: &mut Ball,
     ball_position: &mut Position,
-    player: PlayerId,
-    body: Entity,
+    toucher: Toucher,
     now_ms: u64,
-    player_query: &mut Query<
-        (
-            Entity,
-            &Position,
-            &Player,
-            &Attributes,
-            &mut PlayerMatchState,
-            &Velocity,
-        ),
-        Without<Ball>,
-    >,
+    player_query: &mut Query<BallSystemBody, Without<Ball>>,
     touched_writer: &mut MessageWriter<BallTouched>,
     telemetry: &mut MatchTelemetry,
 ) {
+    let Toucher { player, body } = toucher;
     // A controlled touch is DIRECTED: the ball is set up towards where the
     // carrier wants to go (force-field dribble direction, which is repelled by
     // the pitch lines), not towards wherever he happened to be running — a
@@ -668,7 +670,7 @@ pub fn dribble_direction(
     team: TeamId,
     all_players: &[(TeamId, Vec2, Vec2)], // (team, position, velocity)
 ) -> Vec2 {
-    let side = crate::team_ai::team_side(team);
+    let side = crate::team_tactics::team_side(team);
     let future_sec = 0.25;
     let offense_factor = 0.75; // 0.7 + dribble_offensiveness/mindset defaults
 

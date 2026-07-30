@@ -13,6 +13,7 @@ use football_presentation::{
 };
 use football_simulation::MatchKernelPlugin;
 
+pub use football_domain::scenario;
 pub use football_domain::{
     ByTeam, MatchPhase, MatchState, PlayerId, Scenario, ScenarioOutcome, SetPiece, TeamId,
 };
@@ -131,6 +132,18 @@ impl ScenarioRunner {
 
     /// Panics with every way the run failed the scenario's claims.
     pub fn assert_scenario_holds(self) {
+        // A scenario that contradicts itself would either fail forever or pass
+        // for the wrong reason, and one with a match-length window would stall
+        // the suite. Both are the scenario's fault, not the kernel's, so they
+        // are reported as such before a single tick runs.
+        let contradictions = self.scenario.contradictions();
+        assert!(
+            contradictions.is_empty(),
+            "scenario '{}' cannot be asserted:\n  - {}",
+            self.scenario.name,
+            contradictions.join("\n  - ")
+        );
+
         let expectations = self.scenario.expectations.clone();
         let outcome = self.run();
         let mismatches = outcome.mismatches(&expectations);

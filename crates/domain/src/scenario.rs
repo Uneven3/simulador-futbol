@@ -203,6 +203,51 @@ pub struct ScenarioOutcome {
     pub play_resumed: bool,
 }
 
+impl Scenario {
+    /// Every way this scenario contradicts itself, in plain language. Empty
+    /// means it is worth running.
+    ///
+    /// A scenario is a claim about a situation, and a claim nobody can satisfy
+    /// is worse than no claim: it either fails forever or, worse, passes for the
+    /// wrong reason.
+    pub fn contradictions(&self) -> Vec<String> {
+        let mut found = Vec::new();
+
+        if self.expectations.play_never_stops && !self.expectations.set_pieces.is_empty() {
+            found.push(format!(
+                "expects play never to stop and also expects {:?}",
+                self.expectations.set_pieces
+            ));
+        }
+        if self.expectations.play_never_stops && self.expectations.play_resumes {
+            found.push(
+                "expects play never to stop, so there is nothing for it to resume from".to_string(),
+            );
+        }
+        if let Some(score) = self.expectations.score
+            && (score.home > 0 || score.away > 0)
+            && self.expectations.play_never_stops
+        {
+            found.push("expects a goal, which stops play, and also that play never stops".to_string());
+        }
+        if self.window > MAX_REASONABLE_WINDOW {
+            found.push(format!(
+                "runs for {:?}, which is {} ticks — too long to belong in a suite",
+                self.window,
+                self.ticks()
+            ));
+        }
+
+        found
+    }
+}
+
+/// The longest a catalogued scenario may run. `Scenario::kick_off()` opens with
+/// a full 90-minute window because it describes a match, not a situation; a
+/// scenario meant to be asserted has to be cut down from it, or a suite that
+/// runs it stalls on 540,000 ticks with nobody the wiser.
+pub const MAX_REASONABLE_WINDOW: Duration = Duration::from_secs(20 * 60);
+
 impl ScenarioOutcome {
     /// Every way this run failed the scenario's claims, in plain language.
     /// Empty means the scenario held.

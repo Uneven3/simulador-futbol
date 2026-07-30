@@ -5,7 +5,7 @@ use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::TeamId;
-use football_domain::{MatchPhase, MatchRegulations, MatchState, SetPiece};
+use football_domain::{MatchPhase, MatchRegulations, MatchState, Player, SetPiece, Velocity};
 
 /// Law 7: the clock and the phases of a match.
 ///
@@ -18,7 +18,9 @@ impl Plugin for MatchClockPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedUpdate,
-            advance_match_clock.in_set(SimulationSet::MatchLifecycle),
+            (advance_match_clock, still_the_players_at_full_time)
+                .chain()
+                .in_set(SimulationSet::MatchLifecycle),
         );
     }
 }
@@ -87,6 +89,26 @@ fn advance_match_clock(
         | MatchPhase::SecondExtraTime
         | MatchPhase::Penalties
         | MatchPhase::FullTime => {}
+    }
+}
+
+/// At the final whistle the players stop, and their state has to say so.
+///
+/// Their decision systems have already stopped running, so nobody would move
+/// either way — but a body left carrying 8 m/s is a lie the diagnostics would
+/// faithfully draw: twenty-two velocity arrows on a pitch where the match is
+/// over.
+fn still_the_players_at_full_time(
+    match_state: Res<MatchState>,
+    mut players: Query<&mut Velocity, With<Player>>,
+) {
+    if !match_state.phase.is_over() {
+        return;
+    }
+    for mut velocity in players.iter_mut() {
+        if velocity.0 != Vec3::ZERO {
+            velocity.0 = Vec3::ZERO;
+        }
     }
 }
 

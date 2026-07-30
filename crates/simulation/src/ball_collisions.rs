@@ -7,8 +7,7 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::math::{XorShift32, normalized_clamp, normalized_or};
 use football_domain::{
-    Attributes, BALL_RADIUS, Ball, BallTouched, MatchState, Player, PlayerId, PlayerMatchState,
-    Position, PossessionDesignation, Velocity,
+    BALL_RADIUS, Ball, BallTouched, MatchState, Player, PlayerId, Position, PossessionDesignation,
 };
 use std::time::Duration;
 
@@ -50,6 +49,8 @@ fn last_touch_bias(now_ms: u64, touch_time_ms: u64, threshold_ms: u64) -> f32 {
     }
 }
 
+// A Bevy system states its dependencies as parameters (see `player_kick_system`).
+#[allow(clippy::too_many_arguments)]
 fn ball_body_collisions(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
@@ -57,17 +58,7 @@ fn ball_body_collisions(
     mut last_collision_ms: Local<u64>,
     time: Res<Time>,
     mut ball_query: Query<(&mut Ball, &mut Position), Without<Player>>,
-    mut player_query: Query<
-        (
-            Entity,
-            &Position,
-            &Player,
-            &Attributes,
-            &mut PlayerMatchState,
-            &Velocity,
-        ),
-        Without<Ball>,
-    >,
+    mut player_query: Query<crate::player_movement::BallSystemBody, Without<Ball>>,
     mut touched_writer: MessageWriter<BallTouched>,
     mut telemetry: ResMut<MatchTelemetry>,
 ) {

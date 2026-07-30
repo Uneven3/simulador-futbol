@@ -84,6 +84,31 @@ pub fn ball_over_the_opponents_goal_line() -> Scenario {
         })
 }
 
+/// Law 10, the near miss: a shot that crosses the goal line half a metre wide
+/// of the post is not a goal, however close it looked. This is the outside of
+/// the side netting, and the only thing separating it from
+/// [`shot_crossing_the_goal_line`] is where along y it crossed.
+pub fn shot_into_the_side_netting() -> Scenario {
+    Scenario::kick_off()
+        .named("shot into the side netting")
+        .with_players(PlayerSetup::BallOnly)
+        .with_ball(
+            // 4.2 m off centre: outside the 3.7 m post by half a metre, well
+            // clear of the post's own radius, so nothing here is a woodwork
+            // rebound in disguise.
+            BallSetup::travelling_from(Vec3::new(50.0, 4.2, 0.6), Vec3::new(30.0, 0.0, 0.0))
+                .last_touched_by(TeamId::Home),
+        )
+        .already_in_play()
+        .for_duration(Duration::from_secs(8))
+        .expecting(Expectations {
+            score: Some(ByTeam::new(0, 0)),
+            set_pieces: vec![SetPiece::GoalKick],
+            play_resumes: true,
+            ..Default::default()
+        })
+}
+
 /// Law 17: home puts the ball over its own goal line outside the goal, so the
 /// attacking side gets a corner.
 pub fn ball_over_own_goal_line() -> Scenario {
@@ -222,5 +247,6 @@ pub fn all() -> Vec<Scenario> {
         ball_over_the_touchline(),
         ball_over_the_opponents_goal_line(),
         ball_over_own_goal_line(),
+        shot_into_the_side_netting(),
     ]
 }

@@ -4,12 +4,12 @@ use bevy_ecs::prelude::*;
 pub mod ball_collisions;
 pub mod ball_physics;
 pub mod diagnostics;
-pub mod eliza;
+pub mod player_decisions;
 pub mod match_clock;
 pub mod match_setup;
 pub mod player_movement;
 pub mod referee;
-pub mod team_ai;
+pub mod team_tactics;
 
 pub use ball_collisions::BallCollisionPlugin;
 pub use diagnostics::MatchDiagnosticsPlugin;
@@ -62,6 +62,11 @@ impl Plugin for MatchKernelPlugin {
     }
 }
 
+/// Whether there is still a match to play.
+fn the_match_is_still_on(match_state: Res<football_domain::MatchState>) -> bool {
+    !match_state.phase.is_over()
+}
+
 /// Fixed-tick ordering: the match lifecycle first (is there a match to play?),
 /// then players move, ball/body collisions resolve, the ball integrates, and the
 /// referee rules on the result. The middle of this still mirrors the original
@@ -91,6 +96,13 @@ impl Plugin for SimulationOrderPlugin {
                 SimulationSet::Referee,
             )
                 .chain(),
+        )
+        // After the final whistle nobody plays on. The ball is deliberately
+        // still integrated: it rolls to a stop, as it does when the whistle
+        // catches it mid-flight. What stops is football, not physics.
+        .configure_sets(
+            FixedUpdate,
+            (SimulationSet::Players, SimulationSet::Kicks).run_if(the_match_is_still_on),
         );
     }
 }
@@ -302,7 +314,7 @@ mod tests {
             );
             assert!(pos.is_finite(), "Ball position is not finite: {pos:?}");
 
-            // Team discipline: with the Eliza controller, off-the-ball players
+            // Team discipline: off-the-ball players
             // may legitimately sprint back into formation, so the real
             // regression signal is CROWDING — how many players stand within 8 m
             // of the ball. If everyone chases the ball, this count explodes.

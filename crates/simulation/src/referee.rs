@@ -129,7 +129,7 @@ fn referee_system(
     // line (original referee.cpp: fabs(pos) > pitchHalf + lineHalfW + 0.11)
     let last_touch = ball.last_touch_team.unwrap_or(TeamId::Home);
     // side of the pitch the last touching team defends (-1 left for home)
-    let last_side = crate::team_ai::team_side(last_touch);
+    let last_side = crate::team_tactics::team_side(last_touch);
 
     // 2. Over the backline: corner or goal kick
     if pos.x.abs() > pitch_half_w + line_half_w + 0.11 {
@@ -207,8 +207,8 @@ fn referee_offside_system(
         }
 
         // offside player receiving the ball?
-        if records.team == Some(touch.team()) {
-            if let Some((_, recorded_pos)) = records
+        if records.team == Some(touch.team())
+            && let Some((_, recorded_pos)) = records
                 .players
                 .iter()
                 .find(|(id, _)| *id == touch.player)
@@ -229,7 +229,6 @@ fn referee_offside_system(
                 });
                 continue;
             }
-        }
 
         records.players.clear();
         records.team = Some(touch.team());
@@ -237,7 +236,7 @@ fn referee_offside_system(
         // AI_GetOffsideLine: one-but-deepest defender, or the ball, whichever is
         // deeper; never inside the attackers' own half.
         let defending_team = touch.team().opponent();
-        let def_side = crate::team_ai::team_side(defending_team);
+        let def_side = crate::team_tactics::team_side(defending_team);
 
         let mut deepest: Option<(PlayerId, f32)> = None;
         for (_, position, player) in player_query.iter() {
