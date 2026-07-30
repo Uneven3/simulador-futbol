@@ -290,6 +290,11 @@ fn referee_set_piece_system(
         return;
     }
 
+    // The match is over: the pending kick-off is one that will never be taken.
+    if match_state.phase.is_over() {
+        return;
+    }
+
     if match_state.set_piece_timer > 0.0 {
         match_state.set_piece_timer -= time.delta_secs();
         // dead ball: park it at the restart spot right away, or it keeps

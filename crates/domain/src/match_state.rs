@@ -23,10 +23,54 @@ pub enum SetPiece {
 pub enum MatchPhase {
     PreMatch,
     FirstHalf,
+    HalfTime,
     SecondHalf,
     FirstExtraTime,
     SecondExtraTime,
     Penalties,
+    FullTime,
+}
+
+impl MatchPhase {
+    /// Whether match time is running in this phase. The interval and full time
+    /// are not playing time, so the clock stands still in them.
+    pub fn is_period_of_play(self) -> bool {
+        matches!(
+            self,
+            MatchPhase::FirstHalf
+                | MatchPhase::SecondHalf
+                | MatchPhase::FirstExtraTime
+                | MatchPhase::SecondExtraTime
+        )
+    }
+
+    /// After this, nothing more can happen in the match.
+    pub fn is_over(self) -> bool {
+        self == MatchPhase::FullTime
+    }
+}
+
+/// Law 7 lengths, as competition data rather than constants.
+///
+/// The Laws set two equal halves of 45 minutes and an interval of at most 15,
+/// but both are competition-modifiable — and a scenario shortens them so the
+/// clock can be demonstrated in seconds instead of an hour and a half.
+///
+/// Not covered yet, and deliberately so: allowance for time lost (added time),
+/// which needs the referee to account for stoppages, and extra time.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+pub struct MatchRegulations {
+    pub half_duration: std::time::Duration,
+    pub half_time_interval: std::time::Duration,
+}
+
+impl Default for MatchRegulations {
+    fn default() -> Self {
+        Self {
+            half_duration: std::time::Duration::from_secs(45 * 60),
+            half_time_interval: std::time::Duration::from_secs(15 * 60),
+        }
+    }
 }
 
 #[derive(Resource, Debug, Clone, Reflect)]
@@ -36,7 +80,13 @@ pub struct MatchState {
     pub phase: MatchPhase,
     pub set_piece: SetPiece,
     pub set_piece_team: Option<u32>, // 0 for home, 1 for away
-    pub timer_ms: u64,
+    /// Time played in the current period, in ms. It keeps running while play is
+    /// stopped, as it does in a real match; what is missing is the allowance for
+    /// time lost, which would be added on top at the end of each period.
+    pub period_elapsed_ms: u64,
+    /// Team that kicked off the match, so the other one kicks off the second
+    /// half (Law 8).
+    pub opening_kick_off_team: u32,
     pub is_ball_in_goal: bool,
     pub possession_team: Option<u32>,
     pub set_piece_timer: f32, // Time left before resetting/restarting play
@@ -131,7 +181,8 @@ impl Default for MatchState {
             phase: MatchPhase::PreMatch,
             set_piece: SetPiece::KickOff,
             set_piece_team: Some(0), // home kicks off
-            timer_ms: 0,
+            period_elapsed_ms: 0,
+            opening_kick_off_team: 0,
             is_ball_in_goal: false,
             possession_team: None,
             set_piece_timer: 2.0, // Start with a 2-second kickoff delay

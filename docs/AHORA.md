@@ -2,8 +2,11 @@
 
 ## Objetivo activo
 
-Completar **MVP 1 — Kernel observable**: la misma situación debe correr headless
-y renderizada, con entidades autoritativas separadas de sus representaciones.
+**MVP 1 — Kernel observable: cerrado.** Campo, balón, equipos, reloj, fases,
+gol/fuera y reanudaciones son inspeccionables headless y con primitivas, y cada
+transición nace de un escenario ejecutable.
+
+Siguiente: **MVP 2 — Partido reglamentariamente completo**.
 
 ## Hecho
 
@@ -45,19 +48,30 @@ y renderizada, con entidades autoritativas separadas de sus representaciones.
   tests; los sistemas solo las pasan a `Gizmos`.
 - El árbitro publica la línea que juzgó (`OffsideRecords.judged_line_x`) para
   que la presentación muestre la decisión en vez de recalcular la regla.
+- Reloj y fases (Ley 7) en `crates/simulation/src/match_clock.rs`, primer paso
+  del tick (`SimulationSet::MatchLifecycle`): PreMatch → FirstHalf → HalfTime →
+  SecondHalf → FullTime. Las duraciones son `MatchRegulations`, dato de
+  competición, así que un escenario juega tiempos de 20 s.
+- HUD en `crates/presentation/src/hud.rs`: marcador, reloj de transmisión, fase
+  y motivo de la detención, con las conversiones como funciones puras y tests.
+- Catálogo ampliado a 10 escenarios: partido corto, gol a alta velocidad, poste,
+  travesaño y pelota que se detiene sobre la línea.
 
 ## Siguiente corte
 
-MVP 1 pide que reloj y fases sean inspeccionables, y es lo único que falta:
+Entrada a MVP 2, empezando por lo que MVP 1 dejó declarado como ausente:
 
-1. Reloj de partido y fases: `MatchState.timer_ms` y `MatchState.phase` existen
-   pero ningún sistema los avanza (el partido corre siempre en `PreMatch`), y no
-   hay HUD que los muestre.
-2. Escenarios como archivo (RON) cuando exista un consumidor real: hoy son datos
+1. Cambio de mitades en el segundo tiempo (Ley 8). Hoy los equipos defienden el
+   mismo lado los dos tiempos; tocarlo afecta a toda la IA, que asume que el
+   local defiende -x.
+2. Tiempo añadido (Ley 7): el árbitro debe contabilizar el tiempo perdido.
+3. Kick-off como regla, no como reanudación nominal: posiciones y balón en juego.
+4. Escenarios como archivo (RON) cuando exista un consumidor real: hoy son datos
    en Rust y no se añadió `serde` sin contrato que lo justifique.
-3. Colocación explícita de jugadores en el escenario (`PlayerSetup` solo tiene
+5. Colocación explícita de jugadores en el escenario (`PlayerSetup` solo tiene
    formación por defecto y solo-pelota), requisito de MVP 6.
-4. Reemplazar `SimulationSet` por el pipeline semántico de `ARCHITECTURE.md`.
+6. Reemplazar el resto de `SimulationSet` por el pipeline semántico de
+   `ARCHITECTURE.md` (ya entró `MatchLifecycle`).
 
 ## Deuda observada
 
@@ -74,6 +88,9 @@ MVP 1 pide que reloj y fases sean inspeccionables, y es lo único que falta:
 - De la lista de overlays del norte faltan los que aún no tienen dato: campo
   visual, observaciones y edad de memoria (MVP 4), y responsabilidades tácticas
   más allá de la designación de posesión (MVP 5).
+- El side netting solo tiene frontera unitaria, no escenario ejecutable.
+- `MatchState` acumula estado de partido y diagnósticos de IA en un solo
+  recurso; el reloj le sumó dos campos más.
 
 ## Restricciones
 

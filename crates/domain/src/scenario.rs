@@ -1,4 +1,4 @@
-use crate::{PitchConfig, SetPiece};
+use crate::{MatchPhase, MatchRegulations, PitchConfig, SetPiece};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use std::time::Duration;
@@ -90,8 +90,14 @@ pub struct Expectations {
     /// Restarts the referee must award, in order. Extra restarts after these
     /// are allowed: a scenario states what must happen, not everything that may.
     pub set_pieces: Vec<SetPiece>,
+    /// Phases the match must pass through, in order.
+    pub phases: Vec<MatchPhase>,
     /// Play must be running again by the end of the window.
     pub play_resumes: bool,
+    /// The ball must never leave play: no restart at all is awarded. This is how
+    /// a near miss is stated — the difference between "no goal" and "no goal and
+    /// the ball is still live" matters at the goal line.
+    pub play_never_stops: bool,
 }
 
 /// A reproducible situation: initial state, seed, window and claims.
@@ -104,6 +110,8 @@ pub struct Scenario {
     pub laws_edition: LawsEdition,
     pub competition: Option<String>,
     pub pitch: PitchConfig,
+    /// Law 7 lengths for this match.
+    pub regulations: MatchRegulations,
     /// Seed for every random draw in the match, so a run is repeatable.
     pub seed: u32,
     pub ball: BallSetup,
@@ -122,6 +130,7 @@ impl Scenario {
             laws_edition: LawsEdition::Ifab2026_27,
             competition: None,
             pitch: PitchConfig::default(),
+            regulations: MatchRegulations::default(),
             seed: 0xC0FFEE,
             ball: BallSetup::on_the_centre_spot(),
             players: PlayerSetup::DefaultFormations,
@@ -163,6 +172,11 @@ impl Scenario {
         self
     }
 
+    pub fn with_regulations(mut self, regulations: MatchRegulations) -> Self {
+        self.regulations = regulations;
+        self
+    }
+
     pub fn expecting(mut self, expectations: Expectations) -> Self {
         self.expectations = expectations;
         self
@@ -182,6 +196,11 @@ pub struct ScenarioOutcome {
     pub score: [u32; 2],
     /// Restarts awarded, in the order the referee awarded them.
     pub set_pieces: Vec<SetPiece>,
+    /// Phases entered, in order.
+    pub phases: Vec<MatchPhase>,
+    pub final_phase: MatchPhase,
+    /// Time played in the period the run ended in.
+    pub period_elapsed: Duration,
     pub play_resumed: bool,
 }
 
@@ -211,8 +230,25 @@ impl ScenarioOutcome {
             }
         }
 
+        let mut entered = self.phases.iter();
+        for expected in &expectations.phases {
+            if !entered.any(|observed| observed == expected) {
+                mismatches.push(format!(
+                    "expected the match to reach {expected:?}, it went through {:?}",
+                    self.phases
+                ));
+            }
+        }
+
         if expectations.play_resumes && !self.play_resumed {
             mismatches.push("play never resumed".to_string());
+        }
+
+        if expectations.play_never_stops && !self.set_pieces.is_empty() {
+            mismatches.push(format!(
+                "play was expected to continue, but {:?} was awarded",
+                self.set_pieces
+            ));
         }
 
         mismatches

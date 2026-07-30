@@ -42,10 +42,10 @@ primitivas.
 | 2 Ball | Dimensiones, masa/presión, defecto, reemplazo y balones extra | Radio/dinámica; sin contrato completo | 1–2 |
 | 3 Players | 11, goalkeeper, mínimo 7, sustituciones, expulsados y personas extra | 22 fijos | 2 |
 | 4 Equipment | Obligatorio/prohibido, seguridad, colores, infracciones y retorno | Ausente | 2/config |
-| 5 Referee | Autoridad, ventaja, disciplina, lesiones, interferencia, reloj y correcciones | Automatismo parcial | 2 |
+| 5 Referee | Autoridad, ventaja, disciplina, lesiones, interferencia, reloj y correcciones | Automatismo parcial; reloj implementado | 2 |
 | 6 Officials | Asistentes, cuarto oficial, adicionales, VAR/AVAR | Ausente | diferido |
-| 7 Duration | Mitades, descanso, añadido, recuperación, penal extendido, abandono | Incompleto | 1–2 |
-| 8 Start/restart | Sorteo, kick-off, posiciones, balón en juego, dropped ball | Kick-off simplificado | 1–2 |
+| 7 Duration | Mitades, descanso, añadido, recuperación, penal extendido, abandono | Mitades y descanso implementados y con escenario; duración como dato de competición. Sin añadido, extra time ni abandono | 1–2 |
+| 8 Start/restart | Sorteo, kick-off, posiciones, balón en juego, dropped ball | Kick-off simplificado; el segundo tiempo lo saca el otro equipo. **Sin cambio de mitades**: los equipos defienden el mismo lado los dos tiempos | 1–2 |
 | 9 In/out | Cruce completo, detención arbitral, contacto con oficial y excepciones | Parcial | 1 |
 | 10 Outcome | Gol, ganador, empate, extra time y tanda | Gol/marcador parcial | 1–2 |
 | 11 Offside | Posición, toque, interferencia, advantage, deliberate play/save, excepciones | Simplificado | 2 |
@@ -81,14 +81,19 @@ anónimos.
 
 ## Escenarios iniciales
 
-MVP 1:
+MVP 1 — estado (catálogo en `src/scenarios.rs`, suite en `tests/scenarios.rs`):
 
-- gol/no-gol por postes, travesaño, side netting y cruce incompleto;
-- touchline/goal line, incluso a alta velocidad;
-- throw-in frente a goal kick/corner;
-- kick-off legal/ilegal;
-- reloj, descanso/final;
-- misma escena headless y con primitivas.
+| Escenario | Cobertura |
+|---|---|
+| gol/no-gol por postes y travesaño | `shot_off_the_post`, `shot_off_the_crossbar` |
+| cruce incompleto | `ball_stopping_on_the_goal_line` |
+| side netting | frontera unitaria (`test_no_goal_through_side_netting`), sin escenario |
+| touchline/goal line | `ball_over_the_touchline`, `ball_over_the_opponents_goal_line`, `ball_over_own_goal_line` |
+| a alta velocidad | `goal_at_high_speed` (0,4 m por tick, sin tunneling) |
+| throw-in vs goal kick/corner | los tres escenarios anteriores |
+| kick-off legal/ilegal | **ausente**: no hay reglas de posición ni de balón en juego para el saque (MVP 2) |
+| reloj, descanso/final | `short_match` (fases PreMatch→FirstHalf→HalfTime→SecondHalf→FullTime) |
+| misma escena headless y con primitivas | `tests/layer_boundaries.rs` |
 
 MVP 2:
 

@@ -12,7 +12,8 @@ pub mod spatial;
 
 pub use ball::{BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, BALL_RADIUS, Ball};
 pub use match_state::{
-    BallTouched, MatchRng, MatchState, OffsideRecords, PitchConfig, PossessionDesignation, SetPiece,
+    BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
+    PossessionDesignation, SetPiece,
 };
 pub use player::{Player, PlayerRole, PlayerStats};
 pub use scenario::{Scenario, ScenarioOutcome};

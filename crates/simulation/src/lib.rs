@@ -4,6 +4,7 @@ use bevy_ecs::prelude::*;
 pub mod ball_collisions;
 pub mod ball_physics;
 pub mod eliza;
+pub mod match_clock;
 pub mod match_setup;
 pub mod player_movement;
 pub mod referee;
@@ -11,6 +12,7 @@ pub mod team_ai;
 
 pub use ball_collisions::BallCollisionPlugin;
 pub use ball_physics::BallPhysicsPlugin;
+pub use match_clock::MatchClockPlugin;
 pub use match_setup::MatchSetupPlugin;
 pub use player_movement::PlayerMovementPlugin;
 pub use referee::RefereePlugin;
@@ -37,6 +39,7 @@ impl Plugin for MatchKernelPlugin {
         app.add_plugins((
             MatchSetupPlugin::new(self.scenario.clone()),
             SimulationOrderPlugin,
+            MatchClockPlugin,
             BallPhysicsPlugin,
             BallCollisionPlugin,
             RefereePlugin,
@@ -45,11 +48,13 @@ impl Plugin for MatchKernelPlugin {
     }
 }
 
-/// Fixed-tick ordering, mirroring the original `Match::Process()` sequence:
-/// players move, ball/body collisions resolve, the ball integrates, then the
-/// referee rules on the result.
+/// Fixed-tick ordering: the match lifecycle first (is there a match to play?),
+/// then players move, ball/body collisions resolve, the ball integrates, and the
+/// referee rules on the result. The middle of this still mirrors the original
+/// `Match::Process()` rather than the semantic pipeline in ARCHITECTURE.md.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SimulationSet {
+    MatchLifecycle,
     Players,
     Kicks,
     BallCollisions,
@@ -64,6 +69,7 @@ impl Plugin for SimulationOrderPlugin {
         app.configure_sets(
             FixedUpdate,
             (
+                SimulationSet::MatchLifecycle,
                 SimulationSet::Players,
                 SimulationSet::Kicks,
                 SimulationSet::BallCollisions,

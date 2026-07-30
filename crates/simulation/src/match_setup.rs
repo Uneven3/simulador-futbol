@@ -30,6 +30,7 @@ impl Plugin for MatchSetupPlugin {
         app.insert_resource(self.scenario.clone())
             .insert_resource(initial_match_state(&self.scenario))
             .insert_resource(self.scenario.pitch.clone())
+            .insert_resource(self.scenario.regulations.clone())
             .insert_resource(MatchRng::seeded(self.scenario.seed))
             .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
             .add_message::<BallTouched>()
@@ -50,6 +51,7 @@ fn initial_match_state(scenario: &Scenario) -> MatchState {
             state.set_piece_team = Some(team_index);
             state.set_piece_timer = delay.as_secs_f32();
             state.restart_pos = Vec3::ZERO;
+            state.opening_kick_off_team = team_index;
         }
         PlayState::InPlay => {
             state.set_piece = SetPiece::None;

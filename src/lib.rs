@@ -8,10 +8,10 @@ pub mod scenarios;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use football_domain::scenario::{PlayState, TICK};
-use football_presentation::{DiagnosticOverlaysPlugin, PrimitiveVisualsPlugin};
+use football_presentation::{DiagnosticOverlaysPlugin, MatchHudPlugin, PrimitiveVisualsPlugin};
 use football_simulation::MatchKernelPlugin;
 
-pub use football_domain::{MatchState, Scenario, ScenarioOutcome, SetPiece};
+pub use football_domain::{MatchPhase, MatchState, Scenario, ScenarioOutcome, SetPiece};
 
 /// Runs one scenario, with or without visuals, one fixed tick per step.
 ///
@@ -24,6 +24,8 @@ pub struct ScenarioRunner {
     scenario: Scenario,
     awarded_set_pieces: Vec<SetPiece>,
     previous_set_piece: SetPiece,
+    entered_phases: Vec<MatchPhase>,
+    previous_phase: MatchPhase,
     play_resumed: bool,
     ticks_simulated: u32,
 }
@@ -47,9 +49,11 @@ impl ScenarioRunner {
         runner.app.add_plugins(AssetPlugin::default());
         runner.app.init_asset::<Mesh>();
         runner.app.init_asset::<StandardMaterial>();
-        runner
-            .app
-            .add_plugins((PrimitiveVisualsPlugin, DiagnosticOverlaysPlugin));
+        runner.app.add_plugins((
+            PrimitiveVisualsPlugin,
+            DiagnosticOverlaysPlugin,
+            MatchHudPlugin,
+        ));
         runner
     }
 
@@ -63,6 +67,8 @@ impl ScenarioRunner {
             scenario,
             awarded_set_pieces: Vec::new(),
             previous_set_piece: opening_set_piece,
+            entered_phases: Vec::new(),
+            previous_phase: MatchPhase::PreMatch,
             play_resumed: false,
             ticks_simulated: 0,
         }
@@ -73,7 +79,9 @@ impl ScenarioRunner {
         self.app.update();
         self.ticks_simulated += 1;
 
-        let set_piece = self.app.world().resource::<MatchState>().set_piece;
+        let state = self.app.world().resource::<MatchState>();
+        let (set_piece, phase) = (state.set_piece, state.phase);
+
         if set_piece != self.previous_set_piece {
             if set_piece == SetPiece::None {
                 self.play_resumed = true;
@@ -81,6 +89,10 @@ impl ScenarioRunner {
                 self.awarded_set_pieces.push(set_piece);
             }
             self.previous_set_piece = set_piece;
+        }
+        if phase != self.previous_phase {
+            self.entered_phases.push(phase);
+            self.previous_phase = phase;
         }
     }
 
@@ -99,6 +111,9 @@ impl ScenarioRunner {
             ticks_simulated: self.ticks_simulated,
             score: [state.home_score, state.away_score],
             set_pieces: self.awarded_set_pieces.clone(),
+            phases: self.entered_phases.clone(),
+            final_phase: state.phase,
+            period_elapsed: std::time::Duration::from_millis(state.period_elapsed_ms),
             play_resumed: self.play_resumed,
         }
     }
