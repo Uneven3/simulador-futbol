@@ -33,6 +33,12 @@ tolerancias. Cámara/overlays son opcionales y no autoritativos.
 
 El mismo archivo alimenta runner headless, primitivas y replay.
 
+Implementado en `crates/domain/src/scenario.rs` (`Scenario`, `Expectations`,
+`ScenarioOutcome::mismatches`) y ejecutado por `ScenarioRunner` con `headless` o
+`with_primitives`. Pendiente: perfiles y responsabilidades por jugador,
+colocación explícita, métricas con tolerancia, y el escenario como archivo —
+hoy el catálogo son datos en Rust (`src/scenarios.rs`).
+
 ## Enseñanza contrafactual
 
 1. Fijar situación y observaciones disponibles.

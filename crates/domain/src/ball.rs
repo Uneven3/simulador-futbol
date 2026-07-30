@@ -57,6 +57,20 @@ impl Default for Ball {
 }
 
 impl Ball {
+    /// A ball at `position` moving at `momentum`.
+    ///
+    /// The prediction IS the physics (see the type's note), so the buffer has to
+    /// start from where the ball actually is: a ball built with `default()` and
+    /// then moved would spend its first tick teleporting back to the centre spot.
+    pub fn placed_at(position: Vec3, momentum: Vec3) -> Self {
+        Self {
+            momentum,
+            previous_position: position,
+            predictions: vec![position; BALL_PREDICTION_STEPS],
+            ..Default::default()
+        }
+    }
+
     /// Port of `Ball::SetRotation(x, y, z, bias)` — radians per second per axis.
     /// Note the engine builds the X component around the -X axis; every consumer
     /// (Magnus effect, ground roll) assumes this convention.

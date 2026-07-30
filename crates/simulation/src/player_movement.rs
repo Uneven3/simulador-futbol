@@ -17,9 +17,10 @@ pub struct PlayerMovementPlugin;
 
 impl Plugin for PlayerMovementPlugin {
     fn build(&self, app: &mut App) {
+        // `MatchRng` is deliberately not defaulted here: the seed belongs to the
+        // scenario, which `MatchSetupPlugin` installs (law 11).
         app.insert_resource(PossessionDesignation::default())
             .init_resource::<TeamAis>()
-            .init_resource::<MatchRng>()
             .add_systems(
                 FixedUpdate,
                 (

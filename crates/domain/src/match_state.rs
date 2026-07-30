@@ -79,6 +79,11 @@ impl Default for MatchRng {
 }
 
 impl MatchRng {
+    /// Seeded from a scenario, so the same scenario replays identically.
+    pub fn seeded(seed: u32) -> Self {
+        MatchRng(crate::math::XorShift32(seed))
+    }
+
     pub fn range(&mut self, min: f32, max: f32) -> f32 {
         self.0.range(min, max)
     }

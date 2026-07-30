@@ -15,6 +15,36 @@ pub use match_setup::MatchSetupPlugin;
 pub use player_movement::PlayerMovementPlugin;
 pub use referee::RefereePlugin;
 
+use football_domain::Scenario;
+
+/// The whole authoritative kernel for one scenario.
+///
+/// Every consumer — the game, the headless runner, the rendered runner — adds
+/// exactly this and nothing else to get a match. It owns the fixed-tick order,
+/// so no caller can reorder the pipeline by accident.
+pub struct MatchKernelPlugin {
+    scenario: Scenario,
+}
+
+impl MatchKernelPlugin {
+    pub fn new(scenario: Scenario) -> Self {
+        Self { scenario }
+    }
+}
+
+impl Plugin for MatchKernelPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((
+            MatchSetupPlugin::new(self.scenario.clone()),
+            SimulationOrderPlugin,
+            BallPhysicsPlugin,
+            BallCollisionPlugin,
+            RefereePlugin,
+            PlayerMovementPlugin,
+        ));
+    }
+}
+
 /// Fixed-tick ordering, mirroring the original `Match::Process()` sequence:
 /// players move, ball/body collisions resolve, the ball integrates, then the
 /// referee rules on the result.
@@ -50,10 +80,9 @@ mod tests {
     use super::*;
     use bevy_app::TaskPoolPlugin;
     use bevy_math::prelude::*;
-    use bevy_time::prelude::*;
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
-    use football_domain::{Ball, BallTouched, MatchState, PitchConfig, Position, SetPiece};
-    use std::time::Duration;
+    use football_domain::scenario::TICK;
+    use football_domain::{Ball, MatchState, Position, Scenario, SetPiece};
 
     /// A whole match with nothing but a task pool and a clock: this is the shape
     /// every scenario runs in. There is no renderer to leave out — this crate
@@ -61,22 +90,9 @@ mod tests {
     fn build_headless_app() -> App {
         let mut app = App::new();
         app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-        app.insert_resource(Time::<Fixed>::from_hz(100.0));
-        app.insert_resource(MatchState::default());
-        app.insert_resource(PitchConfig::default());
-        app.add_message::<BallTouched>();
-        app.add_plugins((
-            MatchSetupPlugin,
-            SimulationOrderPlugin,
-            BallPhysicsPlugin,
-            BallCollisionPlugin,
-            RefereePlugin,
-            PlayerMovementPlugin,
-        ));
-        // one fixed tick (10 ms) per app.update()
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-            10,
-        )));
+        app.add_plugins(MatchKernelPlugin::new(Scenario::kick_off()));
+        // one fixed tick per app.update()
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
         app
     }
 

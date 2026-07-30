@@ -1,38 +1,84 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
+use bevy_time::prelude::*;
+use football_domain::scenario::{PlayState, PlayerSetup, SIMULATION_HZ, Scenario};
 use football_domain::{
-    BALL_RADIUS, Ball, Facing, Player, PlayerRole, PlayerStats, Position, Velocity,
+    Ball, BallTouched, Facing, MatchRng, MatchState, Player, PlayerRole, PlayerStats, Position,
+    SetPiece, Velocity,
 };
 
-/// Spawns the authoritative bodies of a match: one ball and two teams of eleven.
+/// Installs a scenario: the state the match starts from, its seed, its pitch and
+/// its bodies.
 ///
-/// Nothing here is renderable. These entities carry domain state only; their
-/// visual representations are created independently by presentation and linked
-/// back with `VisualOf`, so the same setup runs headless.
-pub struct MatchSetupPlugin;
+/// The scenario is the single source of the initial situation, so a run is
+/// reproducible from one value. Nothing here is renderable: these entities carry
+/// domain state only, and their visual representations are created independently
+/// by presentation and linked back with `VisualOf`.
+pub struct MatchSetupPlugin {
+    scenario: Scenario,
+}
+
+impl MatchSetupPlugin {
+    pub fn new(scenario: Scenario) -> Self {
+        Self { scenario }
+    }
+}
 
 impl Plugin for MatchSetupPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (spawn_match_ball, spawn_match_players));
+        app.insert_resource(self.scenario.clone())
+            .insert_resource(initial_match_state(&self.scenario))
+            .insert_resource(self.scenario.pitch.clone())
+            .insert_resource(MatchRng::seeded(self.scenario.seed))
+            .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
+            .add_message::<BallTouched>()
+            .add_systems(Startup, (spawn_scenario_ball, spawn_scenario_players));
     }
+}
+
+/// The match state a scenario opens in: stopped awaiting a restart, or live.
+fn initial_match_state(scenario: &Scenario) -> MatchState {
+    let mut state = MatchState::default();
+    match scenario.play_state {
+        PlayState::AwaitingRestart {
+            set_piece,
+            team_index,
+            delay,
+        } => {
+            state.set_piece = set_piece;
+            state.set_piece_team = Some(team_index);
+            state.set_piece_timer = delay.as_secs_f32();
+            state.restart_pos = Vec3::ZERO;
+        }
+        PlayState::InPlay => {
+            state.set_piece = SetPiece::None;
+            state.set_piece_team = None;
+            state.set_piece_timer = 0.0;
+        }
+    }
+    state
 }
 
 /// Height of an outfield body in metres. Provisional until anthropometry
 /// becomes per-player data (MVP 3).
 pub const PLAYER_HEIGHT: f32 = 1.8;
 
-fn spawn_match_ball(mut commands: Commands) {
-    commands.spawn((
-        Name::new("Ball"),
-        Ball::default(),
-        Position(Vec3::new(0.0, 0.0, BALL_RADIUS)),
-    ));
+fn spawn_scenario_ball(mut commands: Commands, scenario: Res<Scenario>) {
+    let setup = scenario.ball;
+    let mut ball = Ball::placed_at(setup.position, setup.momentum);
+    ball.last_touch_team = setup.last_touched_by_team;
+
+    commands.spawn((Name::new("Ball"), ball, Position(setup.position)));
 }
 
 /// The default 4-4-2 for both teams: eleven bodies each, at their base
 /// formation positions, standing still and facing the opponent goal.
-fn spawn_match_players(mut commands: Commands) {
+fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
+    if scenario.players == PlayerSetup::BallOnly {
+        return;
+    }
+
     const ROLES: [PlayerRole; 11] = [
         PlayerRole::GK,
         PlayerRole::LB,

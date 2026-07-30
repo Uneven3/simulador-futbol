@@ -29,14 +29,25 @@ y renderizada, con entidades autoritativas separadas de sus representaciones.
 - `tests/layer_boundaries.rs`: la misma situación headless y con primitivas da
   posiciones idénticas durante 600 ticks, y cada cuerpo tiene exactamente una
   representación.
+- Esquema de escenarios en `crates/domain/src/scenario.rs`: estado inicial
+  (pelota, jugadores o solo pelota), semilla, edición IFAB, ventana simulada y
+  hechos esperados. `MatchSetupPlugin` lo instala; el escenario es la única
+  fuente del estado inicial y de la semilla.
+- `MatchKernelPlugin`: el partido autoritativo completo en un plugin. Juego,
+  runner headless y runner con primitivas añaden exactamente lo mismo.
+- `ScenarioRunner` en `src/lib.rs` (capa app) con `headless` y
+  `with_primitives`, y catálogo en `src/scenarios.rs`: gol, saque de banda,
+  saque de meta, córner y minuto inicial. `tests/scenarios.rs` los corre.
 
 ## Siguiente corte
 
-1. Crear `ScenarioRunner` en la capa app: hoy `simulation_only_app` está
-   duplicado entre `tests/layer_boundaries.rs` y los tests del kernel.
-2. Definir esquema de escenarios y portar primero gol/fuera/reanudación.
-3. Overlays diagnósticos sobre las primitivas: predicción de la pelota,
+1. Overlays diagnósticos sobre las primitivas: predicción de la pelota,
    designación de posesión, línea de offside.
+2. Escenarios como archivo (RON) cuando exista un consumidor real: hoy son datos
+   en Rust y no se añadió `serde` sin contrato que lo justifique.
+3. Colocación explícita de jugadores en el escenario (`PlayerSetup` solo tiene
+   formación por defecto y solo-pelota), requisito de MVP 6.
+4. Reemplazar `SimulationSet` por el pipeline semántico de `ARCHITECTURE.md`.
 
 ## Deuda observada
 
