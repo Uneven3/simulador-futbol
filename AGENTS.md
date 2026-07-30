@@ -16,6 +16,10 @@ la especificación del producto.
 4. `docs/DOMAIN_MODEL.md`: vocabulario canónico.
 5. `docs/LAWS_OF_FOOTBALL.md`: contrato IFAB y cobertura.
 6. `docs/VALIDATION.md`: cómo se demuestra fidelidad.
+7. `docs/DIAGNOSTICS.md`: contrato de logs y observación.
+
+`docs/REVISION_2026-07-30.md` es la revisión del cierre de MVP 1: qué se
+verificó, qué no y qué se encontró. Las revisiones se fechan y no se editan.
 
 La documentación histórica vive en `docs/references/gameplay_football/`.
 Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
@@ -26,6 +30,16 @@ Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
 - `cargo test`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo fmt --all -- --check`
+- `cargo test long_match_stats -- --ignored --nocapture`: 10 minutos simulados
+  con forense de posesión; es la métrica de gameplay, no un test de regresión.
+
+El proyecto son cuatro crates: `crates/domain`, `crates/simulation`,
+`crates/presentation` y el paquete raíz como capa app (`src/`, `tests/`).
+Correr cargo desde el directorio del proyecto.
+
+La ventana se arranca con `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball`:
+bajo Wayland el compositor no entrega frames a un proceso lanzado desde un shell
+de agente y la app queda muda, lo que parece una regresión y no lo es.
 
 ## Leyes de trabajo
 
