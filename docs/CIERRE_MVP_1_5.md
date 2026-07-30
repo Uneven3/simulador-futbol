@@ -140,6 +140,11 @@ La sustituye `seeded_envelope`, que corre diez semillas y reporta tasas.
   sobre una.
 - `cargo clippy --all-targets -- -D warnings` sin salida.
 
-**No verificado:** nada visual. Y ahora sabemos algo peor que "sin calibrar":
+**Verificado a la vista el 2026-07-30** (`VERIFICACION_VISUAL_2026-07-30.md`):
+el HUD dibuja el snapshot, el hub responde y los overlays distinguen equipo. La
+deuda visual más vieja del proyecto queda saldada; lo que queda son mejoras de
+calidad, sobre todo una cámara que ve una fracción del campo.
+
+**Y ahora sabemos algo peor que "sin calibrar":
 el modelo está a un orden de magnitud de la única referencia externa trivial de
 conseguir.

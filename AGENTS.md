@@ -55,9 +55,17 @@ Para observar una corrida: con ventana, `F1` abre el hub de depuración
 (overlays y canales de log, todo apagado por defecto); headless,
 `retaining_facts` + `MatchLedger` + `render_pitch` (ver `docs/DIAGNOSTICS.md`).
 
-La ventana se arranca con `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball`:
-bajo Wayland el compositor no entrega frames a un proceso lanzado desde un shell
-de agente y la app queda muda, lo que parece una regresión y no lo es.
+La ventana se arranca con `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball`
+(fuerza XWayland) y **se puede capturar sin intervención humana**:
+
+```bash
+DISPLAY=:1 xprop -root _NET_CLIENT_LIST        # → id de la ventana
+DISPLAY=:1 magick import -window 0x400002 shot.png
+```
+
+Capturar el root NO sirve: XWayland es rootless y da una imagen negra; hay que
+capturar la ventana por id. Y un log vacío ya no es síntoma de nada: desde el
+subsistema de diagnóstico todos los canales están apagados por defecto.
 
 ## Leyes de trabajo
 

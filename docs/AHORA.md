@@ -1,8 +1,16 @@
 # Ahora
 
+## Lo primero de la próxima sesión
+
+**Crear el repositorio en GitHub** (acordado con el usuario el 2026-07-30). El
+proyecto vive solo en local: nueve commits sin remoto. Todo lo escrito en
+`docs/` está pensado para que alguien lo retome, y eso hoy no se puede.
+
+Después de eso, el objetivo activo.
+
 ## Objetivo activo
 
-**MVP 1.75 — Calibración y propiedades.** El trabajo empieza aquí al retomar.
+**MVP 1.75 — Calibración y propiedades.** El trabajo de fondo al retomar.
 
 MVP 1.5 destapó el problema: **el modelo marca 51 goles cada 90 minutos**
 (rango 27-81 sobre diez semillas) contra ~2,7 de un partido real
@@ -169,11 +177,11 @@ Ausencias conocidas, no descubrimientos pendientes:
 - **El ritmo de gol es irreal**: 51/90 min contra ~2,7 reales
   (`REVISION_2026-07-30-reloj.md`). Ningún resultado de este simulador puede
   presentarse como predicción hasta calibrarlo.
-- **Nada visual ha sido verificado por nadie.** Bajo Wayland el compositor no
-  entrega frames al proceso lanzado desde el shell del agente; hay que correr
-  `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball` y la confirmación es
-  del usuario. Con MVP 1.5 hay más que mirar que antes: el HUD dibuja el
-  snapshot y F1 abre el hub.
+- **Lo visual ya está verificado** (`VERIFICACION_VISUAL_2026-07-30.md`): HUD,
+  hub, overlays y campo funcionan. Lo que falta es de calidad, no de existencia:
+  la cámara ve una fracción del campo (lo más molesto: impide juzgar la forma
+  del bloque, que es para lo que existe la ventana), el HUD no tiene fondo, no
+  hay meshes de portería y el marcador de orientación no se distingue.
 
 ## Reparto previsto de atributos de jugador
 
