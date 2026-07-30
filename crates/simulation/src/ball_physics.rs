@@ -515,7 +515,7 @@ mod tests {
         let mut mom = full.momentum;
         let mut rot = full.rotation_ms;
         let mut orient = full.orient_prediction;
-        for step in 2..4 {
+        for (step, &expected) in expected_path.iter().enumerate().take(4).skip(2) {
             let info = calculate_prediction(
                 pos,
                 orient,
@@ -529,7 +529,6 @@ mod tests {
             mom = info.momentum;
             rot = info.rotation_ms;
             orient = info.orient_prediction;
-            let expected = expected_path[step];
             assert!(
                 (pos - expected).length() < 0.01,
                 "Real ball diverged from prediction at step {step}: {pos:?} vs {expected:?}"

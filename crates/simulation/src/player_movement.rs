@@ -10,10 +10,11 @@ use std::time::Duration;
 
 use crate::diagnostics::{MatchFact, MatchTelemetry, PossessionCause, ReleaseKind};
 use football_domain::math::{normalized_clamp, normalized_or_2d, sign_side};
+use football_domain::tuning::ContestTuning;
 use football_domain::{
-    Attributes, Ball, BallTouched, ByTeam, Facing, MatchRng, MatchState, Player, PlayerId,
-    PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation, SetPiece,
-    TeamId, Velocity,
+    Attributes, Ball, BallTouched, ByTeam, Facing, MatchRng, MatchState, MatchTuning, Player,
+    PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation,
+    SetPiece, TeamId, Velocity,
 };
 
 /// Everything the ball systems need to read off a body, plus the one thing they
@@ -190,6 +191,7 @@ fn player_kick_system(
     designation: Res<PossessionDesignation>,
     offside_records: Res<football_domain::OffsideRecords>,
     pitch: Res<football_domain::PitchConfig>,
+    tuning: Res<MatchTuning>,
     mut rng: ResMut<MatchRng>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     registry: Res<PlayerRegistry>,
@@ -209,11 +211,14 @@ fn player_kick_system(
     let ball_pos = ball_position.0;
     let ball_pos_2d = ball_position.on_pitch();
     let now = time.elapsed();
+    let contest = &tuning.contest;
 
     // 0. Possession is positional: if the ball escaped the possessor, it's loose
     if let Some(possessor) = match_state.possession_player {
         let lost = match registry.body(possessor).map(|body| player_query.get(body)) {
-            Some(Ok((_, position, ..))) => position.on_pitch().distance(ball_pos_2d) > 3.0,
+            Some(Ok((_, position, ..))) => {
+                position.on_pitch().distance(ball_pos_2d) > contest.possession_escape_distance
+            }
             _ => true,
         };
         if lost {
@@ -248,14 +253,14 @@ fn player_kick_system(
         // GetBestCheatableAnim) — without it, reception is a coin flip against
         // the marker standing 1-2 m goal-side and almost no pass completes.
         let reach = if match_state.pass_target == Some(player.id) {
-            1.1
+            contest.receiver_trap_reach
         } else {
-            0.65
+            contest.loose_ball_reach
         };
-        if dist_2d < reach && ball_pos.z < 1.5 {
+        if dist_2d < reach && ball_pos.z < contest.max_touch_height {
             // the receiver's stretched reach wins ties inside his radius
             let effective_dist = if match_state.pass_target == Some(player.id) {
-                dist_2d - 0.45
+                dist_2d - contest.receiver_tie_break
             } else {
                 dist_2d
             };
@@ -291,11 +296,12 @@ fn player_kick_system(
                     // every cooldown window and the match degenerates into a
                     // stealing metronome.
                     let carrier_dist = current_position.on_pitch().distance(ball_pos_2d);
-                    let wins_duel = closest_player_dist < carrier_dist * 0.8;
+                    let wins_duel = closest_player_dist < carrier_dist * contest.duel_advantage;
                     let held = now.saturating_sub(match_state.possession_since);
-                    let ball_stealable = carrier_dist > 1.0 || held > Duration::from_millis(2000);
+                    let ball_stealable = carrier_dist > contest.shielding_release_distance
+                        || held > contest.shielding_release_time;
                     if is_designated_tackler
-                        && closest_player_dist < 0.50
+                        && closest_player_dist < contest.tackle_contact_distance
                         && wins_duel
                         && ball_stealable
                     {
@@ -304,9 +310,9 @@ fn player_kick_system(
                         // every cooldown window.
                         let is_prev = match_state.previous_possessor == Some(challenger);
                         let cooldown = if is_prev {
-                            Duration::from_millis(1000)
+                            contest.regain_cooldown
                         } else {
-                            Duration::from_millis(500)
+                            contest.steal_cooldown
                         };
 
                         if now.saturating_sub(match_state.possession_since) > cooldown {
@@ -330,6 +336,7 @@ fn player_kick_system(
                                     body: challenger_body,
                                 },
                                 now,
+                                contest,
                                 &mut player_query,
                                 &mut touched_writer,
                                 &mut telemetry,
@@ -340,27 +347,29 @@ fn player_kick_system(
             }
         } else {
             // Ball is loose: anyone can pick it up, except:
-            // 1. Global pickup cooldown of 220ms after any kick
+            // 1. Global pickup cooldown after any kick
             let global_cooldown_ok =
-                now.saturating_sub(ball.last_touch_at) > Duration::from_millis(220);
-            // 2. The last toucher needs 400ms to let the ball leave their feet
+                now.saturating_sub(ball.last_touch_at) > contest.loose_ball_cooldown;
+            // 2. The last toucher waits longer: the ball has to leave his feet
             let is_last_toucher = ball.last_touch_player == Some(challenger);
             let individual_cooldown_ok = !is_last_toucher
-                || (now.saturating_sub(ball.last_touch_at) > Duration::from_millis(400));
-            // 3. Touch bias (original `GetLastTouchBias`): the player who played
-            // the ball in the last 1.5 s keeps priority in a shoulder-to-shoulder
-            // race — an opponent must arrive CLEARLY first to win the loose ball,
+                || (now.saturating_sub(ball.last_touch_at) > contest.own_ball_cooldown);
+            // 3. Touch bias (original `GetLastTouchBias`): the player who just
+            // played the ball keeps priority in a shoulder-to-shoulder race — an
+            // opponent must arrive CLEARLY first to win the loose ball,
             // otherwise the dribbler loses every knock-on to a coin flip.
             let mut touch_bias_ok = true;
             if !is_last_toucher
-                && now.saturating_sub(ball.last_touch_at) < Duration::from_millis(1500)
+                && now.saturating_sub(ball.last_touch_at) < contest.touch_bias_window
                 && let Some(last_toucher) = ball.last_touch_player
                 && let Some(Ok((_, toucher_position, ..))) =
                     registry.body(last_toucher).map(|b| player_query.get(b))
                 && last_toucher.team != challenger.team
             {
                 let toucher_dist = toucher_position.on_pitch().distance(ball_pos_2d);
-                if toucher_dist < 1.0 && closest_player_dist > toucher_dist - 0.25 {
+                if toucher_dist < contest.touch_bias_distance
+                    && closest_player_dist > toucher_dist - contest.touch_bias_margin
+                {
                     touch_bias_ok = false;
                 }
             }
@@ -385,6 +394,7 @@ fn player_kick_system(
                         body: challenger_body,
                     },
                     now,
+                    contest,
                     &mut player_query,
                     &mut touched_writer,
                     &mut telemetry,
@@ -410,7 +420,8 @@ fn player_kick_system(
         let technical_shot = stats.shot_technique;
 
         // A touch requires the ball at the feet
-        let ball_in_reach = ball_pos_2d.distance(player_pos_2d) < 0.7 && ball_pos.z < 0.5;
+        let ball_in_reach = ball_pos_2d.distance(player_pos_2d) < contest.ball_at_feet_distance
+            && ball_pos.z < contest.ball_at_feet_height;
         // Goalkeepers clear/kick immediately without dribble delay.
         // Deliberate releases (pass/shot/clear) only need a short reaction time
         // — the original chains trap → pass through its command queue, and a
@@ -418,8 +429,8 @@ fn player_kick_system(
         // Dribble knock-ons keep the slower 350 ms touch cadence.
         let is_gk = playing_position == PlayingPosition::Goalkeeper;
         let since_touch = now.saturating_sub(ball.last_touch_at);
-        let can_decide = since_touch > Duration::from_millis(150) || is_gk;
-        let can_knock_on = since_touch > Duration::from_millis(350) || is_gk;
+        let can_decide = since_touch > contest.decision_cadence || is_gk;
+        let can_knock_on = since_touch > contest.knock_on_cadence || is_gk;
 
         if !(ball_in_reach && can_decide) {
             return;
@@ -461,6 +472,7 @@ fn player_kick_system(
             &designation,
             held_for,
             off_line,
+            &tuning,
             &mut rng,
         );
 
@@ -470,23 +482,29 @@ fn player_kick_system(
                 // execution keeps the tuned recipe: aim at the goal LINE (±55) —
                 // aiming short makes every diagonal drift wide — with curl back
                 // inside the far post and a modest topspin dip.
+                let shooting = &tuning.shooting;
                 let opponent_goal_x = 55.0 * -side;
                 let spread = 1.0 - technical_shot;
-                let y_aim = target_y * 0.8 + rng.range(-spread, spread);
+                let y_aim = target_y * shooting.aim_centre_pull + rng.range(-spread, spread);
                 let dir_2d =
                     (Vec2::new(opponent_goal_x, y_aim) - player_pos_2d).normalize_or_zero();
                 let goal_dist_factor = normalized_clamp(
                     player_pos_2d.distance(Vec2::new(opponent_goal_x, 0.0)),
                     0.0,
-                    32.0,
+                    shooting.power_distance_range,
                 );
-                let lift = 0.05 + goal_dist_factor * 0.05;
+                let lift = shooting.lift + goal_dist_factor * shooting.lift_distance_gain;
                 let kick_dir = Vec3::new(dir_2d.x, dir_2d.y, lift).normalize_or_zero();
                 // original: desiredPower = random(0.7, 1.0) * (0.6 + goalDist * 0.4)
-                let kick_power = rng.range(0.75, 1.0) * (0.6 + goal_dist_factor * 0.4) * 24.0 + 6.0;
+                let (min_power_draw, max_power_draw) = shooting.power_random_range;
+                let kick_power = rng.range(min_power_draw, max_power_draw)
+                    * (shooting.power_distance_base
+                        + goal_dist_factor * shooting.power_distance_gain)
+                    * shooting.power_scale
+                    + shooting.power_floor;
 
-                let topspin = 12.0;
-                let side_spin = -dir_2d.y.signum() * kick_dir.x.signum() * 8.0;
+                let topspin = shooting.topspin;
+                let side_spin = -dir_2d.y.signum() * kick_dir.x.signum() * shooting.sidespin;
                 let spin = Vec3::new(topspin * kick_dir.y, topspin * kick_dir.x, side_spin);
 
                 kick(
@@ -516,10 +534,16 @@ fn player_kick_system(
                 // ~90% of pass turnovers happening en route. The receiver's
                 // extended trap reach + designation priority let him kill the
                 // faster ball, like the original's trap anims do.
+                let passing = &tuning.passing;
                 let (lift, pace_bonus) = match kind {
-                    PassKind::Short => (0.11, 1.5),
-                    PassKind::Long => (0.14, 2.0),
-                    PassKind::High => (0.45 - normalized_clamp(pass_dist, 0.0, 60.0) * 0.15, 1.5),
+                    PassKind::Short => (passing.short_lift, passing.short_pace),
+                    PassKind::Long => (passing.long_lift, passing.long_pace),
+                    PassKind::High => (
+                        passing.high_lift
+                            - normalized_clamp(pass_dist, 0.0, 60.0)
+                                * passing.high_lift_range_relief,
+                        passing.high_pace,
+                    ),
                 };
                 let momentum = crate::ball_physics::solve_pass_momentum(
                     &pitch, ball_pos, aim, lift, pace_bonus,
@@ -549,11 +573,11 @@ fn player_kick_system(
                     (normalized_or_2d(dir_vec * Vec2::new(0.8, 1.0), Vec2::new(forward, 0.0))
                         + Vec2::new(forward * 0.7, yside * 0.5))
                     .normalize_or_zero();
-                let kick_dir = Vec3::new(away.x, away.y, 0.3).normalize_or_zero();
+                let kick_dir = Vec3::new(away.x, away.y, tuning.clearance.lift).normalize_or_zero();
                 kick(
                     &mut ball,
                     &mut ball_position,
-                    kick_dir * 17.0,
+                    kick_dir * tuning.clearance.power,
                     Vec3::ZERO,
                     &mut touched_writer,
                 );
@@ -588,7 +612,7 @@ fn player_kick_system(
                     .filter(|s| s.team() != player_team)
                     .map(|s| s.pos.distance(player_pos_2d))
                     .fold(f32::MAX, f32::min);
-                let knock_speed = if nearest_opp < 3.0 {
+                let knock_speed = if nearest_opp < contest.knock_on_traffic_distance {
                     crate::team_tactics::DRIBBLE_VELOCITY
                 } else {
                     (player_vel_2d.length().max(2.0) + 1.0).min(player_speed + 1.0)
@@ -622,11 +646,13 @@ fn player_kick_system(
 /// momentum so it stays at the feet (stand-in for the original trap animations).
 /// The damping matters: a hot trap (ball faster than the player) makes contested
 /// duels unresolvable — the ball keeps escaping the 350 ms kick window.
+#[allow(clippy::too_many_arguments)]
 fn control_touch(
     ball: &mut Ball,
     ball_position: &mut Position,
     toucher: Toucher,
     now: Duration,
+    contest: &ContestTuning,
     player_query: &mut Query<BallSystemBody, Without<Ball>>,
     touched_writer: &mut MessageWriter<BallTouched>,
     telemetry: &mut MatchTelemetry,
@@ -649,7 +675,8 @@ fn control_touch(
         let dir = dribble_direction(my_pos, my_vel, player.team, &all_players);
         // set the ball up at dribble pace (AI_GetBallControlMovement): a dead
         // trap parks the ball in the middle of the duel and invites the steal
-        let speed = (my_vel.length() * 0.5).clamp(2.0, 3.5);
+        let (min_trap, max_trap) = contest.trap_speed_range;
+        let speed = (my_vel.length() * contest.trap_speed_from_run).clamp(min_trap, max_trap);
         Vec3::new(dir.x, dir.y, 0.0) * speed
     } else {
         ball.momentum * 0.2

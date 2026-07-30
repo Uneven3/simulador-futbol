@@ -11,6 +11,7 @@ pub mod math;
 pub mod player;
 pub mod scenario;
 pub mod spatial;
+pub mod tuning;
 
 pub use ball::{BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, BALL_RADIUS, Ball};
 pub use identity::{ByTeam, PlayerId, PlayerRegistry, TeamId, TeamSide};
@@ -21,3 +22,4 @@ pub use match_state::{
 pub use player::{Attributes, Mentality, Player, PlayerMatchState, PlayingPosition, TacticalRole};
 pub use scenario::{Scenario, ScenarioOutcome};
 pub use spatial::{Facing, Position, Velocity};
+pub use tuning::{MatchTuning, TuningVersion};

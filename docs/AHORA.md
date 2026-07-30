@@ -21,16 +21,21 @@ El instrumental está tomado de OpenFootManager; qué se toma, qué no y por qu�
 está en `REFERENCIA_OPENFOOTMANAGER.md`. Su motor (cinco zonas, acciones por
 minuto) **no** es transferible; su aparato de validación sí.
 
-### 1. Las envolventes son dato, no literales
+### 1. Las envolventes son dato, no literales ✅
 
-Hoy las decisiones que fijan el resultado viven como números sueltos dentro de
-`player_decisions.rs`: el umbral de tiro, el `possession_amount > 0.99`, los
-24 m de amenaza, los cooldowns de toque y de robo. No se pueden barrer sin
-editar código, y nadie sabe cuáles son sin leerlo.
+Hecho el 2026-07-30. `MatchTuning` vive en `crates/domain/src/tuning.rs`,
+versionado con `TuningVersion::PortBaseline`, viaja en el `Scenario` (como la
+semilla) y se instala como recurso desde `match_setup`. Siete grupos: disputa,
+posesión, pase, despeje, tiro, defensa y portería.
 
-Extraerlas a un `MatchTuning` versionado, como ya lo es `MatchRegulations`, con
-**un solo lugar** donde vive cada valor por defecto. Sin esto no hay nada que
-girar, y los tres pasos siguientes no se pueden hacer.
+La extracción se verificó con la envolvente: **las diez semillas dan números
+idénticos** antes y después, en goles, cambios de posesión, racha más larga y
+tocadores. Un refactor de parámetros que cambia el resultado es un refactor con
+un error dentro, y esa es la única forma de saberlo.
+
+Fuera quedaron, a propósito: las velocidades y los pesos del campo de fuerzas
+(`team_tactics.rs`), que son el modelo motor de MVP 3, y las constantes de
+física del balón, que se calibran contra vuelo y no contra estadística.
 
 ### 2. La envolvente, como herramienta
 
@@ -40,6 +45,18 @@ histograma de goles por partido, marcadores, tiros, tiros a puerta, posesión.
 
 El histograma es lo importante: la referencia real son ~1,35 goles por equipo,
 casi una Poisson, y comparar histogramas dice mucho más que comparar medias.
+
+### 2.5. Partir `player_kick_system` antes de girar nada
+
+Acordado el 2026-07-30, al escribir las leyes de ingeniería
+(`ARCHITECTURE.md`, §17-§26). El sistema tiene 461 líneas y doce parámetros, y
+hace cinco cosas: pérdida de posesión, elección del retador, entrada, balón
+suelto y ejecución del toque. El paso 3 lo va a tocar una y otra vez, y girar
+un parámetro dentro de un sistema que hace cinco cosas no permite atribuir el
+efecto a nada.
+
+Se parte en sistemas de una responsabilidad, y la división se valida con la
+envolvente: diez semillas idénticas o el refactor no fue fiel.
 
 ### 3. Calibrar contra la distribución, no contra la media
 

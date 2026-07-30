@@ -83,8 +83,13 @@ subsistema de diagnóstico todos los canales están apagados por defecto.
 - Un comportamiento no se declara realista sin métrica y referencia. La métrica
   es una envolvente sobre semillas, nunca una corrida: la simulación es
   determinista pero caótica.
-- Los parámetros que fijan el resultado son dato versionado, no literales dentro
-  de la lógica.
+- Los parámetros que fijan el resultado son dato versionado (`MatchTuning` en
+  `crates/domain/src/tuning.rs`), no literales dentro de la lógica, y cada valor
+  por defecto vive en un solo sitio.
+- Una responsabilidad por sistema; ~300 líneas por archivo y ~80 por función son
+  señal de dividir. Las leyes de ingeniería están numeradas en
+  `ARCHITECTURE.md` (§17-§26) y el código las cita por §; lo que hoy las viola
+  está medido al final de ese documento.
 - Toda aleatoriedad de simulación usa semillas reproducibles.
 - APIs nuevas no heredan nombres del original (`Eliza`, clases C++ o `AI_`). Los
   comentarios sí citan el original: son trazabilidad hacia

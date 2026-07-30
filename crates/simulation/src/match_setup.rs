@@ -32,6 +32,7 @@ impl Plugin for MatchSetupPlugin {
             .insert_resource(initial_match_state(&self.scenario))
             .insert_resource(self.scenario.pitch.clone())
             .insert_resource(self.scenario.regulations.clone())
+            .insert_resource(self.scenario.tuning.clone())
             .insert_resource(MatchRng::seeded(self.scenario.seed))
             .insert_resource(PlayerRegistry::default())
             .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))

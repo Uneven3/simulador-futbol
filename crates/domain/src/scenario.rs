@@ -1,4 +1,4 @@
-use crate::{ByTeam, MatchPhase, MatchRegulations, PitchConfig, SetPiece, TeamId};
+use crate::{ByTeam, MatchPhase, MatchRegulations, MatchTuning, PitchConfig, SetPiece, TeamId};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use std::time::Duration;
@@ -111,6 +111,10 @@ pub struct Scenario {
     pub pitch: PitchConfig,
     /// Law 7 lengths for this match.
     pub regulations: MatchRegulations,
+    /// The parameters that fix how the match turns out. Part of the scenario for
+    /// the same reason the seed is: a result cannot be reported, or reproduced,
+    /// without the numbers that produced it.
+    pub tuning: MatchTuning,
     /// Seed for every random draw in the match, so a run is repeatable.
     pub seed: u32,
     pub ball: BallSetup,
@@ -130,6 +134,7 @@ impl Scenario {
             competition: None,
             pitch: PitchConfig::default(),
             regulations: MatchRegulations::default(),
+            tuning: MatchTuning::default(),
             seed: 0xC0FFEE,
             ball: BallSetup::on_the_centre_spot(),
             players: PlayerSetup::DefaultFormations,
@@ -173,6 +178,14 @@ impl Scenario {
 
     pub fn with_regulations(mut self, regulations: MatchRegulations) -> Self {
         self.regulations = regulations;
+        self
+    }
+
+    /// Run the same situation under different parameters. This is what a sweep
+    /// turns: the scenario is otherwise identical, so any difference in the
+    /// outcome is the tuning's doing.
+    pub fn with_tuning(mut self, tuning: MatchTuning) -> Self {
+        self.tuning = tuning;
         self
     }
 

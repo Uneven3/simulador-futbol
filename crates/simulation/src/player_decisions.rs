@@ -38,9 +38,10 @@ use football_domain::math::{
     curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
     rotated_2d,
 };
+use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
-    Attributes, Ball, MatchRng, MatchState, Mentality, Player, PlayerId, PlayerMatchState,
-    PlayingPosition, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
+    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, Player, PlayerId,
+    PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -101,6 +102,7 @@ struct DecisionContext<'a> {
     snaps: &'a [PlayerReading],
     ball: &'a Ball,
     tactics: &'a TeamTactics,
+    tuning: &'a MatchTuning,
     designation: &'a PossessionDesignation,
     /// The single player (either team) expected to reach the ball first
     /// (original `Match::GetDesignatedPossessionPlayer`).
@@ -170,6 +172,7 @@ pub fn select_player_movement(
     match_state: Res<MatchState>,
     designation: Res<PossessionDesignation>,
     tactics: Res<TeamTactics>,
+    tuning: Res<MatchTuning>,
     ball_query: Query<&Ball, Without<Player>>,
     mut player_query: Query<DecidingPlayer, Without<Ball>>,
 ) {
@@ -210,6 +213,7 @@ pub fn select_player_movement(
         snaps: &snaps,
         ball,
         tactics: &tactics,
+        tuning: &tuning,
         designation: &designation,
         match_designated,
         now_ms,
@@ -294,15 +298,19 @@ fn ball_winnable(
     me: &PlayerReading,
     possession_player: Option<PlayerId>,
 ) -> bool {
-    let my_time = ctx.designation.time_to_ball_ms[me.team()].min(60_000.0);
-    let opp_time = ctx.designation.time_to_ball_ms[me.team().opponent()].min(60_000.0);
-    let possession_amount = (opp_time + 200.0) / (my_time + 200.0);
+    let tuning = &ctx.tuning.possession;
+    let my_time = ctx.designation.time_to_ball_ms[me.team()].min(tuning.time_to_ball_cap_ms);
+    let opp_time =
+        ctx.designation.time_to_ball_ms[me.team().opponent()].min(tuning.time_to_ball_cap_ms);
+    let softening = tuning.time_to_ball_softening_ms;
+    let possession_amount = (opp_time + softening) / (my_time + softening);
 
     let opp_has_ball = possession_player
         .and_then(|e| snap_of(ctx.snaps, e))
         .is_some_and(|s| s.team() != me.team());
 
-    possession_amount > 0.99 || (!opp_has_ball && possession_amount > 0.5)
+    possession_amount > tuning.winnable_outright
+        || (!opp_has_ball && possession_amount > tuning.winnable_loose)
 }
 
 /// Run to the earliest reachable point on the ball's predicted path
@@ -335,7 +343,9 @@ fn off_ball_movement(
             ctx.designation.designated[team.opponent()].and_then(|e| snap_of(ctx.snaps, e))
     {
         let mind_set = me.role.attacking_bias();
-        let mut hunt_threshold = 10.0 + (1.0 - mind_set) * 10.0;
+        let defending = &ctx.tuning.defending;
+        let mut hunt_threshold =
+            defending.hunt_distance + (1.0 - mind_set) * defending.hunt_distance_defensive_bonus;
         hunt_threshold *=
             0.5 * 1.0 + 0.5 * (1.0 - normalized_clamp(avg_velocity, 0.0, SPRINT_VELOCITY));
         // match difficulty 1.0 → * (0.3 + 0.7) = 1.0
@@ -517,16 +527,15 @@ fn add_defensive_component(
     }
     let side = team_side(me.team());
 
-    let possession_player_shoot_threshold = 24.0;
-    let generic_shoot_threshold = 8.0;
-    let min_distance = 0.4;
-    let buffer_distance = 4.0;
+    let defending = &ctx.tuning.defending;
+    let min_distance = defending.cover_min_distance;
+    let buffer_distance = defending.cover_buffer_distance;
 
     let opp_pos = opp.pos + opp.vel * 0.5;
     let shoot_threshold = if ctx.match_designated == Some(opp.id) {
-        possession_player_shoot_threshold
+        defending.carrier_threat_distance
     } else {
-        generic_shoot_threshold
+        defending.generic_threat_distance
     };
 
     let goal_pos = Vec2::new(PITCH_HALF_W * side, 0.0);
@@ -746,9 +755,10 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
     let side = team_side(team);
     let ball = ctx.ball;
 
-    let line_distance = 10.0;
+    let keeping = &ctx.tuning.goalkeeping;
+    let line_distance = keeping.line_distance;
     let time_to_ball = ctx.designation.time_to_ball_ms[team];
-    let pred_ms = 600.0 + time_to_ball * 0.2;
+    let pred_ms = keeping.prediction_base_ms + time_to_ball * keeping.prediction_time_share;
     let pred_idx = ((pred_ms / 10.0) as usize).min(ball.predictions.len() - 1);
     let ball_pos = Vec2::new(ball.predictions[pred_idx].x, ball.predictions[pred_idx].y);
 
@@ -758,24 +768,26 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
 
     // a loose slow ball inside our box: go fetch it (stand-in for pickup anims)
     let ball_now = Vec2::new(ball.predictions[0].x, ball.predictions[0].y);
-    let ball_in_box = ball_now.x * side > PITCH_HALF_W - 16.4 && ball_now.y.abs() < 20.0;
-    let ball_slow =
-        Vec2::new(ball.momentum.x, ball.momentum.y).length() < 4.0 && ball.predictions[0].z < 1.5;
+    let ball_in_box = ball_now.x * side > PITCH_HALF_W - keeping.box_depth
+        && ball_now.y.abs() < keeping.box_half_width;
+    let ball_slow = Vec2::new(ball.momentum.x, ball.momentum.y).length()
+        < keeping.collectable_speed
+        && ball.predictions[0].z < keeping.collectable_height;
     let opp_time = ctx.designation.time_to_ball_ms[team.opponent()];
     if ball_in_box
         && ball_slow
         && ctx
             .match_designated
             .is_none_or(|e| snap_of(ctx.snaps, e).map(|s| s.team()) != Some(team.opponent()))
-        && me.pos.distance(ball_now) < 8.0
-        && opp_time > 400.0
+        && me.pos.distance(ball_now) < keeping.collect_distance
+        && opp_time > keeping.collect_opponent_margin_ms
     {
         let dir = (ball_now - me.pos).normalize_or_zero();
         return (dir, SPRINT_VELOCITY);
     }
 
     if ball_pos.x * side > 0.0 {
-        let (bound_for_goal, bound_y) = calculate_ball_bound_for_goal(ball, side);
+        let (bound_for_goal, bound_y) = calculate_ball_bound_for_goal(ball, side, keeping);
 
         if !bound_for_goal {
             // tactical position: bisect the ball-to-posts angle
@@ -817,7 +829,7 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
                     opp_pos * 0.6 + ball_pos * 0.4
                 };
 
-                let shoot_threshold = 20.0;
+                let shoot_threshold = keeping.come_out_threat_distance;
                 let opp_to_goal_distance = (goal_pos - opp_pos).length();
                 let opp_to_threshold_distance = (opp_to_goal_distance
                     - shoot_threshold
@@ -841,7 +853,7 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
                             .and_then(|e| snap_of(ctx.snaps, e))
                     {
                         let helper_pos = helper.pos + helper.vel * 0.32;
-                        let helper_shoot_threshold = 24.0;
+                        let helper_shoot_threshold = keeping.helper_threat_distance;
                         let helper_to_goal = (goal_pos - helper_pos).length();
                         let helper_to_threshold = (helper_to_goal
                             - helper_shoot_threshold
@@ -929,16 +941,21 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
 
 /// Port of `GoalieDefaultStrategy::CalculateIfBallIsBoundForGoal` (2D version).
 /// Returns (bound_for_goal, y coordinate where it crosses the goal line).
-fn calculate_ball_bound_for_goal(ball: &Ball, side: f32) -> (bool, f32) {
+fn calculate_ball_bound_for_goal(
+    ball: &Ball,
+    side: f32,
+    keeping: &GoalkeepingTuning,
+) -> (bool, f32) {
     // panic factor with average keeper stats (defensivepositioning/vision 0.5)
-    let panic = 1.02 + (1.0 - 0.5) * 0.5;
+    let panic = keeping.panic_factor + (1.0 - 0.5) * 0.5;
 
     let last = ball.predictions[ball.predictions.len() - 1];
     let p250 = ball.predictions[25.min(ball.predictions.len() - 1)];
     // note: original checks keeper distance to the 250 ms prediction; we check
     // from the goal line instead since this runs for the keeper only
     if last.x * side > PITCH_HALF_W
-        && (Vec2::new(PITCH_HALF_W * side, 0.0) - Vec2::new(p250.x, p250.y)).length() < 32.0
+        && (Vec2::new(PITCH_HALF_W * side, 0.0) - Vec2::new(p250.x, p250.y)).length()
+            < keeping.bound_for_goal_range
     {
         let v0 = Vec2::new(ball.predictions[0].x, ball.predictions[0].y);
         let p800 = ball.predictions[80.min(ball.predictions.len() - 1)];
@@ -993,6 +1010,7 @@ pub fn decide_on_ball_action(
     designation: &PossessionDesignation,
     held_for: Duration,
     offside_line_x: f32,
+    tuning: &MatchTuning,
     rng: &mut MatchRng,
 ) -> OnBallAction {
     let Some(me) = snap_of(snaps, me_id) else {
@@ -1001,6 +1019,7 @@ pub fn decide_on_ball_action(
     let team = me.team();
     let side = team_side(team);
     let mind_set = me.role.attacking_bias();
+    let passing = &tuning.passing;
 
     let opponents: Vec<&PlayerReading> = snaps.iter().filter(|s| s.team() != team).collect();
 
@@ -1013,24 +1032,25 @@ pub fn decide_on_ball_action(
     let technical_shortpass = 0.5;
     let one_touch_is_hard = movement_diff - technical_shortpass * movement_diff * 0.8;
 
-    let long_possession_factor = normalized_clamp(held_for.as_millis() as f32, 0.0, 5000.0).powi(2);
+    let long_possession_factor =
+        normalized_clamp(held_for.as_millis() as f32, 0.0, passing.long_possession_ms).powi(2);
 
     // first selection weights
     let forward_space_weight = 0.4;
     let space_weight = 0.3;
     let forward_weight = 2.0 + mind_set * 6.0;
     let total_weight_1 = forward_space_weight + space_weight + forward_weight;
-    let tactical_improvement_threshold = 0.06 * (1.0 - mind_set);
+    let tactical_improvement_threshold = passing.tactical_improvement_threshold * (1.0 - mind_set);
 
     // second selection weights
     let tactical_diff_weight = 1.0 + mind_set.powi(2) * 10.0;
     let pass_weight = 1.0;
-    // +0.15 over the original: our pass execution (no AI_GetPass refinement at
-    // the touch moment, no receiver trap anims) loses more 50/50 deliveries, so
-    // the odds bar to attempt a pass must sit higher
-    let pass_minimum = 0.15 + 0.2 * (1.0 - mind_set) - long_possession_factor * 0.1;
+    let pass_minimum = passing.minimum_odds
+        + passing.minimum_odds_defensive_bonus * (1.0 - mind_set)
+        - long_possession_factor * passing.minimum_odds_long_possession_relief;
     let total_weight_2 = tactical_diff_weight + pass_weight;
-    let pass_threshold = 0.1 - long_possession_factor * 0.05;
+    let pass_threshold = passing.combined_threshold
+        - long_possession_factor * passing.combined_threshold_long_possession_relief;
 
     let rate = |s: &PlayerReading| -> f32 {
         let sit = tactical_situation(snaps, s);
@@ -1045,12 +1065,13 @@ pub fn decide_on_ball_action(
     let mut best: Option<(PlayerId, Vec2, PassKind, f32)> = None; // + pass rating
     for mate in snaps.iter().filter(|s| s.team() == team && s.id != me_id) {
         // offside receivers are a wasted touch (our addition, see module docs)
-        if mate.pos.x * -side > offside_line_x * -side - 0.5 {
+        if mate.pos.x * -side > offside_line_x * -side - passing.offside_receiver_margin {
             continue;
         }
         let mut mate_rating = rate(mate);
         if mate.playing_position == PlayingPosition::Goalkeeper {
-            mate_rating *= 0.7; // don't like playing back to the goalie
+            // don't like playing back to the goalie
+            mate_rating *= passing.keeper_target_penalty;
         }
         if mate_rating <= my_tactical_rating + tactical_improvement_threshold {
             continue;
@@ -1058,11 +1079,11 @@ pub fn decide_on_ball_action(
         let tactical_diff = mate_rating - my_tactical_rating;
 
         let (odds_short, aim_short) =
-            passing_odds_to_player(me, mate, PassKind::Short, &opponents, 1.0);
+            passing_odds_to_player(me, mate, PassKind::Short, &opponents, 1.0, passing);
         let (odds_long, aim_long) =
-            passing_odds_to_player(me, mate, PassKind::Long, &opponents, 1.0);
+            passing_odds_to_player(me, mate, PassKind::Long, &opponents, 1.0, passing);
         let (odds_high, aim_high) =
-            passing_odds_to_player(me, mate, PassKind::High, &opponents, 1.0);
+            passing_odds_to_player(me, mate, PassKind::High, &opponents, 1.0, passing);
 
         let (pass_rating, kind, aim) = if odds_short >= odds_long && odds_short >= odds_high {
             (odds_short, PassKind::Short, aim_short)
@@ -1083,25 +1104,33 @@ pub fn decide_on_ball_action(
     }
 
     // panic (defensive roles close to their own goal under threat)
+    let clearance = &tuning.clearance;
+    let softening = tuning.possession.time_to_ball_softening_ms;
     let my_time = designation.time_to_ball_ms[team];
     let opp_time = designation.time_to_ball_ms[team.opponent()];
-    let possession_amount = (opp_time + 200.0) / (my_time.max(0.0) + 200.0);
-    if mind_set < 0.25 && me.playing_position != PlayingPosition::Goalkeeper {
+    let possession_amount = (opp_time + softening) / (my_time.max(0.0) + softening);
+    if mind_set < clearance.defensive_mindset_max
+        && me.playing_position != PlayingPosition::Goalkeeper
+    {
         let panic_proneness = 1.0 - mind_set * 2.0;
         let goal_closeness = 1.0
             - normalized_clamp(
                 (me.pos - Vec2::new(PITCH_HALF_W * side, 0.0)).length(),
-                2.0,
-                16.0,
+                clearance.goal_closeness_near,
+                clearance.goal_closeness_far,
             );
         let best_pass_rating = best.map(|(_, _, _, r)| r).unwrap_or(0.0);
         if best_pass_rating < panic_proneness * goal_closeness
-            && possession_amount < 0.9 + panic_proneness * goal_closeness * 0.8
+            && possession_amount
+                < clearance.possession_threshold
+                    + panic_proneness * goal_closeness * clearance.possession_threshold_gain
         {
             return OnBallAction::PanicClear;
         }
     }
-    if me.playing_position == PlayingPosition::Goalkeeper && possession_amount < 3.0 {
+    if me.playing_position == PlayingPosition::Goalkeeper
+        && possession_amount < tuning.goalkeeping.clearance_possession_threshold
+    {
         return OnBallAction::PanicClear;
     }
 
@@ -1110,29 +1139,40 @@ pub fn decide_on_ball_action(
     }
 
     // shoot?
+    let shooting = &tuning.shooting;
     let ideal_shot_pos_factor = 1.0
         - normalized_clamp(
-            (Vec2::new((PITCH_HALF_W - 7.0) * -side, 0.0) - me.pos).length(),
+            (Vec2::new((PITCH_HALF_W - shooting.ideal_position_offset) * -side, 0.0) - me.pos)
+                .length(),
             0.0,
-            16.0,
+            shooting.ideal_position_range,
         );
     let ideal_shot_pos_factor = curve(ideal_shot_pos_factor, 1.0);
-    if ideal_shot_pos_factor > 0.1 {
+    if ideal_shot_pos_factor > shooting.ideal_position_gate {
         let goal_x = (PITCH_HALF_W + 1.0) * -side;
-        let mut odds = shot_odds(me, Vec2::new(goal_x, 0.0), &opponents);
+        let odds_at = |target_y: f32| {
+            shot_odds(
+                me,
+                Vec2::new(goal_x, target_y),
+                &opponents,
+                shooting.odds_velocity_multiplier,
+                passing,
+            )
+        };
+        let mut odds = odds_at(0.0);
         let mut y = 0.0f32;
-        let odds1 = shot_odds(me, Vec2::new(goal_x, -3.6), &opponents);
+        let odds1 = odds_at(-shooting.aim_probe_y);
         if odds1 > odds {
             odds = odds1;
-            y = -3.5;
+            y = -shooting.aim_y;
         }
-        let odds3 = shot_odds(me, Vec2::new(goal_x, 3.6), &opponents);
+        let odds3 = odds_at(shooting.aim_probe_y);
         if odds3 > odds {
             odds = odds3;
-            y = 3.5;
+            y = shooting.aim_y;
         }
         let odds = odds.powf(0.5);
-        if odds + rng.range(0.0, 0.5) > 0.5 {
+        if odds + rng.range(0.0, shooting.odds_random_span) > shooting.odds_threshold {
             return OnBallAction::Shot { target_y: y };
         }
     }
@@ -1143,24 +1183,24 @@ pub fn decide_on_ball_action(
     // with body-shielded turn animations we don't have.
     let hemmed = opponents
         .iter()
-        .filter(|o| (o.pos - me.pos).length() < 3.0)
+        .filter(|o| (o.pos - me.pos).length() < passing.hemmed_distance)
         .count()
-        >= 2;
+        >= passing.hemmed_opponents;
     if hemmed {
         let mut best_escape: Option<(PlayerId, Vec2, PassKind, f32)> = None;
         for mate in snaps.iter().filter(|s| s.team() == team && s.id != me_id) {
-            if mate.pos.x * -side > offside_line_x * -side - 0.5 {
+            if mate.pos.x * -side > offside_line_x * -side - passing.offside_receiver_margin {
                 continue;
             }
             for kind in [PassKind::Short, PassKind::Long, PassKind::High] {
-                let (odds, aim) = passing_odds_to_player(me, mate, kind, &opponents, 1.0);
+                let (odds, aim) = passing_odds_to_player(me, mate, kind, &opponents, 1.0, passing);
                 if best_escape.is_none_or(|(_, _, _, r)| odds > r) {
                     best_escape = Some((mate.id, aim, kind, odds));
                 }
             }
         }
         if let Some((target, aim, kind, odds)) = best_escape
-            && odds > 0.2
+            && odds > passing.escape_minimum_odds
         {
             return OnBallAction::Pass { target, aim, kind };
         }
@@ -1222,10 +1262,11 @@ fn passing_odds_to_player(
     kind: PassKind,
     opponents: &[&PlayerReading],
     ball_velocity_multiplier: f32,
+    passing: &PassingTuning,
 ) -> (f32, Vec2) {
     let side = team_side(me.team());
     let initial_distance = (mate.pos - me.pos).length();
-    if kind == PassKind::High && initial_distance < 10.0 {
+    if kind == PassKind::High && initial_distance < passing.high_pass_min_distance {
         return (0.0, mate.pos);
     }
     let estimated_time_sec = 0.7 + initial_distance * 0.03;
@@ -1234,7 +1275,14 @@ fn passing_odds_to_player(
         target += Vec2::new(-side * initial_distance * 0.2, 0.0);
     }
     (
-        passing_odds_to_target(me, target, kind, opponents, ball_velocity_multiplier),
+        passing_odds_to_target(
+            me,
+            target,
+            kind,
+            opponents,
+            ball_velocity_multiplier,
+            passing,
+        ),
         target,
     )
 }
@@ -1247,6 +1295,7 @@ fn passing_odds_to_target(
     kind: PassKind,
     opponents: &[&PlayerReading],
     ball_velocity_multiplier: f32,
+    passing: &PassingTuning,
 ) -> f32 {
     let second_scale = 1.0;
     let origin = me.pos + me.vel * 0.12;
@@ -1278,13 +1327,26 @@ fn passing_odds_to_target(
         }
     }
     if kind == PassKind::High {
-        danger += 0.4;
+        danger += passing.high_pass_danger;
     }
     1.0 - normalized_clamp(danger, 0.0, second_scale)
 }
 
 /// Shot odds at a goal-mouth point (the original reuses `_GetPassingOdds` with
-/// `e_FunctionType_Shot` and a 3.0 ball velocity multiplier).
-fn shot_odds(me: &PlayerReading, target: Vec2, opponents: &[&PlayerReading]) -> f32 {
-    passing_odds_to_target(me, target, PassKind::Short, opponents, 3.0)
+/// `e_FunctionType_Shot` and a faster ball).
+fn shot_odds(
+    me: &PlayerReading,
+    target: Vec2,
+    opponents: &[&PlayerReading],
+    ball_velocity_multiplier: f32,
+    passing: &PassingTuning,
+) -> f32 {
+    passing_odds_to_target(
+        me,
+        target,
+        PassKind::Short,
+        opponents,
+        ball_velocity_multiplier,
+        passing,
+    )
 }

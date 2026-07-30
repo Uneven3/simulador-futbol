@@ -1,7 +1,8 @@
 # Arquitectura
 
 Este documento fija leyes. El detalle vive en módulos, tests y documentos de
-dominio.
+dominio. El código las cita por § y no se mergea código que las viole; lo que
+hoy las viola está listado al final, con nombre y medida.
 
 ## Capas
 
@@ -29,7 +30,9 @@ dependen de subcrates de Bevy (`bevy_ecs`, `bevy_math`, `bevy_time`,
 ni el kernel puede construir geometría. Solo presentation y app ven el motor
 completo.
 
-## Leyes
+## Leyes de dominio
+
+Qué es verdad en un partido y quién puede decidirlo.
 
 1. Simulación headless: sus tests no registran `Mesh`, `StandardMaterial`,
    `Image`, ventanas ni `AssetServer`.
@@ -50,6 +53,43 @@ completo.
 14. Evitar allocations por tick; reutilizar buffers tras medir capacidad.
 15. Rust seguro, enums exhaustivos, APIs pequeñas, `Option` y `Result`.
 16. Nombres describen el dominio actual, no Gameplay Football.
+
+## Leyes de ingeniería
+
+Cómo se escribe el código que sostiene lo anterior. Son SOLID traducido a ECS:
+en ECS no hay herencia, así que la responsabilidad única se mide por sistema y
+el desacople se consigue con componentes y mensajes, no con interfaces.
+
+17. **Una responsabilidad por sistema.** Si el nombre necesita una "y", son dos
+    sistemas. Un sistema que gana posesión, resuelve la disputa y ejecuta el
+    disparo no se puede calibrar por partes ni testear por partes.
+18. **Se extiende agregando, no editando.** Una regla nueva entra como sistema o
+    componente nuevo en su `SystemSet`, no como una rama más dentro de un
+    sistema existente. Si añadir faltas obliga a editar el sistema del regate,
+    la costura está en el sitio equivocado.
+19. **~300 líneas por archivo y ~80 por función son señal de dividir**, no un
+    bloqueo. Un archivo que crece sin dividirse deja de tener dueño: nadie
+    puede decir qué contiene sin leerlo entero.
+20. **Un sistema con más de ocho parámetros agrupa en `SystemParam`.**
+    `#[allow(clippy::too_many_arguments)]` no es una solución, es deuda
+    anotada, y cada uno debe decir por qué sigue ahí.
+21. **Los parámetros que fijan el resultado son dato versionado**
+    (`MatchTuning`, `MatchRegulations`), con un solo lugar por cada valor por
+    defecto. Un número dentro de la lógica no se puede barrer, ni reportar junto
+    al resultado que produjo.
+22. **La lógica calculable vive en funciones puras**, probables sin `App`. El
+    sistema lee, llama y escribe; no calcula geometría ni resuelve reglas en
+    línea.
+23. **Visibilidad mínima:** `pub` solo lo que otro crate consume de verdad. La
+    frontera de un crate es su API, no la suma de sus módulos.
+24. **Dependencia nueva:** OK humano previo, y el contrato que resuelve escrito
+    en el `Cargo.toml` que la añade.
+25. **`cargo fmt` y `clippy -D warnings` antes de dar algo por terminado.** Cada
+    `#[allow]` lleva justificación en su línea.
+26. **Comentarios para invariantes, restricciones y procedencia del original.**
+    Nunca el *qué*: eso lo dice el código. Las citas al C++ original son
+    trazabilidad hacia `references/gameplay_football/`, no nombres del presente
+    (ley 16).
 
 ## Pipeline
 
@@ -75,7 +115,34 @@ Update
 ```
 
 El orden se expresa con `SystemSet` semánticos, no con el orden heredado de
-`Match::Process()`.
+`Match::Process()`. Hoy `SimulationSet` sigue siendo el orden del original
+(`MatchLifecycle → Players → Kicks → BallCollisions → BallPhysics → Referee`):
+la migración a este pipeline es deuda declarada.
+
+## Mapa de módulos
+
+Cada módulo dice qué posee y dónde está su frontera. Lo que no aparece aquí no
+tiene dueño, y eso es un bug de arquitectura antes que de código.
+
+| Módulo | Posee | Frontera |
+|---|---|---|
+| `domain::identity` | `PlayerId`, `TeamId`, `ByTeam`, `PlayerRegistry` | Única traducción identidad ↔ `Entity`; nadie más guarda `Entity` como memoria |
+| `domain::match_state` | `MatchState`, `MatchRegulations`, `PitchConfig`, `MatchRng` | El estado del partido; solo el kernel lo escribe |
+| `domain::tuning` | `MatchTuning` y sus grupos | Un único hogar por valor por defecto (§21) |
+| `domain::scenario` | `Scenario`, `Expectations`, `ScenarioOutcome` | La situación reproducible completa: estado inicial, semilla, ventana y afirmaciones |
+| `domain::player` | `Player`, `Attributes`, `Mentality`, `PlayerMatchState` | Identidad e instrucción, capacidad, disposición y lo que el partido escribe, separados |
+| `domain::math` | Geometría y RNG puros | Sin Bevy más allá de `bevy_math`; todo testeable sin `App` |
+| `simulation::match_setup` | Instalación del escenario y de los cuerpos | Único que hace spawn de entidades autoritativas |
+| `simulation::match_clock` | Reloj y fases (Ley 7 IFAB) | Único escritor de `period_elapsed` y `phase` |
+| `simulation::team_tactics` | `TeamTactics`, forma del bloque, trampa del fuera de juego | Lee estado, escribe solo su recurso |
+| `simulation::player_decisions` | Adónde corre cada jugador y qué hace con el balón | Decide; no ejecuta ni toca el balón |
+| `simulation::player_movement` | Designación de posesión, integración de cuerpos y ejecución del toque | Único escritor de `Position` de jugadores y del contacto con el balón |
+| `simulation::ball_physics` | Integración y predicción del balón | La predicción es la trayectoria futura real; nadie más la calcula |
+| `simulation::ball_collisions` | Contacto balón-cuerpo y balón-portería | Emite hechos; no decide reglas |
+| `simulation::referee` | Fuera de juego, fuera de banda, gol y reanudaciones | Único que otorga `SetPiece` y cambia el marcador |
+| `simulation::diagnostics` | `MatchFact`, `MatchTelemetry`, `MatchLedger`, `MatchSnapshot` | Solo lee estado autoritativo; apagado por defecto |
+| `presentation::*` | Visuales, cámara, HUD, overlays, hub de depuración | Solo lee; borrar el crate deja un partido completo |
+| `src/` (app) | Composición, catálogo de escenarios, `ScenarioRunner` | Cablea capas; no decide nada de fútbol |
 
 ## Nomenclatura
 
@@ -109,3 +176,30 @@ cerrados usan enums.
 - prueba headless sin assets;
 - prueba de que presentación no muta estado autoritativo.
 
+## Deuda declarada contra estas leyes
+
+Medido el 2026-07-30, al escribir las leyes de ingeniería. Se registra con
+número para que nadie la descubra dos veces.
+
+**§17 y §19 — tamaño y responsabilidad.**
+
+| Sitio | Medida | Qué contiene |
+|---|---|---|
+| `player_kick_system` | 461 líneas, 12 parámetros | Pérdida de posesión, elección del retador, entrada, balón suelto y ejecución del toque: cinco responsabilidades |
+| `player_decisions.rs` | 1352 líneas | Campo de fuerzas, movimiento sin balón, portero y decisión con balón |
+| `team_tactics.rs` | 896 líneas | `update_team_tactics` (239) y `get_adapted_formation_position` (210) |
+| `player_movement.rs` | 841 líneas | Designación, integración y toque |
+| `ball_physics.rs` | 538 líneas | `calculate_prediction` (415), port directo del integrador original |
+
+`player_kick_system` se parte antes de calibrar (MVP 1.75, paso 3), porque es el
+sistema que la calibración va a girar una y otra vez. El resto se parte al
+tocarlo por otra razón; partirlo antes es riesgo sin lector.
+
+**§20 — parámetros.** Cinco `#[allow(clippy::too_many_arguments)]` y ningún
+`SystemParam` derivado en el proyecto.
+
+**§18 — extensión.** Añadir faltas (MVP 2) obliga hoy a editar
+`player_kick_system` en vez de agregar un sistema en su propio set.
+
+La división se valida con la envolvente: si las diez semillas dan números
+idénticos, el refactor fue fiel (`docs/VALIDATION.md`).
