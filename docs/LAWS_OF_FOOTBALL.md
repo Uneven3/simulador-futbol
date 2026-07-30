@@ -1,0 +1,110 @@
+# Contrato de las reglas del fútbol
+
+## Autoridad
+
+- The International Football Association Board.
+- Edición base: **Laws of the Game 2026/27**.
+- Inglés autoritativo ante divergencias.
+- `CompetitionRules` declara modificaciones y protocolos.
+
+Fuentes:
+
+- <https://www.theifab.com/laws/latest/>
+- <https://www.theifab.com/law-changes/latest/>
+- <https://www.theifab.com/laws-of-the-game-documents/>
+
+Este inventario no reemplaza el texto IFAB.
+
+## Capas
+
+```text
+LawDefinition → PhysicalFact → PotentialIncident
+              → RefereeObservation → RefereeDecision → MatchTransition
+```
+
+Al inicio puede usarse `PerfectOfficiating`; la separación permanece.
+
+## Cobertura
+
+`Catalogued`, `ScenarioDefined`, `Implemented`, `Validated`, `Configured`,
+`Subjective`, `Deferred`, `PresentationOnly`.
+
+Cada requisito implementable tendrá ID (`LAW09.OUT.001`), referencia, edición,
+precondiciones, hechos, decisión/transición, restart/sanción, parámetros,
+escenarios de frontera y cobertura. Los escenarios corren headless y con
+primitivas.
+
+## Laws 1–17
+
+| Ley | Requisitos del simulador | Estado aproximado | MVP |
+|---|---|---|---|
+| 1 Field | Superficie, marcas, dimensiones, áreas, arcos, postes, banderines, área técnica | Geometría parcial | 1 |
+| 2 Ball | Dimensiones, masa/presión, defecto, reemplazo y balones extra | Radio/dinámica; sin contrato completo | 1–2 |
+| 3 Players | 11, goalkeeper, mínimo 7, sustituciones, expulsados y personas extra | 22 fijos | 2 |
+| 4 Equipment | Obligatorio/prohibido, seguridad, colores, infracciones y retorno | Ausente | 2/config |
+| 5 Referee | Autoridad, ventaja, disciplina, lesiones, interferencia, reloj y correcciones | Automatismo parcial | 2 |
+| 6 Officials | Asistentes, cuarto oficial, adicionales, VAR/AVAR | Ausente | diferido |
+| 7 Duration | Mitades, descanso, añadido, recuperación, penal extendido, abandono | Incompleto | 1–2 |
+| 8 Start/restart | Sorteo, kick-off, posiciones, balón en juego, dropped ball | Kick-off simplificado | 1–2 |
+| 9 In/out | Cruce completo, detención arbitral, contacto con oficial y excepciones | Parcial | 1 |
+| 10 Outcome | Gol, ganador, empate, extra time y tanda | Gol/marcador parcial | 1–2 |
+| 11 Offside | Posición, toque, interferencia, advantage, deliberate play/save, excepciones | Simplificado | 2 |
+| 12 Fouls | Direct/indirect, handball, goalkeeper, severidad, DOGSO y disciplina | Ausente | 2 |
+| 13 Free kicks | Tipo, señal, posición, distancias, muro, quick kick, doble toque | Restart nominal | 2 |
+| 14 Penalty | Posiciones, procedimiento, feint, goalkeeper e infracciones combinadas | Enum sin ejecución | 2 |
+| 15 Throw-in | Concesión, cuerpo/manos, lugar, distancia, doble toque e infracciones | Simplificado | 1–2 |
+| 16 Goal kick | Concesión, posición, balón en juego, oponentes y doble toque | Simplificado | 1–2 |
+| 17 Corner | Concesión, área, distancia, balón en juego y doble toque | Simplificado | 1–2 |
+
+## Protocolos/configuración
+
+- sustitutos, oportunidades y concussion substitutions;
+- return substitutes y temporary dismissals;
+- variantes youth/veterans/disability/grassroots;
+- extra time y kicks from the penalty mark;
+- time-limited substitution;
+- off-field treatment and assessment;
+- throw-in/goal-kick countdown;
+- “only the captain”;
+- VAR y ensayos IFAB explícitos.
+
+Pertenecen a `CompetitionRules`, no a “fútbol estándar” implícito.
+
+## Objetivo frente a subjetivo
+
+Objetivo: cruce completo, gol geométrico, posiciones, elegibilidad, tiempo y
+distancias.
+
+Subjetivo: careless/reckless/excessive force, interferencia, deliberate play,
+advantage, handball, conducta y DOGSO. Requieren `RefereePolicy`, no umbrales
+anónimos.
+
+## Escenarios iniciales
+
+MVP 1:
+
+- gol/no-gol por postes, travesaño, side netting y cruce incompleto;
+- touchline/goal line, incluso a alta velocidad;
+- throw-in frente a goal kick/corner;
+- kick-off legal/ilegal;
+- reloj, descanso/final;
+- misma escena headless y con primitivas.
+
+MVP 2:
+
+- matriz de offside y excepciones;
+- direct/indirect, advantage y disciplina;
+- handball/restricciones del goalkeeper;
+- penal e infracciones combinadas;
+- sustitución, expulsión y mínimo de siete;
+- extra time y tanda.
+
+## Definición de completo
+
+1. Cada cláusula relevante 2026/27 tiene ID/cobertura.
+2. Transiciones deterministas tienen fronteras.
+3. Juicios subjetivos declaran inputs/política.
+4. Variantes son datos.
+5. No hay reglas ocultas en IA, presentación o animación.
+6. Cada escenario genera trace explicable.
+
