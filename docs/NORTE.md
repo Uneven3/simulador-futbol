@@ -83,11 +83,11 @@ Separar entidades autoritativas de visuales. Ejecutar la misma situación
 headless y con primitivas. Campo, balón, equipos, reloj, fases, gol/fuera y
 reanudaciones básicas deben ser inspeccionables.
 
-### MVP 1.75 — Calibración y propiedades
+### MVP 1.75 — Instrumentación y propiedades
 
-Antes de añadir más reglas hay que hacer que las que ya existen produzcan
-números defendibles. El modelo marca 51 goles cada 90 minutos contra ~2,7
-reales (`REVISION_2026-07-30-reloj.md`), y no hay ningún test que lo note.
+Antes de añadir más reglas hay que poder **medir** lo que las que existen
+producen. El modelo marca 51 goles cada 90 minutos contra ~2,7 reales
+(`REVISION_2026-07-30-reloj.md`), y no había ningún test que lo notara.
 
 Cuatro pasos, en orden:
 
@@ -95,14 +95,22 @@ Cuatro pasos, en orden:
    versionado como lo es `MatchRegulations`. Sin esto no hay nada que girar.
 2. **La envolvente es una herramienta**, no un test ignorado: N partidos, con
    histograma de goles por partido, marcadores, tiros y posesión.
-3. **Calibrar contra la distribución real**, no contra una media: ~1,35 goles
-   por equipo y partido, casi Poisson.
+3. **Cada desvío, atribuido a su causa**, sin girar nada todavía.
 4. **Tests de propiedad causal**: afirmar dirección de efecto sobre N corridas,
    no valores exactos.
 
-Termina cuando el ritmo de gol está dentro de lo defendible, el histograma se
-parece al real, y existen al menos tres propiedades tácticas afirmadas como
-test. El instrumental está descrito en `REFERENCIA_OPENFOOTMANAGER.md`.
+Termina cuando cada desvío conocido tiene causa identificada y MVP asignado, y
+existen al menos tres propiedades afirmadas como test. El instrumental está
+descrito en `REFERENCIA_OPENFOOTMANAGER.md`.
+
+**Lo que este MVP deliberadamente NO hace es calibrar** (decidido el
+2026-07-30). Girar parámetros hasta que salgan 2,7 goles hoy sería compensar
+con números la ausencia de mecanismos: el tirador no falla porque no existe el
+error de golpeo, el pase no llega porque nadie tiene percepción parcial, y no
+hay portero ni faltas que eviten un gol. Un modelo que acierta la media por dos
+errores que se cancelan es peor que uno que falla de forma legible, porque el
+día que entre el mecanismo que faltaba hay que deshacer la compensación sin
+saber cuál era.
 
 ### MVP 2 — Partido reglamentariamente completo
 
@@ -131,6 +139,14 @@ políticas configurables.
 
 Importar/construir una situación, proponer movimientos, simular alternativas y
 explicar consecuencias mediante overlays y métricas.
+
+### Calibración — hito propio, después de MVP 4
+
+Cuando existan portero que ataja, faltas que interrumpen, motor con fatiga y
+percepción parcial, entonces sí: girar `MatchTuning` contra la distribución
+real (~1,35 goles por equipo, casi Poisson) y no contra una media. Antes de
+eso, el instrumental de MVP 1.75 solo sirve para comparar builds y para afirmar
+propiedades, que es lo que se le pide.
 
 ### MVP 7 — Presentación low-poly
 

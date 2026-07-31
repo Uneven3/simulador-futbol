@@ -77,6 +77,9 @@ pub struct MatchSummary {
     pub passes_completed: ByTeam<u32>,
     pub possession: ByTeam<f32>,
     pub possession_changes_per_minute: f32,
+    /// Cómo cambió de manos: quitado a un rival, o recogido del suelo.
+    pub tackles: u32,
+    pub loose_balls: u32,
     /// La racha de posesión más larga y cuántos jugadores distintos tocaron el
     /// balón: las dos señales de que el partido degeneró en un duelo entre dos.
     pub longest_spell: Duration,
@@ -210,7 +213,8 @@ impl EnvelopeReport {
         let _ = writeln!(
             out,
             "tiros/90min: {:.0} ({:.0}% a puerta, real ~33%)   \
-             pases/90min: {:.0} ({:.0}% completados, real ~80%)",
+             pases/90min: {:.0} ({:.0}% completados, real ~80%)\n\
+             el balón cambia de manos: {:.0} robos/90min, {:.0} recogidas/90min",
             self.mean_of(|m| m.per_90(m.total_shots() as f32)),
             self.mean_of(|m| {
                 let on_target =
@@ -220,6 +224,8 @@ impl EnvelopeReport {
             }) * 100.0,
             self.mean_of(|m| m.per_90((m.passes[TeamId::Home] + m.passes[TeamId::Away]) as f32)),
             self.mean_of(|m| m.pass_completion()) * 100.0,
+            self.mean_of(|m| m.per_90(m.tackles as f32)),
+            self.mean_of(|m| m.per_90(m.loose_balls as f32)),
         );
 
         // El histograma solo dice algo sobre partidos completos: escalar diez
@@ -392,6 +398,8 @@ fn run_one_match(scenario: &Scenario, seed: u32) -> MatchSummary {
         passes_completed: ledger.passes_completed(),
         possession: ledger.possession_share(),
         possession_changes_per_minute: ledger.changes_per_minute(elapsed),
+        tackles: ledger.tackles(),
+        loose_balls: ledger.loose_balls(),
         longest_spell: ledger.longest_spell,
         distinct_touchers: ledger.distinct_touchers(),
         elapsed,

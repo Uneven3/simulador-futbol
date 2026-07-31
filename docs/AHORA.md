@@ -2,7 +2,14 @@
 
 ## Objetivo activo
 
-**MVP 1.75 — Calibración y propiedades.** El trabajo de fondo al retomar.
+**MVP 2 — Partido reglamentariamente completo.** MVP 1.75 quedó cerrado el
+2026-07-30 (abajo, con lo que destapó). Lo primero de MVP 2, por orden de lo
+que la medición señaló: el portero que ataja de verdad y las faltas que
+interrumpen. Antes de eso, dos defectos con evidencia esperando en el paso 3:
+el alcance del receptor que no se aplica nunca, y los robos que son el 1 % de
+los cambios de posesión.
+
+## Lo que fue MVP 1.75
 
 MVP 1.5 destapó el problema: **el modelo marca 51 goles cada 90 minutos**
 (rango 27-81 sobre diez semillas) contra ~2,7 de un partido real
@@ -105,30 +112,77 @@ un sesgo hacia adelante de 0,7, y un defensa que retrocede **despeja hacia su
 propia portería**. Está afirmado como test para que el día que se arregle sea a
 propósito.
 
-### 3. Calibrar contra la distribución, no contra la media
+### 3. Cada desvío, atribuido a su causa — sin girar nada ✅
 
-Sospechosos, ya con medida detrás: el tirador nunca falla (100 % a puerta), el
-umbral de tiro deja disparar desde cualquier sitio, el portero no defiende de
-verdad, y no hay faltas que interrumpan. El 11 % de pases completados apunta a
-que la disputa del balón está rota antes que la puntería.
+Decidido el 2026-07-30, a pregunta del usuario: **calibrar ahora sería fitting**.
+Girar parámetros hasta que salgan 2,7 goles compensaría con números la falta de
+mecanismos, y habría que deshacerlo cuando lleguen. El razonamiento está en
+`NORTE.md`; la calibración pasa a ser un hito propio después de MVP 4.
 
-Registrar antes/después de cada giro (ley de `VALIDATION.md`: separar
-calibración de validación, versionar parámetros, no mejorar una métrica
-ocultando regresiones).
+Lo medido, y a quién le toca resolverlo:
 
-### 4. Tests de propiedad causal
+| Desvío | Modelo | Real | Causa | Se resuelve en |
+|---|---|---|---|---|
+| Tiros a puerta | 100 % | ~33 % | No existe el error de golpeo: se apunta entre palos con ±0,5 m y nada lo estorba | MVP 3 (motor, fatiga) |
+| Pases completados | 11 % | ~80 % | Nadie tiene percepción parcial: el defensor lee la trayectoria real del balón | MVP 4 (percepción) |
+| Goles/90 min | 51 | ~2,7 | Consecuencia de los dos anteriores, más que nadie evita el gol | MVP 2 (portero, faltas) |
+| Pases/90 min | 1732 | ~850 | El balón cambia de dueño 20 veces por minuto | MVP 3 + MVP 4 |
 
-Los que faltan y son el norte del proyecto: afirmar **dirección de efecto sobre
-N corridas**, no valores exactos. Por ejemplo: subir la línea defensiva aumenta
-los fueras de juego; presionar alto sube las recuperaciones en campo rival; dos
-equipos iguales terminan parejos.
+Ninguno de los cuatro es un parámetro mal puesto. Ese es el resultado del paso 3:
+saber que no lo son.
 
-Son inmunes al caos que nos mordió con el reloj: una propiedad afirmada sobre
-cien corridas sobrevive a una perturbación de 1 ms; un marcador 1-0 no.
+**Salvo dos, que sí son defectos nuestros** y los descubrió el paso 4 al
+intentar afirmar propiedades sobre ellos:
 
-**Criterio de terminado:** el ritmo de gol dentro de lo defendible, el
-histograma parecido al real, y al menos tres propiedades tácticas afirmadas
-como test.
+- **El alcance del receptor está muerto.** `contest.receiver_trap_reach` existe
+  para que un pase se complete contra el marcador que está uno o dos metros por
+  detrás, y es lo que aquí sustituye a las animaciones de control del original.
+  Pasar de 1,1 m a 3,0 m produce partidos **idénticos bit a bit**: la rama que
+  lo lee no se toma nunca en el momento que importa. Sospecha sin confirmar:
+  `update_possession_designation` borra `pass_target` cuando el balón baja de
+  0,3 m/s, y los pases resueltos llegan agonizando al receptor justo antes de
+  la disputa, que corre después. **Es el candidato número uno para explicar el
+  11 % de pases completados**, por encima de la falta de percepción.
+- **El balón no se roba: se recoge.** 22 robos contra 2015 recogidas cada 90
+  minutos. Todo el mecanismo de entrada —enfriamientos, duelo, protección del
+  cuerpo— decide el 1 % de los cambios de posesión. Por eso `steal_cooldown` no
+  mueve ninguna métrica agregada: gobierna una centésima parte del partido.
+
+### 4. Tests de propiedad causal ← el trabajo activo
+
+Afirmar **dirección de efecto sobre N corridas**, no valores exactos. Son
+inmunes al caos que nos mordió con el reloj: una propiedad afirmada sobre cien
+corridas sobrevive a una perturbación de 1 ms; un marcador 1-0 no.
+
+Y son inmunes a lo otro: "subir el umbral de tiro reduce los tiros" es
+verificable con 51 goles por partido o con 2,7. Por eso este paso se puede
+hacer hoy y la calibración no.
+
+Hecho el 2026-07-30 en `crates/simulation/tests/causal_properties.rs`, con la
+herramienta del paso 2 (`with_tuning` sobre la misma situación y las mismas
+semillas, dos configuraciones):
+
+1. ✅ **Simetría**: dos equipos idénticos terminan parejos (13-8 sobre seis
+   partidos, cuota 0,62). Si fallara habría un sesgo de lado, y ninguna otra
+   medida lo diría porque todas suman los dos equipos.
+2. ✅ **El umbral de tiro manda sobre los tiros**: subir `ideal_position_gate`
+   de 0,10 a 0,45 baja los disparos de 69 a 33 por 90 minutos.
+3. ✅ **Caracterización — el alcance del receptor está muerto**: triplicarlo no
+   cambia nada. Afirmado como está para que el día que se arregle, el test
+   falle y haya que venir a convertirlo en la propiedad que quería ser.
+4. ✅ **Caracterización — el balón se recoge, no se roba**: los robos son el
+   1,4 % de los cambios de posesión.
+
+Dos de las cuatro salieron al revés de lo que se buscaba, y ese fue el
+rendimiento del paso: **intentar afirmar una propiedad es cómo se descubre que
+una perilla no gobierna nada**. Un test que pasa no habría enseñado eso.
+
+Las tácticas del norte (línea defensiva, presión alta) necesitan que el plan
+sea configurable **por equipo**, y hoy `MatchTuning` es global: llegan con
+MVP 5.
+
+**Criterio de terminado:** ✅ cada desvío conocido con causa identificada y MVP
+asignado, y ✅ cuatro propiedades afirmadas como test. **MVP 1.75 cerrado.**
 
 ## Lo que quedó pendiente de MVP 1.5
 
