@@ -5,6 +5,118 @@
 
 use gameplayfootball::{MatchPhase, ScenarioRunner, scenarios};
 
+/// Ley 8: en el descanso los equipos cambian de mitad, y con ellos todo lo que
+/// cuelga de qué lado defiende cada uno.
+///
+/// Se afirma sobre el cuerpo del portero y no solo sobre el estado: que el
+/// registro diga que cambiaron y que los once sigan colocados como en la
+/// primera parte sería la forma de que esto pareciese hecho sin estarlo.
+#[test]
+fn the_teams_change_ends_at_the_interval() {
+    use football_domain::{MatchState, PlayerId, PlayingPosition, Position, TeamSide};
+
+    let mut runner = ScenarioRunner::headless(scenarios::short_match());
+
+    let keeper_x = |runner: &mut ScenarioRunner| -> f32 {
+        let world = runner.world_mut();
+        let mut keepers = world.query::<(&Position, &football_domain::Player)>();
+        keepers
+            .iter(world)
+            .find(|(_, player)| {
+                player.id == PlayerId::home(1) && player.position == PlayingPosition::Goalkeeper
+            })
+            .map(|(position, _)| position.0.x)
+            .expect("el local tiene portero")
+    };
+    let phase = |runner: &mut ScenarioRunner| runner.world_mut().resource::<MatchState>().phase;
+    let home_defends = |runner: &mut ScenarioRunner| {
+        runner
+            .world_mut()
+            .resource::<MatchState>()
+            .sides
+            .defended_by(football_domain::TeamId::Home)
+    };
+
+    let mut first_half_x = None;
+    let mut second_half_x = None;
+    for _ in 0..scenarios::short_match().ticks() {
+        runner.advance();
+        match phase(&mut runner) {
+            MatchPhase::FirstHalf => first_half_x = Some(keeper_x(&mut runner)),
+            MatchPhase::SecondHalf => second_half_x = Some(keeper_x(&mut runner)),
+            MatchPhase::PreMatch
+            | MatchPhase::HalfTime
+            | MatchPhase::FirstExtraTime
+            | MatchPhase::SecondExtraTime
+            | MatchPhase::Penalties
+            | MatchPhase::FullTime => {}
+        }
+    }
+
+    assert_eq!(
+        home_defends(&mut runner),
+        TeamSide::Right,
+        "no cambiaron de lado"
+    );
+    let (first, second) = (
+        first_half_x.expect("hubo primera parte"),
+        second_half_x.expect("hubo segunda parte"),
+    );
+    assert!(
+        first < 0.0 && second > 0.0,
+        "el portero local no cambió de portería: {first:.1} -> {second:.1}"
+    );
+}
+
+/// Ley 8: en el saque de centro los rivales se quedan fuera del círculo y cada
+/// equipo en su mitad.
+///
+/// Se mira el tick exacto en que el árbitro pone el balón en juego, que es
+/// cuando la ley se cumple o no; un tick después ya están todos corriendo.
+#[test]
+fn at_a_kick_off_the_opponents_stay_out_of_the_centre_circle() {
+    use football_domain::{Ball, MatchState, Player, Position, SetPiece};
+
+    /// Ley 8: el radio del círculo central, en metros.
+    const CENTRE_CIRCLE: f32 = 9.15;
+
+    let mut runner = ScenarioRunner::headless(scenarios::opening_minute());
+
+    let mut checked = false;
+    for _ in 0..300 {
+        // quién saca hay que leerlo antes: al ejecutar la reanudación, el
+        // árbitro lo borra junto con el resto del estado del saque
+        let (was_stopped, taking) = {
+            let state = runner.world_mut().resource::<MatchState>();
+            (state.set_piece != SetPiece::None, state.set_piece_team)
+        };
+        runner.advance();
+        let world = runner.world_mut();
+        let state = world.resource::<MatchState>();
+        if !was_stopped || state.set_piece != SetPiece::None {
+            continue;
+        }
+        let mut balls = world.query_filtered::<&Position, bevy::prelude::With<Ball>>();
+        let ball = balls.single(world).expect("hay balón").on_pitch();
+        let mut players = world.query::<(&Position, &Player)>();
+        for (position, player) in players.iter(world) {
+            let at = position.on_pitch();
+            if Some(player.id.team) == taking {
+                continue;
+            }
+            assert!(
+                at.distance(ball) >= CENTRE_CIRCLE - 0.01,
+                "{} saca desde dentro del círculo, a {:.2} m del balón",
+                player.id,
+                at.distance(ball)
+            );
+        }
+        checked = true;
+        break;
+    }
+    assert!(checked, "el saque de centro nunca llegó a ejecutarse");
+}
+
 #[test]
 fn a_shot_over_the_goal_line_is_a_goal() {
     ScenarioRunner::headless(scenarios::shot_crossing_the_goal_line()).assert_scenario_holds();

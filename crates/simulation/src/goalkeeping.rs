@@ -14,7 +14,6 @@ use football_domain::scenario::TICK;
 use football_domain::tuning::GoalkeepingTuning;
 use football_domain::{
     BALL_RADIUS, MatchState, MatchTuning, PitchConfig, Player, PlayingPosition, Position, SetPiece,
-    TeamId,
 };
 
 /// Dónde y cuándo cruzaría el balón la línea de gol que defiende el portero.
@@ -146,7 +145,7 @@ pub fn goalkeepers_save_shots(
         if player.position != PlayingPosition::Goalkeeper {
             continue;
         }
-        let goal_x = defended_goal_x(player.id.team);
+        let goal_x = match_state.sides.defending_x(player.id.team);
         if goal_bound_shot(&ball.predictions, goal_x, &pitch).is_none() {
             continue;
         }
@@ -185,11 +184,6 @@ pub fn goalkeepers_save_shots(
         });
         return;
     }
-}
-
-/// El plano de gol que defiende un equipo, como signo sobre el eje x.
-fn defended_goal_x(team: TeamId) -> f32 {
-    crate::team_tactics::team_side(team)
 }
 
 #[cfg(test)]

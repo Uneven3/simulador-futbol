@@ -50,15 +50,77 @@ impl fmt::Display for TeamId {
     }
 }
 
-/// Which half of the pitch a team defends.
-///
-/// Left is -x, right is +x. Not yet used to place anyone: today the home team
-/// defends the left for the whole match, and swapping sides at the interval is
-/// the opening item of MVP 2.
+/// Which half of the pitch a team defends. Left is -x, right is +x.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 pub enum TeamSide {
     Left,
     Right,
+}
+
+impl TeamSide {
+    /// The sign of x of this half, which is what the geometry works in.
+    pub fn as_x(self) -> f32 {
+        match self {
+            TeamSide::Left => -1.0,
+            TeamSide::Right => 1.0,
+        }
+    }
+
+    pub fn opposite(self) -> Self {
+        match self {
+            TeamSide::Left => TeamSide::Right,
+            TeamSide::Right => TeamSide::Left,
+        }
+    }
+}
+
+/// Who defends which half right now.
+///
+/// The whole geometry of the match hangs off this: where a team attacks, which
+/// goal is its own, which way the offside line runs. It changes once, at the
+/// interval (Law 8), and nothing else in the match may change it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+pub struct PitchSides {
+    home_defends: TeamSide,
+}
+
+impl Default for PitchSides {
+    fn default() -> Self {
+        Self::opening()
+    }
+}
+
+impl PitchSides {
+    /// How a match starts: home defends the left.
+    pub fn opening() -> Self {
+        Self {
+            home_defends: TeamSide::Left,
+        }
+    }
+
+    /// The sides after the interval.
+    pub fn swapped(self) -> Self {
+        Self {
+            home_defends: self.home_defends.opposite(),
+        }
+    }
+
+    pub fn defended_by(self, team: TeamId) -> TeamSide {
+        match team {
+            TeamId::Home => self.home_defends,
+            TeamId::Away => self.home_defends.opposite(),
+        }
+    }
+
+    /// Sign of x of the goal this team defends.
+    pub fn defending_x(self, team: TeamId) -> f32 {
+        self.defended_by(team).as_x()
+    }
+
+    /// Sign of x this team attacks towards, which is the other one.
+    pub fn attacking_x(self, team: TeamId) -> f32 {
+        -self.defending_x(team)
+    }
 }
 
 /// A participant in the match: a team and a shirt number.

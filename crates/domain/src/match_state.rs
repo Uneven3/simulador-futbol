@@ -83,6 +83,9 @@ pub struct MatchState {
     /// Team that kicked off the match, so the other one kicks off the second
     /// half (Law 8).
     pub opening_kick_off_team: TeamId,
+    /// Which half each team defends. The interval swaps it, and nothing else
+    /// touches it (Law 8).
+    pub sides: crate::PitchSides,
     pub is_ball_in_goal: bool,
     pub possession_team: Option<TeamId>,
     /// How long until the pending restart is taken.
@@ -173,6 +176,7 @@ impl Default for MatchState {
             set_piece_team: Some(TeamId::Home),
             period_elapsed: Duration::ZERO,
             opening_kick_off_team: TeamId::Home,
+            sides: crate::PitchSides::opening(),
             is_ball_in_goal: false,
             possession_team: None,
             restart_in: Duration::from_secs(2),

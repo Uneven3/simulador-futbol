@@ -267,6 +267,7 @@ pub(super) fn accumulate_facts(
     ball_query: Query<&Ball>,
 ) {
     let facts: Vec<MatchFact> = telemetry.this_tick().to_vec();
+    let sides = match_state.sides;
     let mut derived = Vec::new();
     for fact in facts {
         // A shot is classified here and not at the boot because this runs after
@@ -278,7 +279,7 @@ pub(super) fn accumulate_facts(
         } = fact
             && let Ok(ball) = ball_query.single()
         {
-            let attacking_towards_x = -crate::team_tactics::team_side(player.team);
+            let attacking_towards_x = sides.attacking_x(player.team);
             let on_target = trajectory_enters_goal(&ball.predictions, attacking_towards_x, &pitch);
             ledger.record_shot(player.team, on_target);
         }

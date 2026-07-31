@@ -66,7 +66,8 @@ fn advance_match_clock(
             if elapsed >= regulations.half_duration {
                 match_state.phase = MatchPhase::HalfTime;
                 match_state.period_elapsed = Duration::ZERO;
-                // Law 8: the other team kicks off the second half.
+                // Law 8: the teams change ends and the other one kicks off.
+                match_state.sides = match_state.sides.swapped();
                 let second_half_kick_off = match_state.opening_kick_off_team.opponent();
                 stop_play_for_kick_off(
                     &mut match_state,

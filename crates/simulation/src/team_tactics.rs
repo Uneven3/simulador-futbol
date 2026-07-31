@@ -16,8 +16,8 @@ use football_domain::math::{
     curve, line_distance_to_point_2d, normalized_clamp, normalized_or_2d, rotated_2d, what_side_2d,
 };
 use football_domain::{
-    Ball, ByTeam, MatchState, Player, PlayerId, PlayerMatchState, PlayingPosition, Position,
-    PossessionDesignation, SetPiece, TacticalRole, TeamId, Velocity,
+    Ball, ByTeam, MatchState, PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition,
+    Position, PossessionDesignation, SetPiece, TacticalRole, TeamId, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -34,15 +34,6 @@ pub const WALK_SPRINT_SWITCH: f32 = 6.0;
 pub const DISTANCE_TO_VELOCITY_MULTIPLIER: f32 = 2.6;
 pub const PITCH_HALF_W: f32 = 55.0;
 pub const PITCH_HALF_H: f32 = 36.0;
-
-/// The x-side each team defends (original `Team::GetSide()`): team 0 defends
-/// x < 0 and attacks +x, so its side is -1.
-pub fn team_side(team: TeamId) -> f32 {
-    match team {
-        TeamId::Home => -1.0,
-        TeamId::Away => 1.0,
-    }
-}
 
 /// The engine's `clamp()` semantics: applies min first, then max, so an
 /// inverted range returns `max` instead of panicking like Rust's `clamp`.
@@ -249,6 +240,7 @@ pub fn update_team_tactics(
     };
     let now_ms = crate::match_clock::engine_elapsed_ms(&time);
     let in_play = match_state.set_piece == SetPiece::None;
+    let sides = match_state.sides;
 
     let snaps: Vec<PlayerReading> = player_query
         .iter()
@@ -303,9 +295,9 @@ pub fn update_team_tactics(
     // -- possession side history (port of Match::Process) --
     if in_play {
         let sample = (tactics.team[TeamId::Home].fading_team_possession_amount - 0.5)
-            * team_side(TeamId::Home)
+            * sides.defending_x(TeamId::Home)
             + (tactics.team[TeamId::Away].fading_team_possession_amount - 0.5)
-                * team_side(TeamId::Away);
+                * sides.defending_x(TeamId::Away);
         tactics.possession_side_history.push_back(sample);
         if tactics.possession_side_history.len() > 600 {
             tactics.possession_side_history.pop_front();
@@ -313,7 +305,7 @@ pub fn update_team_tactics(
     }
 
     for t in TeamId::BOTH {
-        let side = team_side(t);
+        let side = sides.defending_x(t);
         let opp_designated = designation.designated[t.opponent()]
             .and_then(|id| snaps.iter().find(|s| s.id == id))
             .copied();
@@ -353,7 +345,7 @@ pub fn update_team_tactics(
         }
 
         // slacking teammate as max: our own defensive line (one-but-deepest of us)
-        let line_x = own_defensive_line_x(&snaps, t);
+        let line_x = own_defensive_line_x(&snaps, t, sides);
         let allow_slack_distance = 4.0;
         if line_x * side - allow_slack_distance > deepest_danger * side {
             deepest_danger = line_x - allow_slack_distance * side;
@@ -451,7 +443,7 @@ pub fn update_team_tactics(
             };
             let mut best: Option<(usize, f32)> = None;
             for (i, marker) in available.iter().enumerate() {
-                let quality = marking_quality(marker, opp, t);
+                let quality = marking_quality(marker, opp, t, sides);
                 if best.is_none_or(|(_, bq)| quality > bq) {
                     best = Some((i, quality));
                 }
@@ -485,8 +477,8 @@ fn best_possession_team(designation: &PossessionDesignation) -> Option<TeamId> {
 
 /// One-but-deepest player of `team` on their own defensive side (used for the
 /// "slacking teammate" clamp of the trap line).
-fn own_defensive_line_x(snaps: &[PlayerReading], team: TeamId) -> f32 {
-    let side = team_side(team);
+fn own_defensive_line_x(snaps: &[PlayerReading], team: TeamId, sides: PitchSides) -> f32 {
+    let side = sides.defending_x(team);
     let mut deepest: Option<usize> = None;
     let list: Vec<&PlayerReading> = snaps.iter().filter(|s| s.team() == team).collect();
     for (i, s) in list.iter().enumerate() {
@@ -507,8 +499,13 @@ fn own_defensive_line_x(snaps: &[PlayerReading], team: TeamId) -> f32 {
 }
 
 /// Port of `TeamAIController::CalculateMarkingQuality(player, opp)`.
-fn marking_quality(marker: &PlayerReading, opp: &PlayerReading, team: TeamId) -> f32 {
-    let side = team_side(team);
+fn marking_quality(
+    marker: &PlayerReading,
+    opp: &PlayerReading,
+    team: TeamId,
+    sides: PitchSides,
+) -> f32 {
+    let side = sides.defending_x(team);
     let opp_position = opp.pos + opp.vel * 0.1;
     let player_position = marker.pos + marker.vel * 0.1;
 
@@ -571,6 +568,7 @@ pub struct AdaptedFor {
 pub fn get_adapted_formation_position(
     tactics: &TeamTactics,
     team: TeamId,
+    sides: PitchSides,
     player: AdaptedFor,
     focal_point: Vec2,
     ball: &Ball,
@@ -581,7 +579,7 @@ pub fn get_adapted_formation_position(
         playing_position,
         role,
     } = player;
-    let side = team_side(team);
+    let side = sides.defending_x(team);
     let ai = &tactics.team[team];
 
     let urgency_bias = 1.0 - normalized_clamp((focal_point - player_pos).length(), 2.0, 30.0);
@@ -866,8 +864,13 @@ pub fn adapted_formation_position(
 }
 
 /// Port of `TeamAIController::ApplyOffsideTrap(position)` (smooth version).
-pub fn apply_offside_trap(tactics: &TeamTactics, team: TeamId, position: &mut Vec2) {
-    let side = team_side(team);
+pub fn apply_offside_trap(
+    tactics: &TeamTactics,
+    team: TeamId,
+    sides: PitchSides,
+    position: &mut Vec2,
+) {
+    let side = sides.defending_x(team);
     let offside_trap_x = tactics.team[team].offside_trap_x;
 
     let area_half_length = 2.0;

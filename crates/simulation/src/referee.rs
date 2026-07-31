@@ -8,7 +8,7 @@ use bevy_time::prelude::*;
 use football_domain::math::normalized_or_2d;
 use football_domain::{
     BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, Player,
-    PlayerId, PlayerMatchState, PlayingPosition, Position, SetPiece, TeamId, Velocity,
+    PitchSides, PlayerId, PlayerMatchState, PlayingPosition, Position, SetPiece, TeamId, Velocity,
 };
 use std::time::Duration;
 
@@ -130,7 +130,7 @@ fn referee_system(
     // line (original referee.cpp: fabs(pos) > pitchHalf + lineHalfW + 0.11)
     let last_touch = ball.last_touch_team.unwrap_or(TeamId::Home);
     // side of the pitch the last touching team defends (-1 left for home)
-    let last_side = crate::team_tactics::team_side(last_touch);
+    let last_side = match_state.sides.defending_x(last_touch);
 
     // 2. Over the backline: corner or goal kick
     if pos.x.abs() > pitch_half_w + line_half_w + 0.11 {
@@ -238,7 +238,13 @@ fn referee_offside_system(
             .iter()
             .map(|(_, position, player)| (player.id, position.0))
             .collect();
-        let judged = judge_offside_positions(&bodies, touch.player, ball_query.0.x, &pitch_config);
+        let judged = judge_offside_positions(
+            &bodies,
+            touch.player,
+            ball_query.0.x,
+            match_state.sides,
+            &pitch_config,
+        );
 
         records.judged_line_x = Some(judged.line_x);
         records.judged_against_team = Some(touch.team().opponent());
@@ -270,13 +276,14 @@ pub fn judge_offside_positions(
     bodies: &[(PlayerId, Vec3)],
     touched_by: PlayerId,
     ball_x: f32,
+    sides: PitchSides,
     pitch: &PitchConfig,
 ) -> OffsideJudgement {
     let attacking_team = touched_by.team;
     let defending_team = attacking_team.opponent();
     // hacia dónde defiende el rival, y por tanto hacia dónde se ataca
-    let def_side = crate::team_tactics::team_side(defending_team);
-    let attacking_towards_x = -crate::team_tactics::team_side(attacking_team);
+    let def_side = sides.defending_x(defending_team);
+    let attacking_towards_x = sides.attacking_x(attacking_team);
 
     let defenders = || bodies.iter().filter(|(id, _)| id.team == defending_team);
     let mut deepest: Option<(PlayerId, f32)> = None;
@@ -468,14 +475,16 @@ fn referee_set_piece_system(
     ball_position.0 = restart_pos + Vec3::new(0.0, 0.0, BALL_RADIUS);
 
     // Re-form both teams at their base positions, facing the opponent goal
+    let sides = match_state.sides;
     for (mut position, mut facing, mut velocity, player, mut player_state) in
         player_query.iter_mut()
     {
-        let base = base_formation_position(player.id, player.position);
+        let base = base_formation_position(player.id, player.position, sides);
         *position = Position::from_pitch(base, 0.0);
-        facing.0 = match player.id.team {
-            TeamId::Home => Dir2::X,
-            TeamId::Away => Dir2::NEG_X,
+        facing.0 = if sides.attacking_x(player.id.team) > 0.0 {
+            Dir2::X
+        } else {
+            Dir2::NEG_X
         };
         velocity.0 = Vec3::ZERO;
         player_state.last_touch_at = Duration::ZERO;
@@ -503,7 +512,7 @@ fn referee_set_piece_system(
                 .collect();
             select_restart_taker(&others, taking_team, SetPiece::None, restart_2d)
         });
-        let attacking_towards_x = -crate::team_tactics::team_side(taking_team);
+        let attacking_towards_x = sides.attacking_x(taking_team);
         let clearance = if prev_set_piece == SetPiece::ThrowIn {
             THROW_IN_CLEARANCE
         } else {
@@ -718,7 +727,7 @@ mod tests {
             body(TeamId::Away, 6, 15.0),
         ];
 
-        let judged = judge_offside_positions(&bodies, passer, 0.0, &pitch);
+        let judged = judge_offside_positions(&bodies, passer, 0.0, PitchSides::opening(), &pitch);
 
         assert_eq!(judged.line_x, 25.0);
         let flagged: Vec<u8> = judged
@@ -748,7 +757,7 @@ mod tests {
 
         // el balón está más cerca de la portería defendida que el penúltimo
         // defensor: entonces la línea la pone el balón
-        let judged = judge_offside_positions(&bodies, passer, -35.0, &pitch);
+        let judged = judge_offside_positions(&bodies, passer, -35.0, PitchSides::opening(), &pitch);
 
         assert_eq!(judged.line_x, -35.0);
         let flagged: Vec<u8> = judged

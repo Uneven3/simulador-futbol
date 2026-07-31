@@ -22,7 +22,7 @@ use crate::force_field::{self, Falloff, ForceSpot};
 use crate::team_tactics::{
     DISTANCE_TO_VELOCITY_MULTIPLIER, DRIBBLE_VELOCITY, PITCH_HALF_H, PITCH_HALF_W, PlayerReading,
     SPRINT_VELOCITY, TeamTactics, WALK_VELOCITY, apply_offside_trap, closest_player,
-    closest_players, cpp_clamp, get_adapted_formation_position, team_side,
+    closest_players, cpp_clamp, get_adapted_formation_position,
 };
 use football_domain::math::{
     curve, sample_index, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
@@ -30,7 +30,7 @@ use football_domain::math::{
 };
 use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
-    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, Player, PlayerId,
+    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, PitchSides, Player, PlayerId,
     PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
 };
 
@@ -40,6 +40,8 @@ use football_domain::{
 
 struct DecisionContext<'a> {
     snaps: &'a [PlayerReading],
+    /// Qué mitad defiende cada equipo ahora: toda la geometría cuelga de esto.
+    sides: PitchSides,
     ball: &'a Ball,
     tactics: &'a TeamTactics,
     tuning: &'a MatchTuning,
@@ -57,9 +59,15 @@ fn snap_of(snaps: &[PlayerReading], id: PlayerId) -> Option<&PlayerReading> {
 /// Offside line faced by attackers of `att_team`: one-but-deepest opponent
 /// (projected `future_ms` ahead) or the ball, never inside the attackers' own
 /// half (port of `AI_GetOffsideLine`).
-pub fn offside_line(snaps: &[PlayerReading], att_team: TeamId, ball_x: f32, future_ms: f32) -> f32 {
+pub fn offside_line(
+    snaps: &[PlayerReading],
+    att_team: TeamId,
+    sides: PitchSides,
+    ball_x: f32,
+    future_ms: f32,
+) -> f32 {
     let def_team = att_team.opponent();
-    let def_side = team_side(def_team);
+    let def_side = sides.defending_x(def_team);
     let projected: Vec<f32> = snaps
         .iter()
         .filter(|s| s.team() == def_team)
@@ -151,6 +159,7 @@ pub fn select_player_movement(
 
     let ctx = DecisionContext {
         snaps: &snaps,
+        sides: match_state.sides,
         ball,
         tactics: &tactics,
         tuning: &tuning,
@@ -209,7 +218,8 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
     } else {
         let all: Vec<(TeamId, Vec2, Vec2)> =
             ctx.snaps.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
-        let dir = crate::player_movement::dribble_direction(me.pos, me.vel, me.team(), &all);
+        let dir =
+            crate::player_movement::dribble_direction(me.pos, me.vel, me.team(), ctx.sides, &all);
         // dribble slower in traffic, open up when free
         let opp_close = ctx
             .snaps
@@ -291,8 +301,8 @@ fn off_ball_movement(
         if gap < hunt_threshold {
             let hunters = closest_players(ctx.snaps, team, opp.pos + opp.vel * 0.1, None, 2);
             if hunters.iter().any(|s| s.id == me.id) {
-                let defend_pos = get_defend_position(me, opp, team);
-                if need_defending_movement(team_side(team), me.pos, defend_pos) {
+                let defend_pos = get_defend_position(me, opp, team, ctx.sides);
+                if need_defending_movement(ctx.sides.defending_x(team), me.pos, defend_pos) {
                     let to_target = defend_pos - me.pos;
                     let velo = (to_target.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
                         .clamp(0.0, SPRINT_VELOCITY);
@@ -332,6 +342,7 @@ fn off_ball_movement(
     let base_position = get_adapted_formation_position(
         ctx.tactics,
         team,
+        ctx.sides,
         crate::team_tactics::AdaptedFor {
             player_pos: me.pos,
             formation_pos: me.formation_slot,
@@ -356,7 +367,7 @@ fn off_ball_movement(
     add_defensive_component(ctx, me, man_marking, &mut desired, bias);
 
     if use_trap {
-        apply_offside_trap(ctx.tactics, team, &mut desired);
+        apply_offside_trap(ctx.tactics, team, ctx.sides, &mut desired);
     }
 
     let to_target = desired - me.pos;
@@ -425,8 +436,13 @@ fn get_lazy_velocity(
 
 /// Port of `PlayerController::GetDefendPosition(opp)`: the point on the
 /// opp → goal line we can reach as soon as the opponent can.
-fn get_defend_position(me: &PlayerReading, opp: &PlayerReading, team: TeamId) -> Vec2 {
-    let side = team_side(team);
+fn get_defend_position(
+    me: &PlayerReading,
+    opp: &PlayerReading,
+    team: TeamId,
+    sides: PitchSides,
+) -> Vec2 {
+    let side = sides.defending_x(team);
     let goal_pos = Vec2::new(PITCH_HALF_W * side, 0.0);
     let opp_position = opp.pos;
     let opp_to_goal = goal_pos - opp_position;
@@ -467,7 +483,7 @@ fn add_defensive_component(
     if me.playing_position == PlayingPosition::Goalkeeper || bias <= 0.0 {
         return;
     }
-    let side = team_side(me.team());
+    let side = ctx.sides.defending_x(me.team());
 
     let defending = &ctx.tuning.defending;
     let min_distance = defending.cover_min_distance;
@@ -531,7 +547,7 @@ fn get_support_position_force_field(
     make_run: bool,
 ) -> Vec2 {
     let team = me.team();
-    let side = team_side(team);
+    let side = ctx.sides.defending_x(team);
     let ai = &ctx.tactics.team[team];
 
     let designated = ctx.designation.designated[team].and_then(|e| snap_of(ctx.snaps, e));
@@ -562,7 +578,7 @@ fn get_support_position_force_field(
         PlayingPosition::Goalkeeper | PlayingPosition::CentreForward => 1.0,
     };
 
-    let offside_x = offside_line(ctx.snaps, team, ctx.ball.predictions[0].x, 240.0);
+    let offside_x = offside_line(ctx.snaps, team, ctx.sides, ctx.ball.predictions[0].x, 240.0);
 
     let mut force_field: Vec<ForceSpot> = Vec::with_capacity(20);
 
@@ -685,7 +701,7 @@ fn get_support_position_force_field(
 
 fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
     let team = me.team();
-    let side = team_side(team);
+    let side = ctx.sides.defending_x(team);
     let ball = ctx.ball;
 
     let keeping = &ctx.tuning.goalkeeping;
@@ -943,6 +959,7 @@ pub fn decide_on_ball_action(
     designation: &PossessionDesignation,
     held_for: Duration,
     offside_line_x: f32,
+    sides: PitchSides,
     tuning: &MatchTuning,
     rng: &mut MatchRng,
 ) -> OnBallAction {
@@ -950,7 +967,7 @@ pub fn decide_on_ball_action(
         return OnBallAction::Dribble;
     };
     let team = me.team();
-    let side = team_side(team);
+    let side = sides.defending_x(team);
     let mind_set = me.role.attacking_bias();
     let passing = &tuning.passing;
 
@@ -986,7 +1003,7 @@ pub fn decide_on_ball_action(
         - long_possession_factor * passing.combined_threshold_long_possession_relief;
 
     let rate = |s: &PlayerReading| -> f32 {
-        let sit = tactical_situation(snaps, s);
+        let sit = tactical_situation(snaps, s, sides);
         (sit.0 * forward_space_weight + sit.1 * space_weight + sit.2 * forward_weight)
             / total_weight_1
     };
@@ -1012,11 +1029,11 @@ pub fn decide_on_ball_action(
         let tactical_diff = mate_rating - my_tactical_rating;
 
         let (odds_short, aim_short) =
-            passing_odds_to_player(me, mate, PassKind::Short, &opponents, 1.0, passing);
+            passing_odds_to_player(me, mate, PassKind::Short, &opponents, 1.0, passing, sides);
         let (odds_long, aim_long) =
-            passing_odds_to_player(me, mate, PassKind::Long, &opponents, 1.0, passing);
+            passing_odds_to_player(me, mate, PassKind::Long, &opponents, 1.0, passing, sides);
         let (odds_high, aim_high) =
-            passing_odds_to_player(me, mate, PassKind::High, &opponents, 1.0, passing);
+            passing_odds_to_player(me, mate, PassKind::High, &opponents, 1.0, passing, sides);
 
         let (pass_rating, kind, aim) = if odds_short >= odds_long && odds_short >= odds_high {
             (odds_short, PassKind::Short, aim_short)
@@ -1125,7 +1142,7 @@ pub fn decide_on_ball_action(
                 continue;
             }
             for kind in [PassKind::Short, PassKind::Long, PassKind::High] {
-                let (odds, aim) = passing_odds_to_player(me, mate, kind, &opponents, 1.0, passing);
+                let (odds, aim) = passing_odds_to_player(me, mate, kind, &opponents, 1.0, passing, sides);
                 if best_escape.is_none_or(|(_, _, _, r)| odds > r) {
                     best_escape = Some((mate.id, aim, kind, odds));
                 }
@@ -1144,8 +1161,12 @@ pub fn decide_on_ball_action(
 
 /// (forwardSpaceRating, spaceRating, forwardRating) — port of
 /// `Player::_CalculateTacticalSituation`.
-fn tactical_situation(snaps: &[PlayerReading], s: &PlayerReading) -> (f32, f32, f32) {
-    let side = team_side(s.team());
+fn tactical_situation(
+    snaps: &[PlayerReading],
+    s: &PlayerReading,
+    sides: PitchSides,
+) -> (f32, f32, f32) {
+    let side = sides.defending_x(s.team());
     let opponents: Vec<&PlayerReading> = snaps
         .iter()
         .filter(|o| o.team() != s.team() && o.playing_position != PlayingPosition::Goalkeeper)
@@ -1195,8 +1216,9 @@ fn passing_odds_to_player(
     opponents: &[&PlayerReading],
     ball_velocity_multiplier: f32,
     passing: &PassingTuning,
+    sides: PitchSides,
 ) -> (f32, Vec2) {
-    let side = team_side(me.team());
+    let side = sides.defending_x(me.team());
     let initial_distance = (mate.pos - me.pos).length();
     if kind == PassKind::High && initial_distance < passing.high_pass_min_distance {
         return (0.0, mate.pos);

@@ -15,7 +15,7 @@ use bevy_time::prelude::*;
 
 use football_domain::math::{normalized_clamp, sign_side};
 use football_domain::{
-    Attributes, Ball, ByTeam, Facing, MatchState, Player, PlayerId, PlayerMatchState,
+    Attributes, Ball, ByTeam, Facing, MatchState, PitchSides, Player, PlayerId, PlayerMatchState,
     PlayerRegistry, PlayingPosition, Position, PossessionDesignation, TeamId, Velocity,
 };
 
@@ -168,9 +168,10 @@ pub fn dribble_direction(
     my_pos: Vec2,
     my_vel: Vec2,
     team: TeamId,
+    sides: PitchSides,
     all_players: &[(TeamId, Vec2, Vec2)], // (team, position, velocity)
 ) -> Vec2 {
-    let side = crate::team_tactics::team_side(team);
+    let side = sides.defending_x(team);
     let future_sec = 0.25;
     let offense_factor = 0.75; // 0.7 + dribble_offensiveness/mindset defaults
 

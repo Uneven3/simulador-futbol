@@ -12,20 +12,15 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 1. **Faltas, ventaja y disciplina**, como sistema propio en
    `BallTouchSet::Contest`, que ya existe para esto.
-2. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
-3. **El rechace se remata en el sitio.** El portero para casi la mitad de los
+2. **El rechace se remata en el sitio.** El portero para casi la mitad de los
    tiros, y los tiros pasaron de 34 a 54 por 90: lo rechazado vuelve al área y
    se dispara otra vez sin que nadie despeje.
-4. **El kick-off no es un saque todavía**: quien saca tiene el balón y un apoyo,
-   pero nadie exige que ambos equipos estén en su mitad ni que el balón salga
-   del círculo antes de jugarse.
 
 ## Deuda declarada, no escondida
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **Sin cambio de mitades** (Ley 8) ni tiempo añadido (Ley 7). `TeamSide` ya
-  existe en el dominio, sin usar, esperando lo primero.
+- **Sin tiempo añadido** (Ley 7): una parte dura exactamente su reglamento.
 - **La simetría solo se afirma sobre la posesión.** Goles y tiros de doce
   partidos no dan muestra para más que una banda de tres sigma, que atrapa un
   sesgo grosero y nada fino. Medirla de verdad pide un barrido de cien partidos.

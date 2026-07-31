@@ -4,8 +4,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::scenario::{PlayState, PlayerSetup, SIMULATION_HZ, Scenario};
 use football_domain::{
-    Attributes, Ball, BallTouched, Facing, MatchRng, MatchState, Mentality, Player, PlayerId,
-    PlayerMatchState, PlayerRegistry, PlayingPosition, Position, SetPiece, TeamId, Velocity,
+    Attributes, Ball, BallTouched, Facing, MatchRng, MatchState, Mentality, PitchSides, Player,
+    PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, SetPiece, TeamSide,
+    TeamId, Velocity,
 };
 use std::time::Duration;
 
@@ -123,9 +124,10 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
         PlayingPosition::CentreForward,
     ];
 
+    let sides = PitchSides::opening();
     for team in TeamId::BOTH {
-        // home defends -x and therefore faces +x
-        let attacking_direction = if team == TeamId::Home {
+        // a team faces the goal it attacks
+        let attacking_direction = if sides.attacking_x(team) > 0.0 {
             Dir2::X
         } else {
             Dir2::NEG_X
@@ -139,7 +141,7 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
             }
             let shirt_number = u8::try_from(index + 1).expect("LINE_UP is eleven players");
             let id = PlayerId::new(team, shirt_number);
-            let base = base_formation_position(id, *position);
+            let base = base_formation_position(id, *position, sides);
             commands.spawn((
                 Name::new(format!("{id} - {position:?}")),
                 Player::new(id, *position, normalized_formation_position(id, *position)),
@@ -183,7 +185,11 @@ pub fn normalized_formation_position(id: PlayerId, position: PlayingPosition) ->
 
 /// Base (kick-off) position on the pitch in metres, used both to spawn and to
 /// re-form the teams for a restart.
-pub fn base_formation_position(id: PlayerId, position: PlayingPosition) -> Vec2 {
+pub fn base_formation_position(
+    id: PlayerId,
+    position: PlayingPosition,
+    sides: PitchSides,
+) -> Vec2 {
     let home_position = match position {
         PlayingPosition::Goalkeeper => Vec2::new(-54.0, 0.0),
         PlayingPosition::LeftBack => Vec2::new(-35.0, -18.0),
@@ -215,8 +221,12 @@ pub fn base_formation_position(id: PlayerId, position: PlayingPosition) -> Vec2 
         }
     };
 
-    match id.team {
-        TeamId::Home => home_position,
-        TeamId::Away => Vec2::new(-home_position.x, -home_position.y),
+    // La plantilla se escribe defendiendo a la izquierda; el equipo que defiende
+    // a la derecha la ve rotada media vuelta. Con esto, cambiar de mitad en el
+    // descanso no necesita otra tabla de posiciones.
+    if sides.defended_by(id.team) == TeamSide::Left {
+        home_position
+    } else {
+        Vec2::new(-home_position.x, -home_position.y)
     }
 }

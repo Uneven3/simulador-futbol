@@ -201,6 +201,7 @@ pub fn resolve_tackle(
     else {
         return;
     };
+    let sides = match_state.sides;
     if challenger == current || challenger.team == current.team {
         return;
     }
@@ -263,6 +264,7 @@ pub fn resolve_tackle(
             body: challenger_body,
         },
         now,
+        sides,
         tuning,
         &mut touching,
     );
@@ -286,6 +288,7 @@ pub fn collect_loose_ball(
     if match_state.possession_player.is_some() {
         return;
     }
+    let sides = match_state.sides;
     let Some(challenger) = contest.challenger else {
         return;
     };
@@ -338,6 +341,7 @@ pub fn collect_loose_ball(
             body: challenger_body,
         },
         now,
+        sides,
         tuning,
         &mut touching,
     );
@@ -392,6 +396,7 @@ fn control_touch(
     ball_position: &mut Position,
     toucher: Toucher,
     now: Duration,
+    sides: football_domain::PitchSides,
     tuning: &ContestTuning,
     touching: &mut Touching,
 ) {
@@ -406,7 +411,7 @@ fn control_touch(
                 (p.id.team, p_position.on_pitch(), Vec2::new(v.0.x, v.0.y))
             })
             .collect();
-        let dir = dribble_direction(my_pos, my_vel, player.team, &all_players);
+        let dir = dribble_direction(my_pos, my_vel, player.team, sides, &all_players);
         // se coloca a paso de conducción (AI_GetBallControlMovement): un control
         // muerto aparca el balón en medio del duelo e invita al robo
         let (min_trap, max_trap) = tuning.trap_speed_range;

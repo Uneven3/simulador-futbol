@@ -17,7 +17,7 @@ use crate::ball_contest::{BallBody, BallTouchSet, MatchSettings, Touching};
 use crate::diagnostics::{MatchFact, ReleaseKind};
 use crate::player_decisions::{self, OnBallAction, PassKind};
 use crate::player_movement::dribble_direction;
-use crate::team_tactics::{PlayerReading, team_side};
+use crate::team_tactics::PlayerReading;
 use football_domain::math::{normalized_clamp, normalized_or_2d};
 use football_domain::tuning::{ClearanceTuning, PassingTuning, ShootingTuning};
 use football_domain::{
@@ -226,8 +226,10 @@ pub fn execute_on_ball_action(
             formation_slot: p.formation_slot,
         })
         .collect();
-    let attacking_towards_x = -team_side(possessor.team);
-    let offside_line = player_decisions::offside_line(&readings, possessor.team, ball_pos.x, 0.0);
+    let sides = match_state.sides;
+    let attacking_towards_x = sides.attacking_x(possessor.team);
+    let offside_line =
+        player_decisions::offside_line(&readings, possessor.team, sides, ball_pos.x, 0.0);
     let action = player_decisions::decide_on_ball_action(
         &readings,
         possessor,
@@ -235,6 +237,7 @@ pub fn execute_on_ball_action(
         &designation,
         now.saturating_sub(match_state.possession_since),
         offside_line,
+        sides,
         &settings.tuning,
         &mut rng,
     );
@@ -290,7 +293,7 @@ pub fn execute_on_ball_action(
             }
             let bodies: Vec<(TeamId, Vec2, Vec2)> =
                 readings.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
-            let direction = dribble_direction(from, running, possessor.team, &bodies);
+            let direction = dribble_direction(from, running, possessor.team, sides, &bodies);
             let nearest_opponent = readings
                 .iter()
                 .filter(|s| s.team() != possessor.team)
