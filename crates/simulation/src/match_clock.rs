@@ -26,6 +26,21 @@ impl Plugin for MatchClockPlugin {
     }
 }
 
+/// Milliseconds since the app started, which is what cooldowns and timestamps
+/// outside the match clock are measured against.
+///
+/// Saturating: a run long enough to overflow `u64` milliseconds is 584 million
+/// years, and the alternative is a panic mid-match.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "clamped into u64's range on the line above the cast"
+)]
+pub fn engine_elapsed_ms(time: &Time) -> u64 {
+    let millis = (time.elapsed_secs_f64() * 1000.0).clamp(0.0, u64::MAX as f64);
+    millis as u64
+}
+
 /// Time runs while a period is being played, including while play is stopped
 /// for a restart — as it does in a real match. What is missing is the allowance
 /// for time lost, which the referee adds at the end of each period; without it a

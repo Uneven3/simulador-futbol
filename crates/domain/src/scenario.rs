@@ -194,9 +194,10 @@ impl Scenario {
         self
     }
 
-    /// Number of fixed ticks in the scenario's window.
+    /// Number of fixed ticks in the scenario's window, saturated: a window that
+    /// does not fit in `u32` ticks is 497 days of match.
     pub fn ticks(&self) -> u32 {
-        (self.window.as_millis() / TICK.as_millis()) as u32
+        u32::try_from(self.window.as_millis() / TICK.as_millis()).unwrap_or(u32::MAX)
     }
 }
 

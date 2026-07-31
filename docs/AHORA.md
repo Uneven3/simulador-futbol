@@ -1,6 +1,6 @@
 # Ahora
 
-Qué se está haciendo, no qué se hizo (ley 27): la historia está en `git log` y
+Qué se está haciendo, no qué se hizo (ley 15): la historia está en `git log` y
 las cifras en `measurements/`. **Techo: 40 líneas hasta la deuda declarada.**
 
 ## Objetivo activo
@@ -10,13 +10,7 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 ## Empezar aquí
 
-1. **Reducir las 27 leyes de `ARCHITECTURE.md`.** Son demasiadas para
-   recordarlas, y una ley que no se recuerda no se aplica. Fundir las que dicen
-   lo mismo desde dos ángulos (§17/§19 son tamaño y responsabilidad; §22/§21 son
-   *la lógica y los números salen del sistema*; §25/§27 son higiene) y bajar de
-   los verbos generales a lo que de verdad se incumple. Objetivo: una docena.
-   Lo que se borre, que sea porque otra ley ya lo dice, no por presupuesto.
-2. **La reanudación se ejecuta.** `referee_set_piece_system` recoloca a los dos
+1. **La reanudación se ejecuta.** `referee_set_piece_system` recoloca a los dos
    equipos en formación base —un espejo exacto— y suelta el balón sin dárselo a
    nadie. El empate lo rompen tres desempates que van todos para el local (los
    `<=` de `designated_player_overall` y `team_tactics`, y el `<` estricto de
@@ -25,10 +19,10 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
    portero en saque de puerta, jugador de campo más cercano en el resto; a 0,4 m
    del balón (`ball_at_feet_distance` es 0,7); rival apartado 9,15 m, 2 m en el
    saque de banda. Correr la envolvente después: baja el sesgo, no solo el test.
-3. **Portero que ataja.** Los tiros a puerta son el 100 %.
-4. **Faltas, ventaja y disciplina**, como sistema propio en
+2. **Portero que ataja.** Los tiros a puerta son el 100 %.
+3. **Faltas, ventaja y disciplina**, como sistema propio en
    `BallTouchSet::Contest`, que ya existe para esto.
-5. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
+4. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
 
 ## Deuda declarada, no escondida
 
@@ -52,7 +46,7 @@ Ausencias conocidas, no descubrimientos pendientes:
   productores: `Formation` sólo emite carreras de ataque, `Performance` nada.
 - **El ritmo de gol es irreal**, en un orden de magnitud: nada de aquí puede
   presentarse como predicción hasta calibrar, que es un hito tras MVP 4.
-- **Allocations por tick** (ley 14): 18 `collect()`/`vec!` entre
+- **Allocations por tick** (ley 12): 18 `collect()`/`vec!` entre
   `player_decisions`, `team_tactics` y `player_movement`. Importa para MVP 6.
 - **Lo visual funciona pero es pobre**: la cámara ve una fracción del campo, el
   HUD no tiene fondo, no hay meshes de portería.

@@ -1,127 +1,142 @@
 # Arquitectura
 
-Este documento fija leyes. El detalle vive en módulos, tests y documentos de
-dominio. El código las cita por § y no se mergea código que las viole; lo que
-hoy las viola está listado al final, con nombre y medida.
+Este documento fija leyes; el detalle vive en módulos, tests y documentos de
+dominio. El código las cita por § y no se mergea código que las viole.
 
 ## Capas
 
 ```text
-football_domain
-      ↑
-football_simulation
-      ↑             ↖
-football_app      football_presentation
+football_app          → football_simulation → football_domain
+football_presentation → football_simulation
 ```
 
-- **Domain:** tipos, unidades, reglas, hechos, intents y configuración.
-  `crates/domain`, paquete `gameplayfootball_domain`, lib `football_domain`.
-- **Simulation:** ECS autoritativo, física, percepción, decisión, táctica,
-  arbitraje y telemetría. `crates/simulation`, lib `football_simulation`.
-- **Presentation:** visuales, cámara, animación, UI, audio y overlays; solo lee.
-  `crates/presentation`, lib `football_presentation`.
-- **App:** composición, escenario y ciclo de vida. Es el paquete raíz
-  `gameplayfootball` (`src/main.rs` y `tests/`).
+- **Domain** (`crates/domain`): tipos, unidades, reglas, hechos, intents y
+  configuración.
+- **Simulation** (`crates/simulation`): ECS autoritativo, física, percepción,
+  decisión, táctica, arbitraje y telemetría.
+- **Presentation** (`crates/presentation`): visuales, cámara, animación, UI,
+  audio y overlays; solo lee.
+- **App** (paquete raíz `gameplayfootball`): composición, escenario y ciclo de
+  vida.
 
 Son crates, así que Cargo impide las dependencias inversas. Domain y simulation
-dependen de subcrates de Bevy (`bevy_ecs`, `bevy_math`, `bevy_time`,
-`bevy_app`, `bevy_log`) y **no** de `bevy`: sin `bevy_render`, `bevy_pbr` ni
-`bevy_asset` en el grafo, una regla no puede expresarse en términos de un mesh
-ni el kernel puede construir geometría. Solo presentation y app ven el motor
-completo.
+dependen de subcrates de Bevy (`bevy_ecs`, `bevy_math`, `bevy_time`, `bevy_app`,
+`bevy_log`) y **no** de `bevy`: sin `bevy_render`, `bevy_pbr` ni `bevy_asset` en
+el grafo, una regla no puede expresarse en términos de un mesh. Solo
+presentation y app ven el motor completo.
 
-## Leyes de dominio
+## Las quince leyes
 
-Qué es verdad en un partido y quién puede decidirlo.
+Se dan por sabidas SOLID, las capas de la arquitectura limpia y que un nombre
+bien puesto vale más que el comentario que lo explica. Lo que sigue es esa base
+traducida a este proyecto: a ECS, donde no hay herencia y la responsabilidad
+única se mide por sistema; y a Rust, donde una ley que el compilador puede
+cobrar no se deja en manos de un revisor. Son quince porque una ley que no se
+recuerda no se aplica, y ninguna está aquí si otra ya la dice.
 
-1. Simulación headless: sus tests no registran `Mesh`, `StandardMaterial`,
-   `Image`, ventanas ni `AssetServer`.
-2. Entidad autoritativa sin visuales. Otra entidad usa
-   `VisualOf(simulation_entity)`.
-3. Assets sin autoridad: bones, clips y geometría no deciden contacto,
-   velocidad ni resultado.
-4. Components/Resources/Messages son datos.
-5. Un escritor por estado; otros publican intents o hechos.
-6. Verdad y conocimiento son distintos; decisiones no leen verdad no observada.
-7. Intención y ejecución son distintas; el motor produce una acción alcanzable.
-8. Regla y árbitro son distintos; un incidente puede no ser observado.
-9. Tiempo/unidades explícitos en APIs.
-10. IDs de dominio son newtypes; `Entity` es transitorio.
-11. Aleatoriedad inyectada y semilla registrada.
-12. Reglas versionadas por edición IFAB y competición.
-13. Fidelidad con métrica, referencia y tolerancia.
-14. Evitar allocations por tick; reutilizar buffers tras medir capacidad.
-15. Rust seguro, enums exhaustivos, APIs pequeñas, `Option` y `Result`.
-16. Nombres describen el dominio actual, no Gameplay Football.
+### De dominio: qué es verdad en un partido y quién puede decidirlo
 
-## Leyes de ingeniería
+1. **Headless y sin autoridad visual.** Los tests de simulación no registran
+   `Mesh`, `StandardMaterial`, `Image`, ventanas ni `AssetServer`; la entidad
+   autoritativa no tiene visuales y otra la sigue con
+   `VisualOf(simulation_entity)`. Ningún bone, clip ni geometría decide
+   contacto, velocidad ni resultado: si un asset cambia el partido, el partido
+   estaba en el asset.
+2. **Los datos son datos, y cada estado tiene un escritor.** Components,
+   Resources y Messages no traen comportamiento; quien no es dueño de un estado
+   publica un intent o un hecho y espera. Dos escritores no dan un error: dan un
+   resultado que depende del orden de los sistemas.
+3. **Verdad, conocimiento, intención, ejecución y arbitraje son cinco cosas.**
+   Una decisión no lee lo que su jugador no ha observado; el motor entrega la
+   acción alcanzable, no la pedida; el árbitro juzga lo que vio, así que un
+   incidente puede quedar sin pitar. Saltarse un escalón convierte el simulador
+   en un guion: el resultado sale igual, pero ya no lo produjo nadie.
+4. **Unidades explícitas e identidad propia.** Segundos, metros y m/s en las
+   firmas, no un `f32` sin nombre. Los IDs de dominio son newtypes; `Entity` es
+   transitorio y nadie lo guarda como memoria.
+5. **Un resultado es reproducible y comparable.** Aleatoriedad inyectada y
+   semilla registrada, reglas versionadas por edición IFAB y competición, y toda
+   afirmación de fidelidad con métrica, referencia y tolerancia. Un número sin
+   las tres no dice si el cambio mejoró algo.
 
-Cómo se escribe el código que sostiene lo anterior. Son SOLID traducido a ECS:
-en ECS no hay herencia, así que la responsabilidad única se mide por sistema y
-el desacople se consigue con componentes y mensajes, no con interfaces.
+### De ingeniería: cómo se escribe el código que lo sostiene
 
-17. **Una responsabilidad por sistema.** Si el nombre necesita una "y", son dos
-    sistemas. Un sistema que gana posesión, resuelve la disputa y ejecuta el
-    disparo no se puede calibrar por partes ni testear por partes.
-18. **Se extiende agregando, no editando.** Una regla nueva entra como sistema o
-    componente nuevo en su `SystemSet`, no como una rama más dentro de un
-    sistema existente. Si añadir faltas obliga a editar el sistema del regate,
-    la costura está en el sitio equivocado.
-19. **~300 líneas por archivo y ~80 por función son señal de dividir**, no un
-    bloqueo. Un archivo que crece sin dividirse deja de tener dueño: nadie
-    puede decir qué contiene sin leerlo entero.
-20. **Un sistema con más de ocho parámetros agrupa en `SystemParam`.**
-    `#[allow(clippy::too_many_arguments)]` no es una solución, es deuda
-    anotada, y cada uno debe decir por qué sigue ahí.
-21. **Los parámetros que fijan el resultado son dato versionado**
-    (`MatchTuning`, `MatchRegulations`), con un solo lugar por cada valor por
-    defecto. Un número dentro de la lógica no se puede barrer, ni reportar junto
-    al resultado que produjo.
-22. **La lógica calculable vive en funciones puras**, probables sin `App`. El
-    sistema lee, llama y escribe; no calcula geometría ni resuelve reglas en
-    línea.
-23. **Visibilidad mínima:** `pub` solo lo que otro crate consume de verdad. La
-    frontera de un crate es su API, no la suma de sus módulos.
-24. **Dependencia nueva:** OK humano previo, y el contrato que resuelve escrito
-    en el `Cargo.toml` que la añade.
-25. **`cargo fmt` y `clippy -D warnings` antes de dar algo por terminado.** Cada
-    `#[allow]` lleva justificación en su línea.
-26. **Comentarios para invariantes, restricciones y procedencia del original.**
-    Nunca el *qué*: eso lo dice el código. Las citas al C++ original son
-    trazabilidad hacia `references/gameplay_football/`, no nombres del presente
-    (ley 16).
-27. **Ningún comentario ni documento registra una medición, una fecha o el
-    relato de una sesión.** Las mediciones van a `measurements/`, la historia al
-    mensaje de commit, y el comentario dice el invariante. Un comentario más
-    largo que el código que explica está contando una historia; un documento que
-    hay que reeditar cada vez que cambia una cifra es una copia de un CSV. La
-    prosa del repositorio tiene techo de 1000 líneas y lo cobra
+6. **Una responsabilidad por sistema, y el tamaño la delata.** Si el nombre
+   necesita una "y", son dos sistemas; ~300 líneas por archivo y ~80 por función
+   son señal de dividir, no un bloqueo. Un sistema que gana la posesión, resuelve
+   la disputa y ejecuta el disparo no se calibra ni se testea por partes, y un
+   archivo que crece sin dividirse deja de tener dueño.
+7. **Se extiende agregando, no editando.** Una regla nueva entra como sistema o
+   componente nuevo en su `SystemSet`, no como una rama más dentro de un sistema
+   existente. Si añadir faltas obliga a editar el sistema del regate, la costura
+   está en el sitio equivocado.
+8. **El sistema lee, llama y escribe.** La lógica calculable vive en funciones
+   puras, probables sin `App`; los parámetros que fijan el resultado son dato
+   versionado (`MatchTuning`, `MatchRegulations`) con un solo hogar por valor por
+   defecto; más de ocho parámetros se agrupan en `SystemParam`, y cada
+   `#[allow(clippy::too_many_arguments)]` dice por qué sigue ahí. Un número
+   dentro de la lógica no se puede barrer ni reportar junto al resultado que
+   produjo.
+9. **La frontera de un crate es su API, no la suma de sus módulos.** `pub` solo
+   lo que otro crate consume de verdad. Una dependencia nueva lleva OK humano
+   previo y el contrato que resuelve escrito en el `Cargo.toml` que la añade.
+10. **Los estados imposibles no compilan.** Lo que tendría que vigilar un
+    revisor, lo vigila el tipo: unidades como newtype de campo privado
+    (`Seconds`, `Metres`) y no `f32` sueltos que se confunden entre sí; el dato
+    que solo existe en una variante, dentro de esa variante y no en banderas
+    paralelas; campos privados con un único mutador en el módulo dueño, que es
+    §2 verificada por el compilador; y `match` sin `_ =>`, para que un enum
+    nuevo rompa el build en todos sus usos. **Si una ley de este archivo se
+    puede convertir en un error de compilación, se convierte:** la que necesita
+    revisor es la que se incumple. Por eso los lints van en la sección `[lints]`
+    de los cuatro `Cargo.toml` —no se heredan, porque el workspace es
+    compartido— y no en la memoria de quien commitea.
+11. **Rust seguro, y el idioma es el de Bevy.** Sin `unsafe`; `Option` y
+    `Result` en vez de centinelas; APIs pequeñas. Cuando dos crates sugieren
+    formas distintas de hacer algo, manda Bevy, y cuando Bevy cambia la suya en
+    una versión nueva, migramos en vez de conservar la vieja: un idioma propio
+    envejece contra el motor y lo paga cada upgrade. `cargo fmt` y
+    `clippy -D warnings` antes de dar algo por terminado, con cada `#[allow]`
+    justificado en su línea.
+12. **Sin allocations por tick.** Los buffers se reutilizan tras medir su
+    capacidad. Un `collect()` en el camino caliente no se nota en un test de
+    escenario y sí en noventa minutos a 100 Hz.
+13. **Nombres del dominio actual, comentarios de invariantes.** El nombre dice
+    fútbol, no Gameplay Football. El comentario dice el invariante o la
+    restricción, nunca el *qué*: eso lo dice el código, y si hacen falta más de
+    tres líneas el arreglo es el nombre o partir la función, no escribir mejor
+    el comentario. Única excepción: la procedencia del original, que es
+    trazabilidad hacia `references/gameplay_football/`.
+14. **Un mecanismo sin test no existe.** Cada regla entra con su escenario
+    IFAB, cada función pura con sus casos de borde, y la fidelidad se demuestra
+    con la envolvente de diez semillas, nunca con una corrida (`VALIDATION.md`).
+    Un test que sigue pasando con la lógica invertida no estaba probando nada.
+15. **Ni una medición, ni una fecha, ni el relato de una sesión.** Las
+    mediciones van a `measurements/` y la historia al mensaje de commit; un
+    documento que hay que reeditar cuando cambia una cifra es una copia de un
+    CSV. La prosa del repositorio tiene techo de 1000 líneas y lo cobra
     `tests/documentation_budget.rs`, porque un techo escrito dentro de un
     documento no se aplica solo.
 
 ## Pipeline
 
-El orden objetivo, en `FixedUpdate`: ciclo del partido → percepción del mundo →
+El orden objetivo, en `SystemSet` semánticos y no en el heredado de
+`Match::Process()`. `FixedUpdate`: ciclo del partido → percepción del mundo →
 observaciones → creencias → responsabilidades tácticas → intenciones → plan
 motor → cuerpos y contactos → integración del balón → incidentes físicos →
-observación y decisión arbitral → transiciones y telemetría. En `Update`:
+observación y decisión arbitral → transiciones y telemetría. `Update`:
 interpolación del snapshot → visuales → overlays, cámara, UI y audio.
-
-Se expresa con `SystemSet` semánticos, no con el orden heredado de
-`Match::Process()`. Hoy `SimulationSet` sigue siendo el del original
-(`MatchLifecycle → Players → Kicks → BallCollisions → BallPhysics → Referee`):
-migrar a este pipeline es deuda declarada.
 
 ## Mapa de módulos
 
-Qué posee cada módulo y dónde está su frontera. Lo que no aparece aquí no tiene
-dueño, y eso es un bug de arquitectura antes que de código.
+Lo que no aparece aquí no tiene dueño, y eso es un bug de arquitectura antes que
+de código.
 
 | Módulo | Posee | Frontera |
 |---|---|---|
 | `domain::identity` | `PlayerId`, `TeamId`, `ByTeam`, `PlayerRegistry` | Única traducción identidad ↔ `Entity`; nadie más guarda `Entity` como memoria |
 | `domain::match_state` | `MatchState`, `MatchRegulations`, `PitchConfig`, `MatchRng` | El estado del partido; solo el kernel lo escribe |
-| `domain::tuning` | `MatchTuning` y sus grupos | Un único hogar por valor por defecto (§21) |
+| `domain::tuning` | `MatchTuning` y sus grupos | Un único hogar por valor por defecto (§8) |
 | `domain::scenario` | `Scenario`, `Expectations`, `ScenarioOutcome` | La situación reproducible completa: estado inicial, semilla, ventana y afirmaciones |
 | `domain::player` | `Player`, `Attributes`, `Mentality`, `PlayerMatchState` | Identidad e instrucción, capacidad, disposición y lo que el partido escribe, separados |
 | `domain::math` | Geometría y RNG puros | Sin Bevy más allá de `bevy_math`; todo testeable sin `App` |
@@ -141,29 +156,21 @@ dueño, y eso es un bug de arquitectura antes que de código.
 
 ## Nomenclatura
 
-- Sistemas: `update_player_observations`, `select_player_intents`,
-  `integrate_ball_motion`, `detect_out_of_play`.
-- Funciones puras: `estimate_interception_time`, `evaluate_passing_lane`,
-  `classify_offside_position`.
-- Hechos: `BallContact`, `PotentialFoul`, `RestartAwarded`.
-- Solicitudes: `KickIntent`, `MovementIntent`, `SubstitutionRequest`.
-- Evitar `get_` cuando se calcula, estima, clasifica o selecciona.
-- `Goalkeeper`, no `GK`; `PlayingPosition` separado de `TacticalRole`.
+- Sistemas en verbo (`integrate_ball_motion`); funciones puras por lo que
+  devuelven (`estimate_interception_time`), nunca `get_` si se calcula o estima.
+- Hechos en sustantivo (`BallContact`, `RestartAwarded`); solicitudes con sufijo
+  (`KickIntent`, `SubstitutionRequest`). `Goalkeeper`, no `GK`.
 
-## Rust, pruebas y deuda
+## Rust y deuda
 
-Debe compilar con el checker estable actual. Polonius no sustituye a queries
-pequeñas, componentes descompuestos, fases de lectura/propuesta/aplicación y
-mensajes para evitar escritores cruzados. Traits solo para contratos con varias
-implementaciones reales; los estados cerrados son enums.
-
-Se prueba con: unitarias de geometría y unidades, escenarios IFAB, invariantes
-por tick, simulaciones largas para distribuciones, una corrida headless sin
-assets, y una prueba de que presentación no muta estado autoritativo.
+El borrow checker es la herramienta, no el obstáculo: contra un escritor cruzado
+la respuesta son queries disjuntas, componentes descompuestos, fases de
+lectura/propuesta/aplicación y mensajes —de eso mismo saca Bevy su paralelismo—.
 
 **Qué viola hoy estas leyes** se mide, no se narra:
 `wc -l crates/*/src/*.rs | sort -n` dice qué archivos pasan de las ~300 líneas
-de §17, y `grep -rn "too_many_arguments" crates/` los parámetros de §20. Se
+de §6, `grep -rn "too_many_arguments" crates/` los parámetros de §8, y
+`grep -rn "_ =>" crates/` los enums que hoy no rompen el build (§10). Se
 parten al tocarlos por otra razón; partirlos antes es riesgo sin lector. Y la
 división se valida con la envolvente: si las diez semillas dan los mismos
 números, el refactor fue fiel (`VALIDATION.md`).

@@ -19,3 +19,18 @@ name = "football_presentation"
 football_domain = { package = "gameplayfootball_domain", path = "../domain" }
 
 bevy = { version = "0.19", features = ["android-native-activity", "debug", "wav"] }
+
+# Ley 10: lo que puede ser un error de compilación, lo es. No se heredan del
+# workspace porque es compartido con otros proyectos.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+float_cmp = "deny"
+unwrap_used = "deny"
+wildcard_enum_match_arm = "deny"
+# El RNG y el reloj convierten enteros a f32 a propósito.
+cast_precision_loss = "allow"

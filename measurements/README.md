@@ -1,6 +1,6 @@
 # Mediciones
 
-Aquí van las cifras que produce el simulador, y **solo aquí** (ley 27 de
+Aquí van las cifras que produce el simulador, y **solo aquí** (ley 15 de
 `docs/ARCHITECTURE.md`). Ningún documento ni comentario copia un número de este
 directorio: quedaría obsoleto al commit siguiente.
 

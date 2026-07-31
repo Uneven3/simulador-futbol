@@ -6,6 +6,7 @@
 
 use crate::SimulationSet;
 use crate::player_decisions;
+use crate::force_field::{self, Falloff, ForceSpot};
 use crate::team_tactics::{self, TeamTactics};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -186,23 +187,13 @@ pub fn dribble_direction(
     let center_modifier_inv = (1.0 - near_backline.powi(2)) * 0.5;
     let opp_goal_pos = Vec2::new(-side * 55.0, my_pos.y * 0.5 * center_modifier_inv);
 
-    struct ForceSpot {
-        origin: Vec2,
-        repel: bool,
-        constant: bool,
-        power: f32,
-        scale: f32,
-        exp: f32,
-    }
     let mut force_field = Vec::with_capacity(8);
     for (_, opp_pos) in &opponents {
         force_field.push(ForceSpot {
             origin: *opp_pos,
             repel: true,
-            constant: false,
             power: 2.0,
-            scale: 10.0,
-            exp: 1.0,
+            falloff: Falloff::Linear { radius: 10.0 },
         });
     }
     // sideline / backline. Stronger than the original's 4.0: without body
@@ -211,58 +202,27 @@ pub fn dribble_direction(
     force_field.push(ForceSpot {
         origin: Vec2::new(my_pos.x, (36.0 + 5.0) * sign_side(my_pos.y) as f32),
         repel: true,
-        constant: false,
         power: 7.0,
-        scale: 20.0,
-        exp: 0.7,
+        falloff: Falloff::Curved { radius: 20.0, exponent: 0.7 },
     });
     force_field.push(ForceSpot {
         origin: Vec2::new((55.0 + 5.0) * sign_side(my_pos.x) as f32, my_pos.y),
         repel: true,
-        constant: false,
         power: 7.0,
-        scale: 20.0,
-        exp: 0.7,
+        falloff: Falloff::Curved { radius: 20.0, exponent: 0.7 },
     });
     // love for da goal
     force_field.push(ForceSpot {
         origin: opp_goal_pos,
         repel: false,
-        constant: true,
         power: offense_factor,
-        scale: 1.0,
-        exp: 1.0,
+        falloff: Falloff::Constant,
     });
 
     let current_pos = my_pos + my_vel * future_sec;
     let attractor_damping_distance = 1.0;
-    let mut cumul_vec = Vec2::ZERO;
-    let mut cumul_force = 0.0;
-    for spot in &force_field {
-        let distance = spot.origin.distance(current_pos);
-        let intensity = if spot.constant {
-            1.0
-        } else {
-            let i = (1.0 - distance / spot.scale).clamp(0.0, 1.0);
-            if spot.exp != 1.0 { i.powf(spot.exp) } else { i }
-        };
-        if intensity > 0.0 {
-            let mut relative_origin = (spot.origin - current_pos).normalize_or_zero();
-            if spot.repel {
-                relative_origin = -relative_origin;
-            } else if distance < attractor_damping_distance {
-                relative_origin *= distance / attractor_damping_distance;
-            }
-            let force = spot.power * intensity;
-            cumul_vec += relative_origin * force;
-            cumul_force += force;
-        }
-    }
-    if cumul_force == 0.0 {
-        Vec2::new(-side, 0.0)
-    } else {
-        (cumul_vec / cumul_force).normalize_or_zero()
-    }
+    force_field::resolve(&force_field, current_pos, attractor_damping_distance)
+        .map_or_else(|| Vec2::new(-side, 0.0), Vec2::normalize_or_zero)
 }
 
 /// Finds the earliest spot on the ball's predicted path the player can reach in

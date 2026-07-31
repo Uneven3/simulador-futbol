@@ -265,7 +265,7 @@ pub struct OffsideJudgement {
 /// portería defendida, y nunca dentro del campo del que ataca.
 ///
 /// Es puro para que el **signo** se pueda afirmar con tres jugadores en un test
-/// (§21). Lo tuvo invertido desde el port: anotaba a los que estaban por detrás
+/// (§8). Lo tuvo invertido desde el port: anotaba a los que estaban por detrás
 /// de la línea, es decir a casi toda la plantilla —9,4 de 11 jugadores por
 /// tick— y como un anotado no puede disputar el balón, el efecto no era pitar
 /// fueras de juego sino congelar a un equipo entero alrededor del balón.

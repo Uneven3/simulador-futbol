@@ -114,7 +114,9 @@ fn mixup(base: f32, varname: &str, role: PlayingPosition) -> f32 {
             "position_defense_depth_factor" => Some(0.125),
             _ => None,
         },
-        _ => None,
+        PlayingPosition::Goalkeeper
+        | PlayingPosition::DefensiveMidfielder
+        | PlayingPosition::CentreMidfielder => None,
     };
     match value {
         Some(v) => (base + v).clamp(0.0, 1.0),
@@ -260,7 +262,7 @@ pub fn update_team_tactics(
     let Ok(ball) = ball_query.single() else {
         return;
     };
-    let now_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
+    let now_ms = crate::match_clock::engine_elapsed_ms(&time);
     let in_play = match_state.set_piece == SetPiece::None;
 
     let snaps: Vec<PlayerReading> = player_query
@@ -410,8 +412,9 @@ pub fn update_team_tactics(
         {
             // SelectAttackingRunPlayer: closest to a spot 26 m ahead of the ball carrier
             let focus = designated.pos + Vec2::new(-side * 26.0, 0.0);
-            if let Some(runner_id) = closest_player(&snaps, t, focus, Some(designated.id), true) {
-                let runner = snaps.iter().find(|s| s.id == runner_id).unwrap();
+            if let Some(runner) = closest_player(&snaps, t, focus, Some(designated.id), true)
+                .and_then(|runner_id| snaps.iter().find(|s| s.id == runner_id))
+            {
                 let distance = (runner.pos - designated.pos).length();
                 let distance_rating = (1.0 - normalized_clamp(distance, 0.0, 40.0)).powf(0.5);
 
@@ -426,8 +429,8 @@ pub fn update_team_tactics(
 
                 if distance_rating * opp_density_rating >= 0.5 {
                     tactics.team[t].end_attacking_run_ms = now_ms + 4000;
-                    tactics.team[t].attacking_run_player = Some(runner_id);
-                    telemetry.record(MatchFact::AttackingRun { runner: runner_id });
+                    tactics.team[t].attacking_run_player = Some(runner.id);
+                    telemetry.record(MatchFact::AttackingRun { runner: runner.id });
                 }
             }
         }

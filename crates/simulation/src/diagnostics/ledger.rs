@@ -200,7 +200,12 @@ impl MatchLedger {
                     }
                 }
             }
-            _ => {}
+            MatchFact::PossessionLost { .. }
+            | MatchFact::Turnover { .. }
+            | MatchFact::RestartAwarded { .. }
+            | MatchFact::OffsideGiven { .. }
+            | MatchFact::PhaseEntered(_)
+            | MatchFact::AttackingRun { .. } => {}
         }
         None
     }

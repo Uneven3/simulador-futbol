@@ -16,6 +16,7 @@
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
+use football_domain::math::rounded_count;
 use football_domain::scenario::TICK;
 use football_domain::tuning::TuningVersion;
 use football_domain::{ByTeam, MatchTuning, Scenario, TeamId};
@@ -53,10 +54,10 @@ impl EnvelopeSpec {
 
     /// `matches` partidos completos, que es lo único comparable con la
     /// distribución real de goles. Cuesta unos dos minutos por partido.
-    pub fn against_the_real_game(matches: usize) -> Self {
+    pub fn against_the_real_game(matches: u32) -> Self {
         Self {
             scenario: Scenario::kick_off(),
-            seeds: (0..matches as u32).map(|i| 0xC0FFEE + i * 7919).collect(),
+            seeds: (0..matches).map(|i| 0xC0FFEE + i * 7919).collect(),
         }
     }
 
@@ -147,7 +148,7 @@ impl EnvelopeReport {
         Distribution::of(
             self.matches
                 .iter()
-                .map(|m| m.per_90(m.total_goals() as f32).round() as u32),
+                .map(|m| rounded_count(m.per_90(m.total_goals() as f32))),
         )
     }
 
@@ -157,7 +158,7 @@ impl EnvelopeReport {
         Distribution::of(self.matches.iter().flat_map(|m| {
             TeamId::BOTH
                 .into_iter()
-                .map(move |team| m.per_90(m.goals[team] as f32).round() as u32)
+                .map(move |team| rounded_count(m.per_90(m.goals[team] as f32)))
         }))
     }
 
@@ -285,20 +286,20 @@ impl Distribution {
             .counts
             .iter()
             .enumerate()
-            .map(|(value, count)| value as u32 * count)
+            .map(|(value, count)| u32::try_from(value).unwrap_or(u32::MAX) * count)
             .sum();
         total as f32 / samples as f32
     }
 
     pub fn min(&self) -> u32 {
-        self.counts.iter().position(|count| *count > 0).unwrap_or(0) as u32
+        u32::try_from(self.counts.iter().position(|count| *count > 0).unwrap_or(0)).unwrap_or(u32::MAX)
     }
 
     pub fn max(&self) -> u32 {
         self.counts
             .iter()
             .rposition(|count| *count > 0)
-            .unwrap_or(0) as u32
+            .map_or(0, |value| u32::try_from(value).unwrap_or(u32::MAX))
     }
 
     /// El histograma observado junto al que produciría una Poisson de media
@@ -352,7 +353,7 @@ impl Distribution {
 
 /// Barra proporcional, en décimas. Diez caracteres es el 100 %.
 fn bar(fraction: f32) -> String {
-    "█".repeat((fraction * 20.0).round() as usize)
+    "█".repeat(rounded_count(fraction * 20.0) as usize)
 }
 
 fn poisson_probability(lambda: f32, k: u32) -> f32 {

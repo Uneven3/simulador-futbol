@@ -2,7 +2,7 @@
 //!
 //! Eran cuatro responsabilidades dentro de un sistema de 461 líneas, y por eso
 //! ningún parámetro de la disputa se podía girar sin mover los otros tres
-//! (`ARCHITECTURE.md` §17). Ahora cada una es un sistema encadenado, y todos
+//! (`ARCHITECTURE.md` §6). Ahora cada una es un sistema encadenado, y todos
 //! leen el mismo hecho intermedio: quién está en contacto con el balón.
 //!
 //! El modelo de interacción es el del original: el balón nunca está pegado a un
@@ -42,7 +42,7 @@ pub type BallBody = (&'static mut Position, &'static mut Ball);
 /// Tocar el balón necesita siempre lo mismo: los cuerpos, cómo llegar a uno
 /// desde una identidad de dominio, y los dos sitios donde queda constancia del
 /// toque. Van juntos para que un sistema declare una dependencia en vez de
-/// cuatro (§20).
+/// cuatro (§8).
 #[derive(SystemParam)]
 pub struct Touching<'w, 's> {
     pub players: Query<'w, 's, BallSystemBody, Without<Ball>>,
@@ -63,7 +63,7 @@ pub struct MatchSettings<'w> {
 /// Es un hecho derivado, no estado del partido: lo escribe
 /// [`select_ball_challenger`] y lo consumen la entrada y la recogida. Guarda
 /// una identidad de dominio y no una `Entity`, que solo vale para este tick
-/// (ley 10).
+/// (ley 4).
 #[derive(Resource, Debug, Default)]
 pub struct BallContest {
     pub challenger: Option<PlayerId>,
@@ -436,7 +436,7 @@ fn control_touch(
 ///
 /// Son sets y no un `.chain()` suelto para que lo que venga después —faltas,
 /// que son un incidente durante la disputa— entre como sistema propio en el set
-/// que le toca, sin editar ninguno de estos (§18).
+/// que le toca, sin editar ninguno de estos (§7).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BallTouchSet {
     /// De quién es el balón: escapadas, contacto, entrada y recogida.

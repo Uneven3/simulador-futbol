@@ -14,7 +14,14 @@ fn body_positions(runner: &mut ScenarioRunner) -> Vec<Vec3> {
     let world = runner.world_mut();
     let mut query = world.query::<&Position>();
     let mut positions: Vec<Vec3> = query.iter(world).map(|position| position.0).collect();
-    positions.sort_by(|a, b| a.to_array().partial_cmp(&b.to_array()).unwrap());
+    positions.sort_by(|a, b| {
+        a.to_array()
+            .iter()
+            .zip(b.to_array().iter())
+            .map(|(left, right)| left.total_cmp(right))
+            .find(|ordering| ordering.is_ne())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     positions
 }
 
@@ -109,7 +116,9 @@ fn bodies_and_their_visuals_stay_separate() {
 
     // the ball's representation tracks the ball it points at
     let mut ball_body = world.query::<(Entity, &Ball, &Position)>();
-    let (ball_entity, _, ball_position) = ball_body.single(world).unwrap();
+    let (ball_entity, _, ball_position) = ball_body
+        .single(world)
+        .expect("a match has exactly one ball");
     let (ball_entity, ball_position) = (ball_entity, ball_position.0);
     let mut ball_visuals = world.query::<(&VisualOf, &Transform)>();
     let ball_visual = ball_visuals

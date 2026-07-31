@@ -6,6 +6,7 @@
 //! any headless run should be able to ask for it.
 
 use bevy_ecs::prelude::*;
+use football_domain::math::rounded_count;
 use football_domain::{Ball, Player, Position, TeamId};
 
 const COLUMNS: usize = 92;
@@ -15,16 +16,22 @@ const ROWS: usize = 25;
 const HALF_WIDTH: f32 = 56.0;
 const HALF_HEIGHT: f32 = 37.0;
 
+/// Which of `cells` covers `offset` metres along a `span`-metre axis. A ball
+/// past the touchline lands on the edge cell rather than off the grid.
+fn grid_index(offset: f32, span: f32, cells: usize) -> usize {
+    let last = cells.saturating_sub(1);
+    let nearest = rounded_count(offset / span * last as f32);
+    usize::try_from(nearest).unwrap_or(last).min(last)
+}
+
 /// The pitch as text: `o` home, `x` away, `@` ball.
 pub fn render_pitch(world: &mut World) -> String {
     let mut grid = vec![vec![' '; COLUMNS]; ROWS];
 
     let cell = |x: f32, y: f32| -> (usize, usize) {
-        let column = ((x + HALF_WIDTH) / (HALF_WIDTH * 2.0) * (COLUMNS as f32 - 1.0)).round();
-        let row = ((y + HALF_HEIGHT) / (HALF_HEIGHT * 2.0) * (ROWS as f32 - 1.0)).round();
         (
-            (column as isize).clamp(0, COLUMNS as isize - 1) as usize,
-            (row as isize).clamp(0, ROWS as isize - 1) as usize,
+            grid_index(x + HALF_WIDTH, HALF_WIDTH * 2.0, COLUMNS),
+            grid_index(y + HALF_HEIGHT, HALF_HEIGHT * 2.0, ROWS),
         )
     };
 

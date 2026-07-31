@@ -9,13 +9,13 @@ especificación; su documentación vive en `docs/references/gameplay_football/`.
 ## Empieza por
 
 1. `docs/AHORA.md` — el trabajo activo, y solo eso.
-2. `docs/ARCHITECTURE.md` — las 27 leyes, vinculantes. El código las cita por §.
+2. `docs/ARCHITECTURE.md` — las quince leyes, vinculantes. El código las cita por §.
 
 El resto, cuando toque lo que cubren, no antes: `NORTE.md` (producto y MVP),
 `DOMAIN_MODEL.md` (vocabulario), `LAWS_OF_FOOTBALL.md` (IFAB), `VALIDATION.md`
 (cómo se demuestra fidelidad), `DIAGNOSTICS.md` (observación).
 
-**Las cifras no viven en la documentación** (ley 27): van a `measurements/`, y
+**Las cifras no viven en la documentación** (ley 15): van a `measurements/`, y
 la historia al mensaje de commit. Un documento que hay que reeditar cada vez que
 cambia un número está mal puesto.
 

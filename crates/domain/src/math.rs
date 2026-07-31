@@ -11,6 +11,32 @@ pub fn sign_side(n: f32) -> i32 {
     if n >= 0.0 { 1 } else { -1 }
 }
 
+/// Rounds a measure to the count it represents. What is counted is never
+/// negative and never fractional, so the conversion saturates instead of
+/// wrapping.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "clamped into u32's range on the line above the cast"
+)]
+pub fn rounded_count(value: f32) -> u32 {
+    let clamped = value.round().clamp(0.0, u32::MAX as f32);
+    clamped as u32
+}
+
+/// Index of the sample covering `elapsed_ms`, saturated to the samples that
+/// exist. Returns `None` for an empty series, which has no index to give.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "clamped into the series' length on the line above the cast"
+)]
+pub fn sample_index(elapsed_ms: f32, step_ms: f32, samples: usize) -> Option<usize> {
+    let last = samples.checked_sub(1)?;
+    let index = (elapsed_ms / step_ms).floor().clamp(0.0, last as f32);
+    Some((index as usize).min(last))
+}
+
 pub fn curve(source: f32, bias: f32) -> f32 {
     let pi = std::f32::consts::PI;
     (((source - 0.5) * pi).sin() * 0.5 + 0.5) * bias + source * (1.0 - bias)

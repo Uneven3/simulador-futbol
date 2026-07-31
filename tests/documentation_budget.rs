@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 ///
 /// No es estética. La documentación se lee al empezar cada sesión, así que su
 /// tamaño es el precio de entrada a cualquier trabajo; y un documento largo se
-/// llena de cosas que pertenecen a `git log` o a `measurements/` (ley 27).
+/// llena de cosas que pertenecen a `git log` o a `measurements/` (ley 15).
 const BUDGET: usize = 1000;
 
 /// Y `AHORA.md` tiene el suyo propio hasta la deuda declarada, porque es el que
@@ -53,7 +53,7 @@ fn the_documentation_stays_within_its_budget() {
         let biggest: Vec<String> = worst
             .iter()
             .take(3)
-            .map(|(n, p)| format!("{} ({n})", p.file_name().unwrap().to_string_lossy()))
+            .map(|(n, p)| format!("{} ({n})", p.display()))
             .collect();
         panic!(
             "la documentación son {total} líneas y el techo es {BUDGET}. \

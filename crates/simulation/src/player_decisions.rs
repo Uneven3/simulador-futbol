@@ -29,13 +29,14 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use std::time::Duration;
 
+use crate::force_field::{self, Falloff, ForceSpot};
 use crate::team_tactics::{
     DISTANCE_TO_VELOCITY_MULTIPLIER, DRIBBLE_VELOCITY, PITCH_HALF_H, PITCH_HALF_W, PlayerReading,
     SPRINT_VELOCITY, TeamTactics, WALK_VELOCITY, apply_offside_trap, closest_player,
     closest_players, cpp_clamp, get_adapted_formation_position, team_side,
 };
 use football_domain::math::{
-    curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
+    curve, sample_index, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
     rotated_2d,
 };
 use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
@@ -43,56 +44,6 @@ use football_domain::{
     Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, Player, PlayerId,
     PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
 };
-
-// ---------------------------------------------------------------------------
-// Force field (port of ForceSpot + AI_GetForceFieldMovement)
-// ---------------------------------------------------------------------------
-
-pub struct ForceSpot {
-    pub origin: Vec2,
-    pub repel: bool,
-    /// true = constant decay (intensity 1 everywhere), false = variable decay
-    pub constant: bool,
-    pub power: f32,
-    pub scale: f32,
-    pub exp: f32,
-}
-
-/// Port of `AI_GetForceFieldMovement`: returns a movement vector scaled to
-/// sprint velocity.
-pub fn force_field_movement(
-    force_field: &[ForceSpot],
-    current_pos: Vec2,
-    attractor_damping_distance: f32,
-) -> Vec2 {
-    let mut cumul_vec = Vec2::ZERO;
-    let mut cumul_force = 0.0;
-    for spot in force_field {
-        let distance = (spot.origin - current_pos).length();
-        let intensity = if spot.constant {
-            1.0
-        } else {
-            let i = (1.0 - distance / spot.scale).clamp(0.0, 1.0);
-            if spot.exp != 1.0 { i.powf(spot.exp) } else { i }
-        };
-        if intensity > 0.0 {
-            let mut relative_origin = (spot.origin - current_pos).normalize_or_zero();
-            if spot.repel {
-                relative_origin = -relative_origin;
-            } else if distance < attractor_damping_distance {
-                relative_origin *= distance / attractor_damping_distance;
-            }
-            let force = spot.power * intensity;
-            cumul_vec += relative_origin * force;
-            cumul_force += force;
-        }
-    }
-    if cumul_force == 0.0 {
-        Vec2::ZERO
-    } else {
-        (cumul_vec / cumul_force) * SPRINT_VELOCITY
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Shared context assembled once per tick
@@ -187,7 +138,7 @@ pub fn select_player_movement(
     let Ok(ball) = ball_query.single() else {
         return;
     };
-    let now_ms = (time.elapsed_secs_f64() * 1000.0) as u64;
+    let now_ms = crate::match_clock::engine_elapsed_ms(&time);
 
     let snaps: Vec<PlayerReading> = player_query
         .iter()
@@ -372,7 +323,12 @@ fn off_ball_movement(
             | PlayingPosition::CentreBack
             | PlayingPosition::RightBack => (0.2, 0.9, 1.9, f32::MAX, true),
             PlayingPosition::CentreForward => (0.1, 0.6, 1.3, 0.7, false),
-            _ => (0.1, 0.7, 1.5, 0.9, true),
+            PlayingPosition::Goalkeeper
+            | PlayingPosition::DefensiveMidfielder
+            | PlayingPosition::CentreMidfielder
+            | PlayingPosition::LeftMidfielder
+            | PlayingPosition::RightMidfielder
+            | PlayingPosition::AttackingMidfielder => (0.1, 0.7, 1.5, 0.9, true),
         };
 
     let ai = &ctx.tactics.team[team];
@@ -617,7 +573,7 @@ fn get_support_position_force_field(
         | PlayingPosition::LeftMidfielder
         | PlayingPosition::RightMidfielder => 1.6,
         PlayingPosition::AttackingMidfielder => 1.2,
-        _ => 1.0,
+        PlayingPosition::Goalkeeper | PlayingPosition::CentreForward => 1.0,
     };
 
     let offside_x = offside_line(ctx.snaps, team, ctx.ball.predictions[0].x, 240.0);
@@ -644,10 +600,8 @@ fn get_support_position_force_field(
         force_field.push(ForceSpot {
             origin,
             repel: false,
-            constant: true,
             power,
-            scale: 1.0,
-            exp: 1.0,
+            falloff: Falloff::Constant,
         });
     }
 
@@ -655,10 +609,8 @@ fn get_support_position_force_field(
         force_field.push(ForceSpot {
             origin: Vec2::new(-side * PITCH_HALF_W, current_pos.y * 0.5),
             repel: false,
-            constant: true,
             power: 2.0 * run_weight,
-            scale: 1.0,
-            exp: 1.0,
+            falloff: Falloff::Constant,
         });
     }
 
@@ -672,14 +624,15 @@ fn get_support_position_force_field(
     ) {
         let opp_pos = opp.pos + opp.vel * 0.1;
         let origin = opp_pos + (opp_pos - main_man_pos).normalize_or_zero() * 2.0;
-        let (scale, power_mul) = if make_run { (2.0, 0.5) } else { (5.0, 1.0) };
+        let (radius, power_mul) = if make_run { (2.0, 0.5) } else { (5.0, 1.0) };
         force_field.push(ForceSpot {
             origin,
             repel: true,
-            constant: false,
             power: opponent_repel_weight * power_mul,
-            scale,
-            exp: 0.7,
+            falloff: Falloff::Curved {
+                radius,
+                exponent: 0.7,
+            },
         });
     }
 
@@ -689,10 +642,8 @@ fn get_support_position_force_field(
             force_field.push(ForceSpot {
                 origin: mate.pos + mate.vel * 0.1,
                 repel: true,
-                constant: false,
                 power: teammate_repel_weight,
-                scale: 14.0 * web_scale,
-                exp: 1.0,
+                falloff: Falloff::Linear { radius: 14.0 * web_scale },
             });
         }
     }
@@ -704,10 +655,8 @@ fn get_support_position_force_field(
             force_field.push(ForceSpot {
                 origin: Vec2::new(p.x, p.y),
                 repel: true,
-                constant: false,
                 power: ball_repel_weight,
-                scale: 2.0,
-                exp: 0.5,
+                falloff: Falloff::Curved { radius: 2.0, exponent: 0.5 },
             });
         }
     }
@@ -717,23 +666,21 @@ fn get_support_position_force_field(
         force_field.push(ForceSpot {
             origin: main_man_pos,
             repel: false,
-            constant: false,
             power: flock_weight,
-            scale: 28.0 * web_scale,
-            exp: 1.0,
+            falloff: Falloff::Linear { radius: 28.0 * web_scale },
         });
         // ...yet not too close
         force_field.push(ForceSpot {
             origin: main_man_pos,
             repel: true,
-            constant: false,
             power: flock_weight,
-            scale: 16.0 * web_scale,
-            exp: 1.0,
+            falloff: Falloff::Linear { radius: 16.0 * web_scale },
         });
     }
 
-    let mut position = current_pos + force_field_movement(&force_field, current_pos, 7.0);
+    let movement = force_field::resolve(&force_field, current_pos, 7.0)
+        .map_or(Vec2::ZERO, |direction| direction * SPRINT_VELOCITY);
+    let mut position = current_pos + movement;
 
     // forceNoOffside
     let margin = 0.08;
@@ -759,7 +706,7 @@ fn goalie_movement(ctx: &DecisionContext, me: &PlayerReading) -> (Vec2, f32) {
     let line_distance = keeping.line_distance;
     let time_to_ball = ctx.designation.time_to_ball_ms[team];
     let pred_ms = keeping.prediction_base_ms + time_to_ball * keeping.prediction_time_share;
-    let pred_idx = ((pred_ms / 10.0) as usize).min(ball.predictions.len() - 1);
+    let pred_idx = sample_index(pred_ms, 10.0, ball.predictions.len()).unwrap_or(0);
     let ball_pos = Vec2::new(ball.predictions[pred_idx].x, ball.predictions[pred_idx].y);
 
     let mut target_pos = Vec2::new((PITCH_HALF_W - line_distance) * side, 0.0);
@@ -1307,7 +1254,7 @@ fn passing_odds_to_target(
         if (0.0..=1.2).contains(&u) {
             let applies = match kind {
                 PassKind::High => !(0.2..=0.65).contains(&u),
-                _ => true,
+                PassKind::Short | PassKind::Long => true,
             };
             if applies {
                 let cu = u.clamp(0.0, 1.0);

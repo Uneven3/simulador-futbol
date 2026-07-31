@@ -5,7 +5,7 @@
 //! distintos, y viven en dos sitios distintos.
 //!
 //! Las recetas de golpeo son funciones puras que devuelven un [`Kick`]
-//! (§22): reciben la situación y el tuning, no el mundo, así que la calibración
+//! (§8): reciben la situación y el tuning, no el mundo, así que la calibración
 //! de MVP 1.75 puede probarlas sin levantar un partido.
 
 use bevy_app::prelude::*;

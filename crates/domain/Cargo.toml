@@ -2,7 +2,7 @@
 #
 # Depends on no engine subsystem beyond ECS data and maths. It cannot see
 # rendering, windowing or assets, so a rule can never be expressed in terms of
-# a mesh or a material (architecture law 3).
+# a mesh or a material (architecture law 1).
 [package]
 name = "gameplayfootball_domain"
 edition = "2024"
@@ -23,3 +23,18 @@ name = "football_domain"
 bevy_ecs = { version = "0.19", features = ["bevy_reflect"] }
 bevy_math = { version = "0.19", features = ["bevy_reflect"] }
 bevy_reflect = "0.19"
+
+# Ley 10: lo que puede ser un error de compilación, lo es. No se heredan del
+# workspace porque es compartido con otros proyectos.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+float_cmp = "deny"
+unwrap_used = "deny"
+wildcard_enum_match_arm = "deny"
+# El RNG y el reloj convierten enteros a f32 a propósito.
+cast_precision_loss = "allow"
