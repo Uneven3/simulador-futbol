@@ -10,22 +10,26 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 ## Empezar aquí
 
-1. **Distinguir disputar de entrar**, que es lo que bloquea las faltas: hoy
-   cualquier contacto del designado que no gane el balón lo es, y llegar a la
-   vez que el rival no es entrar. Pide velocidad de aproximación, o sea el motor
-   de MVP 3. Hasta entonces `whistles_fouls` está apagado.
-2. **Disciplina**: amonestación y expulsión sobre el hecho que ya se publica.
-3. **El rechace se remata en el sitio.** El portero para casi la mitad de los
-   tiros, y los tiros pasaron de 34 a 54 por 90: lo rechazado vuelve al área y
-   se dispara otra vez sin que nadie despeje.
+**Cuerpos antes que reglas.** Lo que bajó las faltas de 168 a 42 no fue una
+regla del árbitro sino un dato del cuerpo, y lo que queda de exceso —42 contra
+22— tampoco se arregla arbitrando: un jugador pasa de parado a siete metros por
+segundo en un tick, no frena, no se compromete a nada y no protege el balón. El
+reglamento describe cuerpos, así que hasta que los haya cada regla nueva se
+juzga sobre piezas.
+
+1. **Aceleración, frenado y giro** (MVP 3): lo que hoy es instantáneo, con
+   unidad real y referencia que lo calibre.
+2. **Compromiso motor** (`ActionCommitment`): una acción dura, tiene fases y no
+   se cancela gratis.
+3. **Disciplina**: amonestación y expulsión sobre el hecho que ya se publica.
 
 ## Deuda declarada, no escondida
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **El árbitro observa faltas y no las pita** (`whistles_fouls`). Con el
-  criterio de hoy son 168 por 90 minutos, y pitarlas encadena reanudaciones
-  hasta dejar el partido sin un solo tiro.
+- **42 faltas por 90 minutos contra las ~22 reales**, y el criterio no puede
+  bajar de ahí solo: sin inercia ni protección del balón, la mitad de lo que
+  parece una entrada es geometría.
 - **La simetría solo se afirma sobre la posesión.** Goles y tiros de doce
   partidos no dan muestra para más que una banda de tres sigma, que atrapa un
   sesgo grosero y nada fino. Medirla de verdad pide un barrido de cien partidos.
