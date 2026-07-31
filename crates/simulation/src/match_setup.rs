@@ -132,6 +132,11 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
         };
 
         for (index, position) in LINE_UP.iter().enumerate() {
+            if scenario.players == PlayerSetup::GoalkeepersOnly
+                && *position != PlayingPosition::Goalkeeper
+            {
+                continue;
+            }
             let shirt_number = u8::try_from(index + 1).expect("LINE_UP is eleven players");
             let id = PlayerId::new(team, shirt_number);
             let base = base_formation_position(id, *position);

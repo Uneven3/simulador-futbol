@@ -67,6 +67,9 @@ pub enum PlayerSetup {
     /// No players at all, which isolates ball physics and referee decisions
     /// from any tactical behaviour.
     BallOnly,
+    /// Only the two goalkeepers, which isolates what happens at the goal from
+    /// everything a team does to get there.
+    GoalkeepersOnly,
 }
 
 /// Whether the scenario opens with the ball live or with play stopped.

@@ -8,6 +8,7 @@ pub mod ball_release;
 pub mod diagnostics;
 pub mod envelope;
 pub mod force_field;
+pub mod goalkeeping;
 pub mod match_clock;
 pub mod match_setup;
 pub mod measurements;

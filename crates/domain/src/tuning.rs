@@ -417,6 +417,21 @@ pub struct GoalkeepingTuning {
     /// `possessionAmount` below which the keeper just clears his lines instead
     /// of playing. At 3.0 he clears in nearly every situation.
     pub clearance_possession_threshold: f32,
+    /// He plays the ball only once it is this close to him in time (s): until
+    /// then he is moving, not saving.
+    pub reaction_window: f32,
+    /// How far he gets to either side of himself, arms out (m). It does not grow
+    /// with the time available — getting there is what `goalie_movement` does —
+    /// so what beats him is a ball passing wide of wherever he managed to be.
+    /// Standing ten metres off his line he already covers most of the angle, so
+    /// this is a body and an arm, not a leap across the goal.
+    pub dive_reach: f32,
+    /// How high he gets a hand to (m), standing or airborne.
+    pub reach_height: f32,
+    /// He catches a ball arriving below this speed (m/s) and parries the rest,
+    /// which leaves at this share of the pace it came in with.
+    pub catchable_speed: f32,
+    pub parry_pace: f32,
 }
 
 impl Default for GoalkeepingTuning {
@@ -436,6 +451,11 @@ impl Default for GoalkeepingTuning {
             panic_factor: 1.02,
             bound_for_goal_range: 32.0,
             clearance_possession_threshold: 3.0,
+            reaction_window: 0.05,
+            dive_reach: 1.4,
+            reach_height: 2.4,
+            catchable_speed: 12.0,
+            parry_pace: 0.45,
         }
     }
 }

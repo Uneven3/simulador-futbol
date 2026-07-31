@@ -246,6 +246,50 @@ pub fn ball_stopping_on_the_goal_line() -> Scenario {
         })
 }
 
+/// El portero para lo que alcanza: un disparo raso y centrado, con el tiempo de
+/// vuelo suficiente para que se llegue a tirar.
+///
+/// Aísla el mecanismo: solo los dos porteros en el campo, así que lo que pase
+/// con el balón no lo puede haber hecho nadie más.
+pub fn shot_saved_by_the_keeper() -> Scenario {
+    Scenario::kick_off()
+        .named("shot saved by the keeper")
+        .with_players(PlayerSetup::GoalkeepersOnly)
+        .with_ball(
+            BallSetup::travelling_from(Vec3::new(-30.0, 1.5, 0.4), Vec3::new(-18.0, 0.0, 0.0))
+                .last_touched_by(TeamId::Away),
+        )
+        .already_in_play()
+        .for_duration(Duration::from_secs(6))
+        .expecting(Expectations {
+            score: Some(ByTeam::new(0, 0)),
+            ..Default::default()
+        })
+}
+
+/// Y encaja lo que no alcanza: pegado al poste y a dos décimas de la línea.
+///
+/// Va en pareja con [`shot_saved_by_the_keeper`] a propósito. Un portero que
+/// parase todo cumpliría el primero, y solo este dice que lo que ataja es lo
+/// que alcanza. La diferencia entre los dos es el tiempo: aquí no le da para
+/// desplazarse, y lo que cubre desde donde está no llega al palo.
+pub fn shot_beyond_the_keepers_reach() -> Scenario {
+    Scenario::kick_off()
+        .named("shot beyond the keeper's reach")
+        .with_players(PlayerSetup::GoalkeepersOnly)
+        .with_ball(
+            BallSetup::travelling_from(Vec3::new(-48.0, 3.3, 0.3), Vec3::new(-35.0, 0.0, 0.0))
+                .last_touched_by(TeamId::Away),
+        )
+        .already_in_play()
+        .for_duration(Duration::from_secs(12))
+        .expecting(Expectations {
+            score: Some(ByTeam::new(0, 1)),
+            set_pieces: vec![SetPiece::KickOff],
+            ..Default::default()
+        })
+}
+
 /// Every scenario in the catalogue, for suites that run them all.
 pub fn all() -> Vec<Scenario> {
     vec![
@@ -260,5 +304,7 @@ pub fn all() -> Vec<Scenario> {
         ball_over_the_opponents_goal_line(),
         ball_over_own_goal_line(),
         shot_into_the_side_netting(),
+        shot_saved_by_the_keeper(),
+        shot_beyond_the_keepers_reach(),
     ]
 }

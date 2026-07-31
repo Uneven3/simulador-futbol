@@ -10,10 +10,12 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 ## Empezar aquí
 
-1. **Portero que ataja.** Los tiros a puerta son el 100 %.
-2. **Faltas, ventaja y disciplina**, como sistema propio en
+1. **Faltas, ventaja y disciplina**, como sistema propio en
    `BallTouchSet::Contest`, que ya existe para esto.
-3. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
+2. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
+3. **El rechace se remata en el sitio.** El portero para casi la mitad de los
+   tiros, y los tiros pasaron de 34 a 54 por 90: lo rechazado vuelve al área y
+   se dispara otra vez sin que nadie despeje.
 4. **El kick-off no es un saque todavía**: quien saca tiene el balón y un apoyo,
    pero nadie exige que ambos equipos estén en su mitad ni que el balón salga
    del círculo antes de jugarse.

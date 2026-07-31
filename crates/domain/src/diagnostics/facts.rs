@@ -100,6 +100,12 @@ pub enum MatchFact {
     AttackingRun {
         runner: PlayerId,
     },
+    /// A shot that was going in did not: the keeper reached it, and either kept
+    /// it or pushed it away.
+    ShotSaved {
+        keeper: PlayerId,
+        caught: bool,
+    },
 }
 
 impl MatchFact {
@@ -113,7 +119,7 @@ impl MatchFact {
             MatchFact::BallReleased { .. } | MatchFact::Turnover { .. } => {
                 DiagnosticChannel::PassOutcomes
             }
-            MatchFact::Touched { .. } => DiagnosticChannel::Touches,
+            MatchFact::Touched { .. } | MatchFact::ShotSaved { .. } => DiagnosticChannel::Touches,
             MatchFact::Goal { .. }
             | MatchFact::RestartAwarded { .. }
             | MatchFact::OffsideGiven { .. } => DiagnosticChannel::RefereeDecisions,
@@ -137,6 +143,10 @@ impl std::fmt::Display for MatchFact {
             },
             MatchFact::PossessionLost { player, at } => {
                 write!(f, "{player} lost the ball at ({:.1}, {:.1})", at.x, at.y)
+            }
+            MatchFact::ShotSaved { keeper, caught } => {
+                let how = if caught { "caught it" } else { "pushed it away" };
+                write!(f, "{keeper} saved the shot and {how}")
             }
             MatchFact::BallReleased { player, kind, aim } => write!(
                 f,

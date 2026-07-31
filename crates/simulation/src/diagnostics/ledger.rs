@@ -201,6 +201,7 @@ impl MatchLedger {
                 }
             }
             MatchFact::PossessionLost { .. }
+            | MatchFact::ShotSaved { .. }
             | MatchFact::Turnover { .. }
             | MatchFact::RestartAwarded { .. }
             | MatchFact::OffsideGiven { .. }

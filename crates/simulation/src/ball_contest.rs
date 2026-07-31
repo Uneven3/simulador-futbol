@@ -460,6 +460,7 @@ impl Plugin for BallContestPlugin {
             .add_systems(
                 FixedUpdate,
                 (
+                    crate::goalkeeping::goalkeepers_save_shots,
                     release_escaped_ball,
                     select_ball_challenger,
                     resolve_tackle,
