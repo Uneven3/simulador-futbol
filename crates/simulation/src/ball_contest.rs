@@ -182,6 +182,36 @@ pub fn select_ball_challenger(
     contest.distance = closest_distance.max(0.0);
 }
 
+/// La disputa de este tick y lo que quedó de la anterior. Van juntas porque
+/// una falta solo se entiende contra el contacto que ya había (§8).
+#[derive(SystemParam)]
+pub struct Contesting<'w> {
+    pub contest: Res<'w, BallContest>,
+    pub contact: ResMut<'w, BodyContact>,
+}
+
+/// Quién estaba encima de quién al acabar el tick anterior.
+///
+/// Una falta es un suceso, no un estado: entrar es cruzar la distancia de
+/// contacto, y quedarse dentro de ella es disputar. Sin esta memoria, perseguir
+/// a un rival un segundo son cien faltas.
+#[derive(Resource, Debug, Default)]
+pub struct BodyContact {
+    pairs: Vec<(PlayerId, PlayerId)>,
+}
+
+impl BodyContact {
+    fn just_arrived(&self, challenger: PlayerId, carrier: PlayerId) -> bool {
+        !self.pairs.contains(&(challenger, carrier))
+    }
+
+    fn remember(&mut self, challenger: PlayerId, carrier: PlayerId) {
+        if self.just_arrived(challenger, carrier) {
+            self.pairs.push((challenger, carrier));
+        }
+    }
+}
+
 /// En qué acaba una entrada.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tackle {
@@ -226,11 +256,12 @@ pub fn resolve_tackle(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
     settings: MatchSettings,
-    contest: Res<BallContest>,
     time: Res<Time>,
+    mut contesting: Contesting,
     mut ball_query: Query<BallBody, Without<Player>>,
     mut touching: Touching,
 ) {
+    let (contest, contact) = (&contesting.contest, &mut contesting.contact);
     let (Some(challenger), Some(current)) = (contest.challenger, match_state.possession_player)
     else {
         return;
@@ -271,16 +302,24 @@ pub fn resolve_tackle(
             }),
     );
     match judge_tackle(contest.distance, carrier_distance, bodies_apart, tuning) {
-        Tackle::Missed => return,
-        Tackle::Foul => {
-            touching.fouls.write(PotentialFoul {
-                by: challenger,
-                on: current,
-                at: ball_position.0,
-            });
+        Tackle::Missed => {
+            contact.pairs.retain(|pair| *pair != (challenger, current));
             return;
         }
-        Tackle::WonTheBall => {}
+        Tackle::Foul => {
+            if contact.just_arrived(challenger, current) {
+                touching.fouls.write(PotentialFoul {
+                    by: challenger,
+                    on: current,
+                    at: ball_position.0,
+                });
+            }
+            contact.remember(challenger, current);
+            return;
+        }
+        Tackle::WonTheBall => {
+            contact.pairs.retain(|pair| *pair != (challenger, current));
+        }
     }
 
     let ball_is_stealable = carrier_distance > tuning.shielding_release_distance
@@ -511,6 +550,7 @@ pub struct BallContestPlugin;
 impl Plugin for BallContestPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BallContest>()
+            .init_resource::<BodyContact>()
             .add_message::<PotentialFoul>()
             .configure_sets(
                 FixedUpdate,

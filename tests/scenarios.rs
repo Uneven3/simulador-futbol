@@ -166,6 +166,25 @@ fn a_period_lasts_longer_when_play_was_stopped() {
     );
 }
 
+/// El árbitro ve las faltas y todavía no las pita.
+///
+/// Se afirma como está, no como debería ser: es la forma de que el día que el
+/// criterio distinga disputar de entrar —y se encienda `whistles_fouls`— este
+/// test falle y haya que venir aquí a decidirlo, en vez de que el cambio pase
+/// desapercibido.
+#[test]
+fn the_referee_watches_the_fouls_without_whistling_them() {
+    use football_domain::SetPiece;
+
+    let outcome = ScenarioRunner::headless(scenarios::opening_minute()).run();
+
+    assert!(
+        !outcome.set_pieces.contains(&SetPiece::FreeKick),
+        "se concedió un tiro libre: {:?}",
+        outcome.set_pieces
+    );
+}
+
 #[test]
 fn a_shot_over_the_goal_line_is_a_goal() {
     ScenarioRunner::headless(scenarios::shot_crossing_the_goal_line()).assert_scenario_holds();

@@ -111,6 +111,11 @@ pub enum MatchFact {
         by: PlayerId,
         on: PlayerId,
     },
+    /// ...and let this one go, because stopping play would have punished the
+    /// side that was fouled (Law 5).
+    AdvantagePlayed {
+        to: TeamId,
+    },
 }
 
 impl MatchFact {
@@ -128,6 +133,7 @@ impl MatchFact {
             MatchFact::Goal { .. }
             | MatchFact::RestartAwarded { .. }
             | MatchFact::FoulGiven { .. }
+            | MatchFact::AdvantagePlayed { .. }
             | MatchFact::OffsideGiven { .. } => DiagnosticChannel::RefereeDecisions,
             MatchFact::PhaseEntered(_) => DiagnosticChannel::PhaseTransitions,
             MatchFact::AttackingRun { .. } => DiagnosticChannel::Formation,
@@ -151,6 +157,7 @@ impl std::fmt::Display for MatchFact {
                 write!(f, "{player} lost the ball at ({:.1}, {:.1})", at.x, at.y)
             }
             MatchFact::FoulGiven { by, on } => write!(f, "{by} fouled {on}"),
+            MatchFact::AdvantagePlayed { to } => write!(f, "advantage to {to}"),
             MatchFact::ShotSaved { keeper, caught } => {
                 let how = if caught { "caught it" } else { "pushed it away" };
                 write!(f, "{keeper} saved the shot and {how}")

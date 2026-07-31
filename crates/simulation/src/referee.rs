@@ -17,7 +17,9 @@ pub struct RefereePlugin;
 
 impl Plugin for RefereePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(OffsideRecords::default()).add_systems(
+        app.insert_resource(OffsideRecords::default())
+            .init_resource::<PendingAdvantage>()
+            .add_systems(
             FixedUpdate,
             (
                 referee_offside_system,
@@ -75,37 +77,106 @@ fn check_for_goal(
     true
 }
 
-/// El árbitro juzga los contactos: hoy pita todos los que le llegan.
+/// La falta que el árbitro está dejando correr, y desde cuándo (Ley 5).
+#[derive(Resource, Debug, Default)]
+pub struct PendingAdvantage {
+    foul: Option<PotentialFoul>,
+    since: Duration,
+}
+
+/// Qué hacer con una falta mientras el juego sigue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Advantage {
+    /// El infringido sigue con el balón: se espera.
+    StillWaiting,
+    /// Conservó el balón el tiempo suficiente: la falta no se pita.
+    PlayOn,
+    /// Perdió el balón antes de eso: se vuelve a la falta.
+    WhistleTheFoul,
+}
+
+/// Ley 5: la falta no se pita si el equipo infringido saca provecho de seguir.
 ///
-/// La ventaja (Ley 5) y la disciplina son lo siguiente, y entran aquí sin tocar
-/// nada más: la decisión ya está separada del incidente, que es lo que costaba.
+/// El balón suelto no cierra nada: mientras nadie lo tenga, la jugada sigue
+/// viva y la ventaja está por decidirse. Solo la recuperación del infractor
+/// devuelve al árbitro a la falta.
+pub fn judge_advantage(
+    holder: Option<TeamId>,
+    fouled_team: TeamId,
+    played_since_foul: Duration,
+    window: Duration,
+) -> Advantage {
+    if played_since_foul >= window {
+        return Advantage::PlayOn;
+    }
+    if holder == Some(fouled_team.opponent()) {
+        return Advantage::WhistleTheFoul;
+    }
+    Advantage::StillWaiting
+}
+
+/// El árbitro juzga los contactos, y deja seguir lo que conviene dejar seguir.
+///
+/// Lo que falta aquí es la disciplina: la amonestación va sobre el mismo hecho,
+/// y no depende de si se pitó o se dio ventaja.
 fn referee_foul_system(
     mut match_state: ResMut<MatchState>,
+    mut pending: ResMut<PendingAdvantage>,
+    tuning: Res<football_domain::MatchTuning>,
+    time: Res<Time>,
     mut fouls: MessageReader<PotentialFoul>,
     mut telemetry: ResMut<MatchTelemetry>,
 ) {
     if match_state.set_piece != SetPiece::None {
         fouls.clear();
+        pending.foul = None;
         return;
     }
-    let Some(foul) = fouls.read().next().copied() else {
-        return;
-    };
+
+    let now = time.elapsed();
+    if let Some(foul) = fouls.read().next().copied()
+        && pending.foul.is_none()
+    {
+        pending.foul = Some(foul);
+        pending.since = now;
+        telemetry.record(MatchFact::FoulGiven {
+            by: foul.by,
+            on: foul.on,
+        });
+    }
     fouls.clear();
 
-    let awarded_to = foul.on.team;
-    match_state.set_piece = SetPiece::FreeKick;
-    match_state.set_piece_team = Some(awarded_to);
-    match_state.restart_in = Duration::from_secs_f32(3.0);
-    match_state.restart_pos = Vec3::new(foul.at.x, foul.at.y, 0.0);
-    telemetry.record(MatchFact::FoulGiven {
-        by: foul.by,
-        on: foul.on,
-    });
-    telemetry.record(MatchFact::RestartAwarded {
-        set_piece: SetPiece::FreeKick,
-        team: awarded_to,
-    });
+    let Some(foul) = pending.foul else {
+        return;
+    };
+    let played = now.saturating_sub(pending.since);
+    match judge_advantage(
+        match_state.possession_team,
+        foul.on.team,
+        played,
+        tuning.refereeing.advantage_window,
+    ) {
+        Advantage::StillWaiting => {}
+        Advantage::PlayOn => {
+            pending.foul = None;
+            telemetry.record(MatchFact::AdvantagePlayed { to: foul.on.team });
+        }
+        Advantage::WhistleTheFoul => {
+            pending.foul = None;
+            if !tuning.refereeing.whistles_fouls {
+                return;
+            }
+            let awarded_to = foul.on.team;
+            match_state.set_piece = SetPiece::FreeKick;
+            match_state.set_piece_team = Some(awarded_to);
+            match_state.restart_in = Duration::from_secs_f32(3.0);
+            match_state.restart_pos = Vec3::new(foul.at.x, foul.at.y, 0.0);
+            telemetry.record(MatchFact::RestartAwarded {
+                set_piece: SetPiece::FreeKick,
+                team: awarded_to,
+            });
+        }
+    }
 }
 
 fn referee_system(
@@ -688,6 +759,47 @@ mod tests {
         assert_eq!(
             cleared_position(far_away, restart, OPPONENT_CLEARANCE, Vec2::NEG_X),
             far_away
+        );
+    }
+
+    /// Conservar el balón unos segundos consuma la ventaja: la falta no se pita.
+    #[test]
+    fn keeping_the_ball_after_the_foul_means_no_whistle() {
+        let window = Duration::from_secs(3);
+        let fouled = TeamId::Home;
+
+        assert_eq!(
+            judge_advantage(Some(fouled), fouled, Duration::from_secs(1), window),
+            Advantage::StillWaiting
+        );
+        assert_eq!(
+            judge_advantage(Some(fouled), fouled, window, window),
+            Advantage::PlayOn
+        );
+    }
+
+    /// Perderlo antes de eso devuelve al árbitro a la falta, que es lo que
+    /// separa dar ventaja de no pitar.
+    #[test]
+    fn losing_the_ball_brings_the_whistle_back() {
+        let window = Duration::from_secs(3);
+        let fouled = TeamId::Home;
+
+        assert_eq!(
+            judge_advantage(Some(fouled.opponent()), fouled, Duration::from_secs(1), window),
+            Advantage::WhistleTheFoul
+        );
+    }
+
+    /// Un balón suelto no cierra nada: la jugada sigue viva y la ventaja está
+    /// por decidirse. Pitar aquí sería pitar en cada rechace.
+    #[test]
+    fn a_loose_ball_decides_nothing() {
+        let window = Duration::from_secs(3);
+
+        assert_eq!(
+            judge_advantage(None, TeamId::Home, Duration::from_secs(1), window),
+            Advantage::StillWaiting
         );
     }
 

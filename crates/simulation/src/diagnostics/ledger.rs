@@ -34,6 +34,8 @@ pub struct MatchLedger {
     tackles: u32,
     loose_balls: u32,
     fouls: u32,
+    advantages: u32,
+    free_kicks: u32,
     touchers: HashSet<PlayerId>,
     pub goals: ByTeam<u32>,
     /// Shots struck, and those whose trajectory was entering the goal when they
@@ -86,6 +88,16 @@ impl MatchLedger {
 
     pub fn fouls(&self) -> u32 {
         self.fouls
+    }
+
+    /// Faltas que no detuvieron el juego.
+    pub fn advantages(&self) -> u32 {
+        self.advantages
+    }
+
+    /// Faltas que sí lo detuvieron.
+    pub fn free_kicks(&self) -> u32 {
+        self.free_kicks
     }
 
     /// Possession changes per minute of simulated play — the number that says
@@ -206,6 +218,11 @@ impl MatchLedger {
                 }
             }
             MatchFact::FoulGiven { .. } => self.fouls += 1,
+            MatchFact::RestartAwarded {
+                set_piece: football_domain::SetPiece::FreeKick,
+                ..
+            } => self.free_kicks += 1,
+            MatchFact::AdvantagePlayed { .. } => self.advantages += 1,
             MatchFact::PossessionLost { .. }
             | MatchFact::ShotSaved { .. }
             | MatchFact::Turnover { .. }

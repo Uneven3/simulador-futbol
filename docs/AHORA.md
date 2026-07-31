@@ -10,15 +10,12 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 ## Empezar aquí
 
-1. **La ventaja** (Ley 5), que es lo que le falta a la falta: hoy el árbitro
-   pita todo lo que le llega y salen 115 faltas por 90 minutos contra ~22
-   reales. Con el balón quedando en el equipo agredido, la mayoría no debería
-   detener el juego.
+1. **Distinguir disputar de entrar**, que es lo que bloquea las faltas: hoy
+   cualquier contacto del designado que no gane el balón lo es, y llegar a la
+   vez que el rival no es entrar. Pide velocidad de aproximación, o sea el motor
+   de MVP 3. Hasta entonces `whistles_fouls` está apagado.
 2. **Disciplina**: amonestación y expulsión sobre el hecho que ya se publica.
-3. **Distinguir disputar de entrar.** Hoy cualquier contacto del designado que
-   no gane el balón es falta, y llegar a la vez que el rival no es entrar. Pide
-   velocidad de aproximación, que es del motor de MVP 3.
-4. **El rechace se remata en el sitio.** El portero para casi la mitad de los
+3. **El rechace se remata en el sitio.** El portero para casi la mitad de los
    tiros, y los tiros pasaron de 34 a 54 por 90: lo rechazado vuelve al área y
    se dispara otra vez sin que nadie despeje.
 
@@ -26,6 +23,9 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 Ausencias conocidas, no descubrimientos pendientes:
 
+- **El árbitro observa faltas y no las pita** (`whistles_fouls`). Con el
+  criterio de hoy son 168 por 90 minutos, y pitarlas encadena reanudaciones
+  hasta dejar el partido sin un solo tiro.
 - **La simetría solo se afirma sobre la posesión.** Goles y tiros de doce
   partidos no dan muestra para más que una banda de tres sigma, que atrapa un
   sesgo grosero y nada fino. Medirla de verdad pide un barrido de cien partidos.

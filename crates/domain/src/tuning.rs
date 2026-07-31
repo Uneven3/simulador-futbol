@@ -35,6 +35,7 @@ pub struct MatchTuning {
     pub shooting: ShootingTuning,
     pub defending: DefendingTuning,
     pub goalkeeping: GoalkeepingTuning,
+    pub refereeing: RefereeTuning,
 }
 
 impl Default for MatchTuning {
@@ -48,6 +49,33 @@ impl Default for MatchTuning {
             shooting: ShootingTuning::default(),
             defending: DefendingTuning::default(),
             goalkeeping: GoalkeepingTuning::default(),
+            refereeing: RefereeTuning::default(),
+        }
+    }
+}
+
+/// Lo que el árbitro decide, más allá de lo que la ley fija.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RefereeTuning {
+    /// Cuánto espera antes de dar por buena una ventaja (Ley 5). La ley dice
+    /// "unos segundos": si en ese tiempo el equipo infringido conserva el balón,
+    /// la falta no se pita; si lo pierde, se vuelve a ella.
+    pub advantage_window: Duration,
+    /// Si el árbitro detiene el juego por las faltas que observa.
+    ///
+    /// Apagado: el criterio de falta de hoy no distingue disputar de entrar
+    /// —lo que le falta es la velocidad de aproximación, que llega con el motor
+    /// de MVP 3— y pitarlas encadena reanudaciones hasta dejar el partido sin
+    /// un solo tiro. Las faltas se observan y se cuentan igual, que es como se
+    /// sabrá que el criterio mejoró.
+    pub whistles_fouls: bool,
+}
+
+impl Default for RefereeTuning {
+    fn default() -> Self {
+        Self {
+            advantage_window: Duration::from_secs(3),
+            whistles_fouls: false,
         }
     }
 }
