@@ -30,8 +30,9 @@ use football_domain::math::{
 };
 use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
-    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, PitchSides, Player, PlayerId,
-    PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
+    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, MovementIntent, PitchSides,
+    Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece,
+    TeamId, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -103,8 +104,8 @@ pub fn offside_line(
 // ---------------------------------------------------------------------------
 
 /// What deciding where to run needs: who he is, what he can do, what he is
-/// inclined to do, what the match has done to him — and the velocity that is
-/// the decision itself.
+/// inclined to do, what the match has done to him, cómo se está moviendo — y el
+/// sitio donde deja la decisión, que es lo que pide y no lo que consigue.
 type DecidingPlayer = (
     Entity,
     &'static Position,
@@ -112,7 +113,8 @@ type DecidingPlayer = (
     &'static Attributes,
     &'static Mentality,
     &'static PlayerMatchState,
-    &'static mut Velocity,
+    &'static Velocity,
+    &'static mut MovementIntent,
 );
 
 pub fn select_player_movement(
@@ -126,8 +128,8 @@ pub fn select_player_movement(
 ) {
     // If a set piece is active (game paused for a restart), freeze everyone.
     if match_state.set_piece != SetPiece::None {
-        for (.., mut velocity) in player_query.iter_mut() {
-            velocity.0 = Vec3::ZERO;
+        for (.., mut intent) in player_query.iter_mut() {
+            intent.0 = Vec3::ZERO;
         }
         return;
     }
@@ -139,7 +141,7 @@ pub fn select_player_movement(
 
     let snaps: Vec<PlayerReading> = player_query
         .iter()
-        .map(|(_, position, p, _, _, _, v)| PlayerReading {
+        .map(|(_, position, p, _, _, _, v, _)| PlayerReading {
             id: p.id,
             playing_position: p.position,
             role: p.role,
@@ -168,7 +170,7 @@ pub fn select_player_movement(
         now_ms,
     };
 
-    for (_, position, player, stats, mentality, player_state, mut velocity) in
+    for (_, position, player, stats, mentality, player_state, velocity, mut intent) in
         player_query.iter_mut()
     {
         let me = PlayerReading {
@@ -200,7 +202,7 @@ pub fn select_player_movement(
             off_ball_movement(&ctx, &me, man_marking, avg_velocity, work_rate)
         };
 
-        velocity.0 = Vec3::new(dir.x, dir.y, 0.0) * velo;
+        intent.0 = Vec3::new(dir.x, dir.y, 0.0) * velo;
     }
 }
 

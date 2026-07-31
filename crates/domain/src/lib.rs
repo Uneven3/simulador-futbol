@@ -21,5 +21,5 @@ pub use match_state::{
 };
 pub use player::{Attributes, Mentality, Player, PlayerMatchState, PlayingPosition, TacticalRole};
 pub use scenario::{Scenario, ScenarioOutcome};
-pub use spatial::{Facing, Position, Velocity};
+pub use spatial::{Facing, MovementIntent, Position, Velocity};
 pub use tuning::{MatchTuning, TuningVersion};

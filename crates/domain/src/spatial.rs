@@ -26,10 +26,10 @@ impl Position {
 
 /// Direction the body faces on the pitch plane.
 ///
-/// Derived from movement for now. Turning is not yet a limited capability: a
-/// rate-limited turn (and the difference between facing and running direction)
-/// belongs to the motor model of MVP 3, so nothing may treat this as a
-/// physically constrained orientation yet.
+/// Derivada del movimiento, y por ahí heredada del límite del motor: la
+/// velocidad ya no salta, así que esto tampoco. Lo que sigue sin existir es la
+/// diferencia entre hacia dónde se mira y hacia dónde se corre, así que nadie
+/// puede tratarla todavía como una orientación con vida propia.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Facing(pub Dir2);
 
@@ -43,3 +43,11 @@ impl Default for Facing {
 /// integrated into [`Position`] once per fixed tick.
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]
 pub struct Velocity(pub Vec3);
+
+/// La velocidad que la decisión pide, que no es la que el cuerpo consigue.
+///
+/// Son dos componentes y no uno porque son dos escalones distintos: decidir e
+/// ir (§3). Quien decide escribe aquí y nunca en [`Velocity`]; entre los dos
+/// está el motor, que es lo único que convierte lo pedido en lo alcanzable.
+#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
+pub struct MovementIntent(pub Vec3);

@@ -108,14 +108,22 @@ impl Player {
 /// MVP 3 will calibrate against real data.
 ///
 /// Admission rule (`AHORA.md`): an attribute lives here only once a mechanism
-/// reads it, it has a real unit and something calibrates it. Stamina,
-/// acceleration and agility were inherited from the port with none of the
-/// three and have been removed rather than left as decoration; MVP 3
-/// reintroduces them attached to the movement model that uses them.
+/// reads it, it has a real unit and something calibrates it. Stamina and
+/// agility were inherited from the port with none of the three and were
+/// removed rather than left as decoration; they come back attached to the
+/// mechanism that uses them, as acceleration just did.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Attributes {
     /// Top speed in m/s (the port's `sprintVelocity`).
     pub top_speed: f32,
+    /// Cuánto puede ganar de velocidad en un segundo (m/s²). Un futbolista sale
+    /// de parado a unos 6 y sostiene bastante menos; lo segundo pide la fatiga,
+    /// que todavía no está.
+    pub acceleration: f32,
+    /// Y cuánto puede perder (m/s²), que es más: frenar es apoyar contra el
+    /// suelo y acelerar es empujarlo. Es también el presupuesto con el que se
+    /// cambia de dirección, y por eso girar a la carrera describe una curva.
+    pub braking: f32,
     /// Standing height in metres. Used for the body's collision capsule and,
     /// eventually, for aerial duels.
     pub height: f32,
@@ -127,6 +135,8 @@ impl Default for Attributes {
     fn default() -> Self {
         Self {
             top_speed: 8.0,
+            acceleration: 6.0,
+            braking: 9.0,
             height: 1.8,
             shot_technique: 0.5,
         }

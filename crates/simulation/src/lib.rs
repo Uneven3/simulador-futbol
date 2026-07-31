@@ -9,6 +9,7 @@ pub mod diagnostics;
 pub mod envelope;
 pub mod force_field;
 pub mod goalkeeping;
+pub mod locomotion;
 pub mod match_clock;
 pub mod match_setup;
 pub mod measurements;

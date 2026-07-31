@@ -17,19 +17,20 @@ segundo en un tick, no frena, no se compromete a nada y no protege el balón. El
 reglamento describe cuerpos, así que hasta que los haya cada regla nueva se
 juzga sobre piezas.
 
-1. **Aceleración, frenado y giro** (MVP 3): lo que hoy es instantáneo, con
-   unidad real y referencia que lo calibre.
-2. **Compromiso motor** (`ActionCommitment`): una acción dura, tiene fases y no
-   se cancela gratis.
-3. **Disciplina**: amonestación y expulsión sobre el hecho que ya se publica.
+1. **Compromiso motor** (`ActionCommitment`): una acción dura, tiene fases y no
+   se cancela gratis. Hoy un jugador replantea entero cada diez milisegundos.
+2. **Fatiga**: la aceleración de `Attributes` es la de salida, y nadie la
+   sostiene noventa minutos.
+3. **Mirar y correr son dos cosas**: `Facing` sigue derivándose del movimiento,
+   así que nadie corre de espaldas ni llega girado.
 
 ## Deuda declarada, no escondida
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **42 faltas por 90 minutos contra las ~22 reales**, y el criterio no puede
-  bajar de ahí solo: sin inercia ni protección del balón, la mitad de lo que
-  parece una entrada es geometría.
+- **16 faltas por 90 minutos contra las ~22 reales.** El criterio pasó de
+  sobrar a faltar cuando los cuerpos tuvieron inercia, y no se toca hasta que
+  haya protección del balón: el número que hoy cuadre volvería a descuadrar.
 - **La simetría solo se afirma sobre la posesión.** Goles y tiros de doce
   partidos no dan muestra para más que una banda de tres sigma, que atrapa un
   sesgo grosero y nada fino. Medirla de verdad pide un barrido de cien partidos.

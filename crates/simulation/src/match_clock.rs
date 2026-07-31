@@ -5,7 +5,9 @@ use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::TeamId;
-use football_domain::{MatchPhase, MatchRegulations, MatchState, Player, SetPiece, Velocity};
+use football_domain::{
+    MatchPhase, MatchRegulations, MatchState, MovementIntent, Player, SetPiece, Velocity,
+};
 use std::time::Duration;
 
 /// Law 7: the clock and the phases of a match.
@@ -136,14 +138,19 @@ fn advance_match_clock(
 /// over.
 fn still_the_players_at_full_time(
     match_state: Res<MatchState>,
-    mut players: Query<&mut Velocity, With<Player>>,
+    mut players: Query<(&mut Velocity, &mut MovementIntent), With<Player>>,
 ) {
     if !match_state.phase.is_over() {
         return;
     }
-    for mut velocity in players.iter_mut() {
+    // también lo pedido: el motor persigue el intent, y uno vivo los pondría a
+    // correr otra vez con el partido acabado
+    for (mut velocity, mut intent) in players.iter_mut() {
         if velocity.0 != Vec3::ZERO {
             velocity.0 = Vec3::ZERO;
+        }
+        if intent.0 != Vec3::ZERO {
+            intent.0 = Vec3::ZERO;
         }
     }
 }
