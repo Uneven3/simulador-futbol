@@ -14,6 +14,7 @@
 //! observed one: the `MentalImage` delay arrives with MVP 4.
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use std::time::Duration;
@@ -117,15 +118,31 @@ type DecidingPlayer = (
     &'static mut MovementIntent,
 );
 
+/// Todo lo que hay que saber del partido para decidir, que es lo mismo para los
+/// veintidós: el reloj, el estado, quién va a por el balón, el bloque y los
+/// parámetros. Van juntos para declarar una dependencia en vez de cinco (§8).
+#[derive(SystemParam)]
+pub struct MatchAsItStands<'w> {
+    pub time: Res<'w, Time>,
+    pub match_state: Res<'w, MatchState>,
+    pub designation: Res<'w, PossessionDesignation>,
+    pub tactics: Res<'w, TeamTactics>,
+    pub tuning: Res<'w, MatchTuning>,
+}
+
 pub fn select_player_movement(
-    time: Res<Time>,
-    match_state: Res<MatchState>,
-    designation: Res<PossessionDesignation>,
-    tactics: Res<TeamTactics>,
-    tuning: Res<MatchTuning>,
+    world: MatchAsItStands,
+    committed: Query<&crate::ball_release::ActionCommitment>,
     ball_query: Query<&Ball, Without<Player>>,
     mut player_query: Query<DecidingPlayer, Without<Ball>>,
 ) {
+    let MatchAsItStands {
+        time,
+        match_state,
+        designation,
+        tactics,
+        tuning,
+    } = world;
     // If a set piece is active (game paused for a restart), freeze everyone.
     if match_state.set_piece != SetPiece::None {
         for (.., mut intent) in player_query.iter_mut() {
@@ -170,9 +187,20 @@ pub fn select_player_movement(
         now_ms,
     };
 
-    for (_, position, player, stats, mentality, player_state, velocity, mut intent) in
+    for (body, position, player, stats, mentality, player_state, velocity, mut intent) in
         player_query.iter_mut()
     {
+        // armar un golpeo es plantarse junto al balón: quien sigue corriendo a
+        // su ritmo se lo deja atrás y llega a golpear el aire
+        if committed.get(body).is_ok() {
+            let to_ball =
+                Vec2::new(ball.predictions[0].x, ball.predictions[0].y) - position.on_pitch();
+            let pace = tuning.striking.adjust_pace;
+            let adjust = to_ball.clamp_length_max(1.0) * pace;
+            intent.0 = Vec3::new(adjust.x, adjust.y, 0.0);
+            continue;
+        }
+
         let me = PlayerReading {
             id: player.id,
             playing_position: player.position,

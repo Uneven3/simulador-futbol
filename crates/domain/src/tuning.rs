@@ -33,6 +33,7 @@ pub struct MatchTuning {
     pub passing: PassingTuning,
     pub clearance: ClearanceTuning,
     pub shooting: ShootingTuning,
+    pub striking: StrikingTuning,
     pub defending: DefendingTuning,
     pub goalkeeping: GoalkeepingTuning,
     pub refereeing: RefereeTuning,
@@ -47,9 +48,38 @@ impl Default for MatchTuning {
             passing: PassingTuning::default(),
             clearance: ClearanceTuning::default(),
             shooting: ShootingTuning::default(),
+            striking: StrikingTuning::default(),
             defending: DefendingTuning::default(),
             goalkeeping: GoalkeepingTuning::default(),
             refereeing: RefereeTuning::default(),
+        }
+    }
+}
+
+/// Lo que tarda un golpeo desde que se decide hasta que el pie llega al balón.
+///
+/// Es el único sitio donde el fútbol de este simulador ocurre en el futuro:
+/// mientras dura, el rival sigue jugando y el compañero al que va el pase sigue
+/// corriendo, así que comprometerse cuesta algo. Un pase corto se arma en dos
+/// décimas y un disparo con carrera necesita más del doble.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StrikingTuning {
+    pub pass_windup: Duration,
+    pub shot_windup: Duration,
+    pub clearance_windup: Duration,
+    /// A qué paso se ajusta al balón mientras arma la pierna (m/s). Quien sigue
+    /// corriendo a su ritmo se deja el balón atrás y no llega a golpearlo, que
+    /// es lo que pasaba cuando esto no existía: cero tiros en diez minutos.
+    pub adjust_pace: f32,
+}
+
+impl Default for StrikingTuning {
+    fn default() -> Self {
+        Self {
+            pass_windup: Duration::from_millis(200),
+            shot_windup: Duration::from_millis(350),
+            clearance_windup: Duration::from_millis(250),
+            adjust_pace: 2.0,
         }
     }
 }

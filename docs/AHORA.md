@@ -17,8 +17,8 @@ segundo en un tick, no frena, no se compromete a nada y no protege el balón. El
 reglamento describe cuerpos, así que hasta que los haya cada regla nueva se
 juzga sobre piezas.
 
-1. **Compromiso motor** (`ActionCommitment`): una acción dura, tiene fases y no
-   se cancela gratis. Hoy un jugador replantea entero cada diez milisegundos.
+1. **Proteger el balón con el cuerpo**: sin esto la disputa es geometría, y es
+   lo que falta para que las faltas y los robos signifiquen algo.
 2. **Fatiga**: la aceleración de `Attributes` es la de salida, y nadie la
    sostiene noventa minutos.
 3. **Mirar y correr son dos cosas**: `Facing` sigue derivándose del movimiento,

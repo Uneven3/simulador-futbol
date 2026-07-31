@@ -10,8 +10,10 @@
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
+use std::time::Duration;
 
 use crate::ball_contest::{BallBody, BallTouchSet, MatchSettings, Touching};
 use crate::diagnostics::{MatchFact, ReleaseKind};
@@ -19,7 +21,7 @@ use crate::player_decisions::{self, OnBallAction, PassKind};
 use crate::player_movement::dribble_direction;
 use crate::team_tactics::PlayerReading;
 use football_domain::math::{normalized_clamp, normalized_or_2d};
-use football_domain::tuning::{ClearanceTuning, PassingTuning, ShootingTuning};
+use football_domain::tuning::{ClearanceTuning, PassingTuning, ShootingTuning, StrikingTuning};
 use football_domain::{
     Ball, BallTouched, MatchRng, MatchState, PitchConfig, Player, PlayerId, PlayingPosition,
     Position, PossessionDesignation, SetPiece, TeamId,
@@ -164,57 +166,126 @@ pub fn solve_knock_on(
     }
 }
 
-/// El poseedor decide y ejecuta: un toque por tick, como mucho.
-pub fn execute_on_ball_action(
-    mut match_state: ResMut<MatchState>,
+/// Lo que un jugador ya empezó a hacer con el balón y todavía no ha hecho.
+///
+/// Es `ActionCommitment` del vocabulario reservado, en su forma mínima: la
+/// acción y el instante en que el pie llega al balón. Mientras dura, el partido
+/// no se detiene —el rival puede quitárselo y el compañero al que iba el pase
+/// sigue corriendo—, y por eso decidir un golpeo pasa a costar algo.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ActionCommitment {
+    action: OnBallAction,
+    contact_at: Duration,
+}
+
+/// Con qué se resuelve un golpeo: el estado del partido que va a cambiar, los
+/// parámetros, el azar y el reloj. Las dos mitades del golpeo —comprometerse y
+/// darlo— necesitan exactamente esto (§8).
+#[derive(SystemParam)]
+pub struct Striking<'w> {
+    pub match_state: ResMut<'w, MatchState>,
+    pub settings: MatchSettings<'w>,
+    pub rng: ResMut<'w, MatchRng>,
+    pub time: Res<'w, Time>,
+}
+
+/// Cuánto tarda el pie en llegar al balón. Conducir no es golpear: el toque de
+/// conducción es la propia carrera y sale en el acto.
+fn windup_of(action: OnBallAction, tuning: &StrikingTuning) -> Duration {
+    match action {
+        OnBallAction::Shot { .. } => tuning.shot_windup,
+        OnBallAction::Pass { .. } => tuning.pass_windup,
+        OnBallAction::PanicClear => tuning.clearance_windup,
+        OnBallAction::Dribble => Duration::ZERO,
+    }
+}
+
+/// El poseedor decide qué hacer con el balón, y se compromete a ello.
+///
+/// Decidir y golpear eran el mismo instante, así que un pase no podía salir mal
+/// por nada que pasara entre una cosa y la otra: no había entre.
+pub fn commit_to_an_action(
+    mut commands: Commands,
+    striking: Striking,
     designation: Res<PossessionDesignation>,
-    settings: MatchSettings,
-    mut rng: ResMut<MatchRng>,
-    time: Res<Time>,
-    mut ball_query: Query<BallBody, Without<Player>>,
-    mut touching: Touching,
+    committed: Query<&ActionCommitment>,
+    ball_query: Query<(&Position, &Ball), Without<Player>>,
+    touching: Touching,
 ) {
+    let Striking {
+        match_state,
+        settings,
+        mut rng,
+        time,
+    } = striking;
     if match_state.set_piece != SetPiece::None {
         return;
     }
     let Some(possessor) = match_state.possession_player else {
         return;
     };
-    let Ok((mut ball_position, mut ball)) = ball_query.single_mut() else {
+    let Ok((ball_position, ball)) = ball_query.single() else {
         return;
     };
     let Some(possessor_body) = touching.registry.body(possessor) else {
         return;
     };
-    let Ok((_, player_position, player, stats, _, velocity)) = touching.players.get(possessor_body)
-    else {
+    if committed.get(possessor_body).is_ok() {
+        return;
+    }
+    let Ok((_, player_position, player, ..)) = touching.players.get(possessor_body) else {
         return;
     };
 
     let contest = &settings.tuning.contest;
     let now = time.elapsed();
     let ball_pos = ball_position.0;
-    let ball_pos_2d = ball_position.on_pitch();
     let from = player_position.on_pitch();
-    let running = Vec2::new(velocity.0.x, velocity.0.y);
     let is_goalkeeper = player.position == PlayingPosition::Goalkeeper;
-    let top_speed = stats.top_speed;
-    let shot_technique = stats.shot_technique;
 
     // el toque exige el balón en el pie
-    let in_reach = ball_pos_2d.distance(from) < contest.ball_at_feet_distance
+    let in_reach = ball_position.on_pitch().distance(from) < contest.ball_at_feet_distance
         && ball_pos.z < contest.ball_at_feet_height;
     // Los porteros golpean sin demora, y una suelta deliberada solo necesita
     // reacción corta: obligar a esperar a un portador presionado alimenta el
     // bucle de robos. La conducción sí mantiene la cadencia lenta.
     let since_touch = now.saturating_sub(ball.last_touch_at);
     let can_decide = since_touch > contest.decision_cadence || is_goalkeeper;
-    let can_knock_on = since_touch > contest.knock_on_cadence || is_goalkeeper;
     if !(in_reach && can_decide) {
         return;
     }
 
-    let readings: Vec<PlayerReading> = touching
+    let readings = readings_of(&touching);
+    let sides = match_state.sides;
+    let offside_line =
+        player_decisions::offside_line(&readings, possessor.team, sides, ball_pos.x, 0.0);
+    let action = player_decisions::decide_on_ball_action(
+        &readings,
+        possessor,
+        ball,
+        &designation,
+        now.saturating_sub(match_state.possession_since),
+        offside_line,
+        sides,
+        &settings.tuning,
+        &mut rng,
+    );
+
+    // el knock-on de la conducción mantiene su propia cadencia, más lenta
+    let can_knock_on = since_touch > contest.knock_on_cadence || is_goalkeeper;
+    if matches!(action, OnBallAction::Dribble) && !can_knock_on {
+        return;
+    }
+
+    commands.entity(possessor_body).insert(ActionCommitment {
+        action,
+        contact_at: now + windup_of(action, &settings.tuning.striking),
+    });
+}
+
+/// Cómo está el mundo ahora mismo, para quien tenga que resolver algo con él.
+fn readings_of(touching: &Touching) -> Vec<PlayerReading> {
+    touching
         .players
         .iter()
         .map(|(_, position, p, _, _, v)| PlayerReading {
@@ -225,114 +296,152 @@ pub fn execute_on_ball_action(
             vel: Vec2::new(v.0.x, v.0.y),
             formation_slot: p.formation_slot,
         })
-        .collect();
-    let sides = match_state.sides;
-    let attacking_towards_x = sides.attacking_x(possessor.team);
-    let offside_line =
-        player_decisions::offside_line(&readings, possessor.team, sides, ball_pos.x, 0.0);
-    let action = player_decisions::decide_on_ball_action(
-        &readings,
-        possessor,
-        &ball,
-        &designation,
-        now.saturating_sub(match_state.possession_since),
-        offside_line,
-        sides,
-        &settings.tuning,
-        &mut rng,
-    );
+        .collect()
+}
 
-    let (kick, release, keeps_possession) = match action {
-        OnBallAction::Shot { target_y } => {
-            match_state.pass_target = None;
-            (
-                solve_shot(
-                    from,
-                    target_y,
-                    attacking_towards_x,
-                    shot_technique,
-                    &settings.tuning.shooting,
-                    &mut rng,
-                ),
-                ReleaseKind::Shot,
-                false,
-            )
-        }
-        OnBallAction::Pass { target, aim, kind } => {
-            match_state.pass_target = Some(target);
-            match_state.pass_aim = aim;
-            (
-                solve_pass(
-                    from,
-                    ball_pos,
-                    aim,
-                    kind,
-                    &settings.pitch,
-                    &settings.tuning.passing,
-                ),
-                ReleaseKind::Pass,
-                false,
-            )
-        }
-        OnBallAction::PanicClear => {
-            match_state.pass_target = None;
-            (
-                solve_clearance(
-                    from,
-                    running,
-                    attacking_towards_x,
-                    &settings.tuning.clearance,
-                ),
-                ReleaseKind::Clearance,
-                false,
-            )
-        }
-        OnBallAction::Dribble => {
-            if !can_knock_on {
-                return;
-            }
-            let bodies: Vec<(TeamId, Vec2, Vec2)> =
-                readings.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
-            let direction = dribble_direction(from, running, possessor.team, sides, &bodies);
-            let nearest_opponent = readings
-                .iter()
-                .filter(|s| s.team() != possessor.team)
-                .map(|s| s.pos.distance(from))
-                .fold(f32::MAX, f32::min);
-            (
-                solve_knock_on(
-                    from,
-                    running,
-                    direction,
-                    nearest_opponent,
-                    top_speed,
-                    contest.knock_on_traffic_distance,
-                    crate::team_tactics::DRIBBLE_VELOCITY,
-                ),
-                ReleaseKind::DribbleKnock,
-                true,
-            )
-        }
+/// El pie llega al balón, y lo que se decidió hace dos décimas ocurre ahora.
+///
+/// O no ocurre: si por el camino le quitaron el balón o se le fue del pie, el
+/// golpeo se queda sin balón que golpear, que es lo que le pasa a un futbolista
+/// al que entran mientras arma la pierna.
+pub fn complete_committed_strike(
+    mut commands: Commands,
+    striking: Striking,
+    committed: Query<(Entity, &ActionCommitment)>,
+    mut ball_query: Query<BallBody, Without<Player>>,
+    mut touching: Touching,
+) {
+    let Striking {
+        mut match_state,
+        settings,
+        mut rng,
+        time,
+    } = striking;
+    let now = time.elapsed();
+    let Ok((mut ball_position, mut ball)) = ball_query.single_mut() else {
+        return;
     };
 
-    strike(
-        &mut ball,
-        &mut ball_position,
-        kick,
-        possessor,
-        now,
-        &mut touching,
-    );
-    touching.telemetry.record(MatchFact::BallReleased {
-        player: possessor,
-        kind: release,
-        aim: kick.aim,
-    });
-    if let Ok((.., mut player_state, _)) = touching.players.get_mut(possessor_body) {
-        player_state.last_touch_at = now;
-    }
-    if !keeps_possession {
-        match_state.possession_player = None;
+    for (body, commitment) in committed.iter() {
+        let Ok((_, player_position, player, stats, _, velocity)) = touching.players.get(body)
+        else {
+            commands.entity(body).remove::<ActionCommitment>();
+            continue;
+        };
+        let possessor = player.id;
+        let from = player_position.on_pitch();
+        let running = Vec2::new(velocity.0.x, velocity.0.y);
+        let top_speed = stats.top_speed;
+        let shot_technique = stats.shot_technique;
+
+        let contest = &settings.tuning.contest;
+        let ball_pos = ball_position.0;
+        let still_his = match_state.possession_player == Some(possessor)
+            && match_state.set_piece == SetPiece::None;
+        let in_reach = ball_position.on_pitch().distance(from) < contest.ball_at_feet_distance
+            && ball_pos.z < contest.ball_at_feet_height;
+        if !(still_his && in_reach) {
+            commands.entity(body).remove::<ActionCommitment>();
+            continue;
+        }
+        if now < commitment.contact_at {
+            continue;
+        }
+        commands.entity(body).remove::<ActionCommitment>();
+
+        let readings = readings_of(&touching);
+        let sides = match_state.sides;
+        let attacking_towards_x = sides.attacking_x(possessor.team);
+
+        let (kick, release, keeps_possession) = match commitment.action {
+            OnBallAction::Shot { target_y } => {
+                match_state.pass_target = None;
+                (
+                    solve_shot(
+                        from,
+                        target_y,
+                        attacking_towards_x,
+                        shot_technique,
+                        &settings.tuning.shooting,
+                        &mut rng,
+                    ),
+                    ReleaseKind::Shot,
+                    false,
+                )
+            }
+            OnBallAction::Pass { target, aim, kind } => {
+                match_state.pass_target = Some(target);
+                match_state.pass_aim = aim;
+                (
+                    solve_pass(
+                        from,
+                        ball_pos,
+                        aim,
+                        kind,
+                        &settings.pitch,
+                        &settings.tuning.passing,
+                    ),
+                    ReleaseKind::Pass,
+                    false,
+                )
+            }
+            OnBallAction::PanicClear => {
+                match_state.pass_target = None;
+                (
+                    solve_clearance(
+                        from,
+                        running,
+                        attacking_towards_x,
+                        &settings.tuning.clearance,
+                    ),
+                    ReleaseKind::Clearance,
+                    false,
+                )
+            }
+            OnBallAction::Dribble => {
+                let bodies: Vec<(TeamId, Vec2, Vec2)> =
+                    readings.iter().map(|s| (s.team(), s.pos, s.vel)).collect();
+                let direction = dribble_direction(from, running, possessor.team, sides, &bodies);
+                let nearest_opponent = readings
+                    .iter()
+                    .filter(|s| s.team() != possessor.team)
+                    .map(|s| s.pos.distance(from))
+                    .fold(f32::MAX, f32::min);
+                (
+                    solve_knock_on(
+                        from,
+                        running,
+                        direction,
+                        nearest_opponent,
+                        top_speed,
+                        contest.knock_on_traffic_distance,
+                        crate::team_tactics::DRIBBLE_VELOCITY,
+                    ),
+                    ReleaseKind::DribbleKnock,
+                    true,
+                )
+            }
+        };
+
+        strike(
+            &mut ball,
+            &mut ball_position,
+            kick,
+            possessor,
+            now,
+            &mut touching,
+        );
+        touching.telemetry.record(MatchFact::BallReleased {
+            player: possessor,
+            kind: release,
+            aim: kick.aim,
+        });
+        if let Ok((.., mut player_state, _)) = touching.players.get_mut(body) {
+            player_state.last_touch_at = now;
+        }
+        if !keeps_possession {
+            match_state.possession_player = None;
+        }
     }
 }
 
@@ -342,7 +451,7 @@ fn strike(
     ball_position: &mut Position,
     kick: Kick,
     by: PlayerId,
-    now: std::time::Duration,
+    now: Duration,
     touching: &mut Touching,
 ) {
     crate::ball_physics::touch_ball(ball, ball_position, kick.momentum);
@@ -360,7 +469,9 @@ impl Plugin for BallReleasePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             FixedUpdate,
-            execute_on_ball_action.in_set(BallTouchSet::Release),
+            (commit_to_an_action, complete_committed_strike)
+                .chain()
+                .in_set(BallTouchSet::Release),
         );
     }
 }
@@ -369,6 +480,58 @@ impl Plugin for BallReleasePlugin {
 mod tests {
     use super::*;
     use football_domain::tuning::MatchTuning;
+
+    /// El golpeo dejó de ser un instante: hay ticks en los que un jugador ya
+    /// decidió y todavía no ha tocado el balón. Sin ese hueco no hay nada que
+    /// un rival pueda aprovechar.
+    #[test]
+    fn there_are_ticks_where_a_strike_is_under_way() {
+        use bevy_app::TaskPoolPlugin;
+        use bevy_time::{TimePlugin, TimeUpdateStrategy};
+        use football_domain::Scenario;
+        use football_domain::scenario::TICK;
+
+        let mut app = bevy_app::App::new();
+        app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
+        app.add_plugins(crate::MatchKernelPlugin::new(Scenario::kick_off()));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+
+        let mut ticks_mid_strike = 0;
+        for _ in 0..3000 {
+            app.update();
+            let mut committed = app.world_mut().query::<&ActionCommitment>();
+            if committed.iter(app.world()).next().is_some() {
+                ticks_mid_strike += 1;
+            }
+        }
+
+        assert!(
+            ticks_mid_strike > 0,
+            "en treinta segundos de partido nadie llegó a armar un golpeo"
+        );
+    }
+
+    /// Conducir es correr con el balón, así que el toque sale en el acto;
+    /// golpearlo tiene un tiempo, y ese tiempo es lo que un rival aprovecha.
+    #[test]
+    fn only_striking_the_ball_takes_time() {
+        let tuning = StrikingTuning::default();
+
+        assert_eq!(windup_of(OnBallAction::Dribble, &tuning), Duration::ZERO);
+        assert!(windup_of(OnBallAction::PanicClear, &tuning) > Duration::ZERO);
+        assert!(
+            windup_of(OnBallAction::Shot { target_y: 0.0 }, &tuning)
+                > windup_of(
+                    OnBallAction::Pass {
+                        target: PlayerId::new(TeamId::Home, 9),
+                        aim: Vec2::ZERO,
+                        kind: PassKind::Short,
+                    },
+                    &tuning
+                ),
+            "armar un disparo tenía que costar más que dar un pase corto"
+        );
+    }
 
     /// Un disparo desde el borde del área sale hacia la portería contraria, con
     /// potencia dentro de lo que un futbolista pega. Es la receta que MVP 1.75
