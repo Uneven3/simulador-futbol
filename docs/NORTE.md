@@ -39,32 +39,20 @@ balance y espectáculo no alteran el modelo sin declararse como configuración.
 
 ## Presentación
 
-El objetivo visual es low-poly 3D con meshes, skeletons y materiales simples.
-Los assets son intercambiables.
-
-La primera presentación usará primitivas para mostrar:
-
-- cuerpo, orientación y velocidad;
-- pelota y futuros físicos;
-- campo visual, observaciones y edad de memoria;
-- intención y acción comprometida;
-- responsabilidades tácticas;
-- incidentes y decisiones arbitrales.
+El objetivo visual es low-poly 3D con meshes y materiales simples, y los assets
+son intercambiables. La primera presentación usa primitivas para mostrar cuerpo,
+orientación y velocidad; pelota y futuros físicos; campo visual, observaciones y
+edad de memoria; intención y acción comprometida; responsabilidades tácticas; e
+incidentes y decisiones arbitrales.
 
 ## Hito I — contrato completo del fútbol
 
-Termina cuando:
-
-- IFAB 2026/27 está inventariado y versionado;
-- cada cláusula relevante tiene estado de cobertura;
-- reglas deterministas tienen escenarios ejecutables;
-- juicios subjetivos separan incidente, observación y decisión;
-- variantes de competición son configuración;
-- el kernel corre sin renderer/assets;
-- primitivas permiten observar y depurar escenarios.
-
-“Completo” significa que ninguna regla queda desconocida. La implementación se
-entrega mediante MVP verticales.
+Termina cuando IFAB 2026/27 está inventariado y versionado con estado de
+cobertura por cláusula, las reglas deterministas tienen escenarios ejecutables,
+los juicios subjetivos separan incidente / observación / decisión, las variantes
+de competición son configuración, el kernel corre sin renderer y las primitivas
+permiten depurar escenarios. “Completo” significa que ninguna regla queda
+desconocida; se entrega mediante MVP verticales.
 
 ## MVP
 
@@ -85,32 +73,17 @@ reanudaciones básicas deben ser inspeccionables.
 
 ### MVP 1.75 — Instrumentación y propiedades
 
-Antes de añadir más reglas hay que poder **medir** lo que las que existen
-producen. El modelo marcaba un orden de magnitud más goles que un partido real
-(`REVISION_2026-07-30-reloj.md`), y no había ningún test que lo notara.
+Antes de añadir más reglas hay que poder **medir** lo que producen las que ya
+existen. Cuatro pasos: los parámetros como dato versionado (`MatchTuning`), la
+envolvente como herramienta (N partidos, con distribución y no media), cada
+desvío atribuido a su causa, y propiedades causales que afirman dirección de
+efecto sobre N corridas en vez de valores exactos.
 
-Cuatro pasos, en orden:
-
-1. **Las envolventes son dato**, no literales dentro de la IA: un `MatchTuning`
-   versionado como lo es `MatchRegulations`. Sin esto no hay nada que girar.
-2. **La envolvente es una herramienta**, no un test ignorado: N partidos, con
-   histograma de goles por partido, marcadores, tiros y posesión.
-3. **Cada desvío, atribuido a su causa**, sin girar nada todavía.
-4. **Tests de propiedad causal**: afirmar dirección de efecto sobre N corridas,
-   no valores exactos.
-
-Termina cuando cada desvío conocido tiene causa identificada y MVP asignado, y
-existen al menos tres propiedades afirmadas como test. El instrumental está
-descrito en `REFERENCIA_OPENFOOTMANAGER.md`.
-
-**Lo que este MVP deliberadamente NO hace es calibrar** (decidido el
-2026-07-30). Girar parámetros hasta que salgan 2,7 goles hoy sería compensar
-con números la ausencia de mecanismos: el tirador no falla porque no existe el
-error de golpeo, el pase no llega porque nadie tiene percepción parcial, y no
-hay portero ni faltas que eviten un gol. Un modelo que acierta la media por dos
-errores que se cancelan es peor que uno que falla de forma legible, porque el
-día que entre el mecanismo que faltaba hay que deshacer la compensación sin
-saber cuál era.
+**Lo que deliberadamente NO hace es calibrar.** Girar parámetros hasta que
+salgan 2,7 goles compensaría con números la ausencia de mecanismos: no existe
+el error de golpeo, nadie tiene percepción parcial, y no hay portero ni faltas
+que eviten un gol. Un modelo que acierta la media por dos errores que se
+cancelan es peor que uno que falla de forma legible.
 
 ### MVP 2 — Partido reglamentariamente completo
 
@@ -118,12 +91,11 @@ Sustituciones, offside, faltas, ventaja, disciplina, tiros libres, penales,
 dropped ball, tanda y variantes configurables. Cada transición nace de un
 escenario.
 
-Empezó arreglando el fuera de juego, que estaba escrito con el signo invertido:
-un jugador anotado no puede disputar el balón, así que la regla no pitaba nada,
-congelaba a casi todo un equipo. Arreglarla partió por la mitad el ritmo de gol
-**sin girar un parámetro** — la tabla de atribución de MVP 1.75 había adjudicado
-a MVP 4 (percepción) un desvío que era un error de una línea. Las cifras, en
-`measurements/envelope.csv`.
+Empezó arreglando el fuera de juego, que tenía el signo invertido y congelaba a
+casi todo un equipo, porque un jugador anotado no puede disputar el balón. Eso
+partió por la mitad el ritmo de gol **sin girar un parámetro**: la tabla de
+atribución de MVP 1.75 había adjudicado a MVP 4 un desvío que era un error de
+una línea.
 
 ### MVP 3 — Movimiento plausible
 

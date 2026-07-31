@@ -30,7 +30,7 @@ use std::time::Duration;
 pub enum TuningVersion {
     /// The envelope inherited from the C++ original, never calibrated against
     /// anything: 51 goals per 90 minutes against ~2.7 real ones
-    /// (`docs/REVISION_2026-07-30-reloj.md`). It is the starting point of
+    /// (`docs/VALIDATION.md`). It is the starting point of
     /// MVP 1.75, not a defensible model.
     PortBaseline,
 }

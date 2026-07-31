@@ -94,40 +94,28 @@ el desacople se consigue con componentes y mensajes, no con interfaces.
     relato de una sesión.** Las mediciones van a `measurements/`, la historia al
     mensaje de commit, y el comentario dice el invariante. Un comentario más
     largo que el código que explica está contando una historia; un documento que
-    hay que reeditar cada vez que cambia una cifra es una copia de un CSV.
+    hay que reeditar cada vez que cambia una cifra es una copia de un CSV. La
+    prosa del repositorio tiene techo de 1000 líneas y lo cobra
+    `tests/documentation_budget.rs`, porque un techo escrito dentro de un
+    documento no se aplica solo.
 
 ## Pipeline
 
-```text
-FixedUpdate
-  Match lifecycle
-  → World sensing
-  → Player observations
-  → Belief updates
-  → Tactical responsibilities
-  → Player intentions
-  → Motor planning/commitments
-  → Body movement/contacts
-  → Ball integration
-  → Physical incidents
-  → Referee observations/decisions
-  → Rule transitions/telemetry
+El orden objetivo, en `FixedUpdate`: ciclo del partido → percepción del mundo →
+observaciones → creencias → responsabilidades tácticas → intenciones → plan
+motor → cuerpos y contactos → integración del balón → incidentes físicos →
+observación y decisión arbitral → transiciones y telemetría. En `Update`:
+interpolación del snapshot → visuales → overlays, cámara, UI y audio.
 
-Update
-  Snapshot interpolation
-  → primitive/skinned visuals
-  → overlays, camera, UI and audio
-```
-
-El orden se expresa con `SystemSet` semánticos, no con el orden heredado de
-`Match::Process()`. Hoy `SimulationSet` sigue siendo el orden del original
+Se expresa con `SystemSet` semánticos, no con el orden heredado de
+`Match::Process()`. Hoy `SimulationSet` sigue siendo el del original
 (`MatchLifecycle → Players → Kicks → BallCollisions → BallPhysics → Referee`):
-la migración a este pipeline es deuda declarada.
+migrar a este pipeline es deuda declarada.
 
 ## Mapa de módulos
 
-Cada módulo dice qué posee y dónde está su frontera. Lo que no aparece aquí no
-tiene dueño, y eso es un bug de arquitectura antes que de código.
+Qué posee cada módulo y dónde está su frontera. Lo que no aparece aquí no tiene
+dueño, y eso es un bug de arquitectura antes que de código.
 
 | Módulo | Posee | Frontera |
 |---|---|---|
@@ -162,61 +150,20 @@ tiene dueño, y eso es un bug de arquitectura antes que de código.
 - Evitar `get_` cuando se calcula, estima, clasifica o selecciona.
 - `Goalkeeper`, no `GK`; `PlayingPosition` separado de `TacticalRole`.
 
-## Rust y borrow checking
+## Rust, pruebas y deuda
 
-Debe compilar con el checker estable actual. Polonius no sustituye:
+Debe compilar con el checker estable actual. Polonius no sustituye a queries
+pequeñas, componentes descompuestos, fases de lectura/propuesta/aplicación y
+mensajes para evitar escritores cruzados. Traits solo para contratos con varias
+implementaciones reales; los estados cerrados son enums.
 
-- queries pequeñas;
-- componentes descompuestos;
-- fases de lectura, propuesta y aplicación;
-- mensajes para evitar escritores cruzados.
+Se prueba con: unitarias de geometría y unidades, escenarios IFAB, invariantes
+por tick, simulaciones largas para distribuciones, una corrida headless sin
+assets, y una prueba de que presentación no muta estado autoritativo.
 
-Traits solo para contratos con múltiples implementaciones reales. Estados
-cerrados usan enums.
-
-## Pruebas
-
-- unitarias para geometría/unidades;
-- escenarios IFAB;
-- invariantes por tick;
-- simulaciones largas para distribuciones;
-- prueba headless sin assets;
-- prueba de que presentación no muta estado autoritativo.
-
-## Deuda declarada contra estas leyes
-
-Medido el 2026-07-30, al escribir las leyes de ingeniería. Se registra con
-número para que nadie la descubra dos veces.
-
-**§17 y §19 — tamaño y responsabilidad.**
-
-| Sitio | Medida | Qué contiene |
-|---|---|---|
-| `player_decisions.rs` | 1352 líneas | Campo de fuerzas, movimiento sin balón, portero y decisión con balón |
-| `team_tactics.rs` | 896 líneas | `update_team_tactics` (239) y `get_adapted_formation_position` (210) |
-| `ball_physics.rs` | 538 líneas | `calculate_prediction` (415), port directo del integrador original |
-| `ball_contest.rs` | 473 líneas | Cuatro sistemas de una responsabilidad, pero el archivo ya pide separar *quién* toca de *cómo* se toca |
-| `ball_release.rs` | 451 líneas | Un sistema y cuatro recetas puras; un tercio son tests |
-
-Se parten al tocarlos por otra razón; partirlos antes es riesgo sin lector.
-
-**Pagado el 2026-07-30:** `player_kick_system` eran 461 líneas y doce
-parámetros haciendo cinco cosas. Hoy son cuatro sistemas encadenados en
-`ball_contest.rs` (`release_escaped_ball`, `select_ball_challenger`,
-`resolve_tackle`, `collect_loose_ball`) más `execute_on_ball_action` en
-`ball_release.rs`, que delega el golpeo en funciones puras (`solve_shot`,
-`solve_pass`, `solve_clearance`, `solve_knock_on`) probables sin `App`.
-`player_movement.rs` bajó de 841 a 302 líneas. La envolvente dio los mismos
-diez números antes y después: el refactor fue fiel.
-
-**§20 — parámetros.** Quedan tres `#[allow(clippy::too_many_arguments)]`
-(`team_tactics.rs`, `ball_collisions.rs`, `player_decisions.rs`), de los cinco
-que había. Los sistemas del toque usan `SystemParam` derivado (`Touching`,
-`MatchSettings`) en vez de sumar parámetros.
-
-**§18 — extensión.** Las faltas de MVP 2 ya tienen dónde entrar sin editar nada:
-un sistema propio dentro de `BallTouchSet::Contest`, que es donde ocurre el
-incidente.
-
-La división se valida con la envolvente: si las diez semillas dan números
-idénticos, el refactor fue fiel (`docs/VALIDATION.md`).
+**Qué viola hoy estas leyes** se mide, no se narra:
+`wc -l crates/*/src/*.rs | sort -n` dice qué archivos pasan de las ~300 líneas
+de §17, y `grep -rn "too_many_arguments" crates/` los parámetros de §20. Se
+parten al tocarlos por otra razón; partirlos antes es riesgo sin lector. Y la
+división se valida con la envolvente: si las diez semillas dan los mismos
+números, el refactor fue fiel (`VALIDATION.md`).

@@ -1,8 +1,7 @@
 # Ahora
 
-Estado del trabajo activo. **Techo: 40 líneas hasta la deuda declarada.** Lo que
-se hizo y por qué está en `git log`; las cifras están en `measurements/`. Este
-archivo dice qué se está haciendo, no qué se hizo (ley 27).
+Qué se está haciendo, no qué se hizo (ley 27): la historia está en `git log` y
+las cifras en `measurements/`. **Techo: 40 líneas hasta la deuda declarada.**
 
 ## Objetivo activo
 
@@ -23,13 +22,6 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda
    `BallTouchSet::Contest`.
 4. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
 
-## Cómo se mide
-
-`cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`
-anexa la corrida a `measurements/envelope.csv` e imprime el delta contra la
-anterior. Eso, y no una corrida suelta, es la comparación válida entre builds.
-Ninguna cifra se copia a este archivo.
-
 ## Deuda declarada, no escondida
 
 Ausencias conocidas, no descubrimientos pendientes:
@@ -38,33 +30,29 @@ Ausencias conocidas, no descubrimientos pendientes:
   tiempos. `TeamSide` ya existe en el dominio, sin usar, esperándolo.
 - **Sin tiempo añadido** (Ley 7).
 - **Kick-off es reanudación nominal**, no regla con posiciones y balón en juego.
-- **El fuera de juego no se pita nunca**: un jugador anotado no puede disputar
-  el balón (`select_ball_challenger` lo salta), así que la regla actúa como
-  campo de fuerza y el silbato de `referee_offside_system` no suena.
-- `Ball.predictions` es verdad compartida, no creencia individual: cuando llegue
-  MVP 4 deja de ser válido que todos lean el futuro real. `PlayerReading` es
-  omnisciente por la misma razón.
+- **El fuera de juego no se pita nunca**: un anotado no puede disputar el balón
+  (`select_ball_challenger` lo salta), así que la regla es un campo de fuerza y
+  el silbato de `referee_offside_system` no suena.
+- `Ball.predictions` y `PlayerReading` son omniscientes: hoy todos leen el
+  futuro real, y en MVP 4 deja de ser válido.
 - `SimulationSet` refleja el orden del original salvo `MatchLifecycle`; el
   pipeline semántico de `ARCHITECTURE.md` sigue pendiente.
 - Árbitro parcial: sin faltas, ventaja ni disciplina.
 - `PLAYER_HEIGHT` es una constante que se copia a `Attributes`, no un dato por
   jugador.
-- De los overlays del norte faltan los que no tienen dato: campo visual,
-  observaciones y edad de memoria (MVP 4), y responsabilidades tácticas más allá
-  de la designación (MVP 5).
+- Faltan los overlays sin dato: campo visual, observaciones y memoria (MVP 4), y
+  responsabilidades tácticas más allá de la designación (MVP 5).
 - Los canales `Formation` y `Performance` existen en el hub y casi no tienen
   productores: `Formation` sólo emite carreras de ataque, `Performance` nada.
-- **El ritmo de gol es irreal**, en un orden de magnitud. Ningún resultado de
-  este simulador puede presentarse como predicción hasta calibrarlo, que es un
-  hito propio después de MVP 4.
+- **El ritmo de gol es irreal**, en un orden de magnitud: nada de aquí puede
+  presentarse como predicción hasta calibrar, que es un hito tras MVP 4.
 - **El local gana siempre**: `two_identical_teams_finish_level` está roja a
   propósito, con la causa localizada arriba.
 - **Allocations por tick** (ley 14): 18 `collect()`/`vec!` entre
   `player_decisions`, `team_tactics` y `player_movement`. Importa para MVP 6,
   que correrá cientos de variantes de la misma situación.
-- **Lo visual funciona pero es pobre** (`VERIFICACION_VISUAL_2026-07-30.md`): la
-  cámara ve una fracción del campo, el HUD no tiene fondo, no hay meshes de
-  portería y el marcador de orientación no se distingue.
+- **Lo visual funciona pero es pobre**: la cámara ve una fracción del campo, el
+  HUD no tiene fondo, no hay meshes de portería.
 
 ## Reparto previsto de atributos de jugador
 

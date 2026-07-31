@@ -2,7 +2,7 @@
 //!
 //! Una corrida es una trayectoria, no una métrica: la simulación es
 //! determinista pero caótica, y una perturbación de un milisegundo produce otro
-//! partido sin que el modelo haya cambiado (`docs/REVISION_2026-07-30-reloj.md`).
+//! partido sin que el modelo haya cambiado (`docs/VALIDATION.md`).
 //! Lo que sí se puede comparar es la envolvente sobre varias semillas.
 //!
 //! Y entre envolventes, la distribución antes que la media: la referencia real

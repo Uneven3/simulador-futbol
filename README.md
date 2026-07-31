@@ -26,7 +26,7 @@ tipado y presentación con primitivas.
 
 Lo que todavía no está: **el ritmo de gol es irreal**. El modelo marca unos
 51 goles cada 90 minutos contra ~2,7 de un partido real
-([`docs/REVISION_2026-07-30-reloj.md`](docs/REVISION_2026-07-30-reloj.md)).
+(ver `docs/VALIDATION.md`).
 Hasta calibrarlo, ningún resultado de este simulador puede presentarse como
 predicción de nada. Ese es exactamente el trabajo activo, descrito en
 [`docs/AHORA.md`](docs/AHORA.md), junto con el resto de deuda declarada
@@ -119,34 +119,25 @@ Las leyes y las dependencias permitidas están en
 
 ## Documentación
 
-Toda en `docs/`, y se lee en este orden:
+En `docs/`: [`NORTE.md`](docs/NORTE.md) (producto y MVP),
+[`ARCHITECTURE.md`](docs/ARCHITECTURE.md) (las leyes),
+[`AHORA.md`](docs/AHORA.md) (el trabajo activo),
+[`DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md),
+[`LAWS_OF_FOOTBALL.md`](docs/LAWS_OF_FOOTBALL.md),
+[`VALIDATION.md`](docs/VALIDATION.md) y
+[`DIAGNOSTICS.md`](docs/DIAGNOSTICS.md). La historia está en `git log` y las
+cifras en `measurements/`, no en prosa. `docs/references/gameplay_football/`
+guarda la documentación histórica del port; [`AGENTS.md`](AGENTS.md) es lo
+mismo condensado para agentes de código.
 
-1. [`NORTE.md`](docs/NORTE.md) — producto y MVP incrementales.
-2. [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — leyes y dependencias permitidas.
-3. [`AHORA.md`](docs/AHORA.md) — el único trabajo activo.
-4. [`DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) — vocabulario canónico.
-5. [`LAWS_OF_FOOTBALL.md`](docs/LAWS_OF_FOOTBALL.md) — contrato IFAB y cobertura.
-6. [`VALIDATION.md`](docs/VALIDATION.md) — cómo se demuestra fidelidad.
-7. [`DIAGNOSTICS.md`](docs/DIAGNOSTICS.md) — contrato de logs y observación.
-
-Las revisiones se fechan y no se editan. `docs/references/gameplay_football/`
-guarda la documentación histórica del port.
-
-[`AGENTS.md`](AGENTS.md) es la misma información condensada para agentes de
-código.
-
-## Linaje
+## Linaje y licencia
 
 El proyecto empezó como port de [Gameplay Football](https://github.com/BazkieBumpercar/GameplayFootball)
-(C++), y ese código sigue siendo referencia técnica —igual que Google Research
-Football—, pero no la especificación del producto. Ninguna decisión de diseño se
-justifica hoy diciendo que el original lo hacía así.
+(C++), que sigue siendo referencia técnica —igual que Google Research Football—
+pero no la especificación: ninguna decisión se justifica hoy diciendo que el
+original lo hacía así.
 
-## Licencia
-
-GNU General Public License v3.0 o posterior. El texto completo está en
-[`LICENSE`](LICENSE).
-
-Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA
-GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o APTITUD PARA UN
-PROPÓSITO PARTICULAR.
+GNU General Public License v3.0 o posterior, texto completo en
+[`LICENSE`](LICENSE). Se distribuye con la esperanza de que sea útil pero SIN
+NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o
+APTITUD PARA UN PROPÓSITO PARTICULAR.

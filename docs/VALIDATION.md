@@ -20,9 +20,12 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 ## Cómo se compara una corrida con otra
 
 Una corrida es una trayectoria, no una métrica. La simulación es determinista
-pero caótica: una perturbación de un milisegundo produce otro partido sin que
-el modelo haya cambiado. Medido: al arreglar un redondeo del reloj, el marcador
-pasó de 1-0 a 3-3 con la misma semilla (`REVISION_2026-07-30-reloj.md`).
+pero caótica: una perturbación de un milisegundo produce otro partido sin que el
+modelo haya cambiado. Medido: el reloj truncaba a `u64` de milisegundos y perdía
+1 ms en el 1 % de los ticks, y todos los enfriamientos del juego se comparaban
+contra ese contador. Al pasarlo a `Duration` el mismo escenario con la misma
+semilla pasó de 1-0 a 3-3, y el ritmo de gol se dobló. El modelo estaba apoyado
+en ese ruido y ninguna prueba lo notó.
 
 Por eso **nunca se compara una corrida**, se compara la envolvente sobre varias
 semillas, y a ser posible una distribución y no una media. `seeded_envelope`
