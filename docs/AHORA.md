@@ -10,9 +10,15 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 ## Empezar aquí
 
-1. **Faltas, ventaja y disciplina**, como sistema propio en
-   `BallTouchSet::Contest`, que ya existe para esto.
-2. **El rechace se remata en el sitio.** El portero para casi la mitad de los
+1. **La ventaja** (Ley 5), que es lo que le falta a la falta: hoy el árbitro
+   pita todo lo que le llega y salen 115 faltas por 90 minutos contra ~22
+   reales. Con el balón quedando en el equipo agredido, la mayoría no debería
+   detener el juego.
+2. **Disciplina**: amonestación y expulsión sobre el hecho que ya se publica.
+3. **Distinguir disputar de entrar.** Hoy cualquier contacto del designado que
+   no gane el balón es falta, y llegar a la vez que el rival no es entrar. Pide
+   velocidad de aproximación, que es del motor de MVP 3.
+4. **El rechace se remata en el sitio.** El portero para casi la mitad de los
    tiros, y los tiros pasaron de 34 a 54 por 90: lo rechazado vuelve al área y
    se dispara otra vez sin que nadie despeje.
 

@@ -22,7 +22,8 @@ use crate::player_movement::dribble_direction;
 use football_domain::tuning::ContestTuning;
 use football_domain::{
     Attributes, Ball, BallTouched, MatchState, MatchTuning, PitchConfig, Player, PlayerId,
-    PlayerMatchState, PlayerRegistry, Position, PossessionDesignation, SetPiece, TeamId, Velocity,
+    PlayerMatchState, PlayerRegistry, Position, PossessionDesignation, PotentialFoul, SetPiece,
+    TeamId, Velocity,
 };
 
 /// Lo que los sistemas del balón necesitan de un cuerpo, más lo único que le
@@ -49,6 +50,7 @@ pub struct Touching<'w, 's> {
     pub registry: Res<'w, PlayerRegistry>,
     pub telemetry: ResMut<'w, MatchTelemetry>,
     pub touched: MessageWriter<'w, BallTouched>,
+    pub fouls: MessageWriter<'w, PotentialFoul>,
 }
 
 /// La configuración bajo la que se juega este partido.
@@ -180,6 +182,38 @@ pub fn select_ball_challenger(
     contest.distance = closest_distance.max(0.0);
 }
 
+/// En qué acaba una entrada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tackle {
+    /// Llegó antes al balón: se lo lleva.
+    WonTheBall,
+    /// Llegó al hombre: falta.
+    Foul,
+    /// Ni una cosa ni la otra.
+    Missed,
+}
+
+/// Qué sale de ir a por un balón que lleva otro.
+///
+/// El orden importa y es el del fútbol: primero se mira si llegó al balón,
+/// porque quien lo gana no comete falta por mucho que hubiera contacto. Solo
+/// cuando no lo gana empieza a contar que estuviera encima del hombre.
+pub fn judge_tackle(
+    challenger_to_ball: f32,
+    carrier_to_ball: f32,
+    bodies_apart: f32,
+    tuning: &ContestTuning,
+) -> Tackle {
+    let reached_the_ball = challenger_to_ball < tuning.tackle_contact_distance;
+    if reached_the_ball && challenger_to_ball < carrier_to_ball * tuning.duel_advantage {
+        return Tackle::WonTheBall;
+    }
+    if reached_the_ball && bodies_apart < tuning.foul_contact_distance {
+        return Tackle::Foul;
+    }
+    Tackle::Missed
+}
+
 /// Robarle el balón a quien lo lleva.
 ///
 /// Tres condiciones, y las tres existen porque aquí no hay cuerpo que proteja
@@ -223,14 +257,35 @@ pub fn resolve_tackle(
     let held_for = now.saturating_sub(match_state.possession_since);
 
     let is_designated_tackler = designation.designated[challenger.team] == Some(challenger);
-    let wins_duel = contest.distance < carrier_distance * tuning.duel_advantage;
+    if !is_designated_tackler {
+        return;
+    }
+
+    let bodies_apart = carrier_position.on_pitch().distance(
+        touching
+            .registry
+            .body(challenger)
+            .and_then(|body| touching.players.get(body).ok())
+            .map_or(Vec2::splat(f32::MAX), |(_, position, ..)| {
+                position.on_pitch()
+            }),
+    );
+    match judge_tackle(contest.distance, carrier_distance, bodies_apart, tuning) {
+        Tackle::Missed => return,
+        Tackle::Foul => {
+            touching.fouls.write(PotentialFoul {
+                by: challenger,
+                on: current,
+                at: ball_position.0,
+            });
+            return;
+        }
+        Tackle::WonTheBall => {}
+    }
+
     let ball_is_stealable = carrier_distance > tuning.shielding_release_distance
         || held_for > tuning.shielding_release_time;
-    if !(is_designated_tackler
-        && contest.distance < tuning.tackle_contact_distance
-        && wins_duel
-        && ball_is_stealable)
-    {
+    if !ball_is_stealable {
         return;
     }
 
@@ -456,6 +511,7 @@ pub struct BallContestPlugin;
 impl Plugin for BallContestPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BallContest>()
+            .add_message::<PotentialFoul>()
             .configure_sets(
                 FixedUpdate,
                 (BallTouchSet::Contest, BallTouchSet::Release)
@@ -475,5 +531,52 @@ impl Plugin for BallContestPlugin {
                     .run_if(not(play_is_stopped))
                     .in_set(BallTouchSet::Contest),
             );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Quien llega al balón no comete falta, por mucho que se lleve al hombre
+    /// por delante. Es el orden del fútbol y el de la función.
+    #[test]
+    fn winning_the_ball_is_never_a_foul() {
+        let tuning = ContestTuning::default();
+        let touching_bodies = tuning.foul_contact_distance * 0.5;
+
+        assert_eq!(
+            judge_tackle(0.1, 1.0, touching_bodies, &tuning),
+            Tackle::WonTheBall
+        );
+    }
+
+    /// Ir a por el balón, no llegar y llevarse al hombre sí lo es.
+    #[test]
+    fn missing_the_ball_and_hitting_the_man_is_a_foul() {
+        let tuning = ContestTuning::default();
+        let inside = tuning.tackle_contact_distance * 0.9;
+        let touching_bodies = tuning.foul_contact_distance * 0.5;
+
+        assert_eq!(
+            judge_tackle(inside, inside, touching_bodies, &tuning),
+            Tackle::Foul,
+            "entró tarde y encima, y no se pitó"
+        );
+    }
+
+    /// Y no llegar a nada no es nada: sin contacto no hay falta.
+    #[test]
+    fn a_tackle_that_touches_nothing_is_not_a_foul() {
+        let tuning = ContestTuning::default();
+        let inside = tuning.tackle_contact_distance * 0.9;
+        let apart = tuning.foul_contact_distance * 2.0;
+
+        assert_eq!(judge_tackle(inside, inside, apart, &tuning), Tackle::Missed);
+        assert_eq!(
+            judge_tackle(5.0, 0.2, 0.1, &tuning),
+            Tackle::Missed,
+            "pitó falta a quien ni fue a por el balón"
+        );
     }
 }

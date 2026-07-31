@@ -72,6 +72,10 @@ pub struct ContestTuning {
     pub max_touch_height: f32,
     /// Contact distance for a deliberate tackle (m).
     pub tackle_contact_distance: f32,
+    /// Cuerpos más cerca que esto (m) durante una entrada fallida es contacto
+    /// con el hombre, y eso es falta. Los cuerpos se separan a 0,7 m, así que
+    /// por debajo de eso están literalmente encima.
+    pub foul_contact_distance: f32,
     /// The tackler must be this much closer to the ball than the carrier
     /// (fraction of the carrier's distance) to win the duel.
     pub duel_advantage: f32,
@@ -124,6 +128,7 @@ impl Default for ContestTuning {
             receiver_tie_break: 0.45,
             max_touch_height: 1.5,
             tackle_contact_distance: 0.50,
+            foul_contact_distance: 0.75,
             duel_advantage: 0.8,
             shielding_release_distance: 1.0,
             shielding_release_time: Duration::from_millis(2000),

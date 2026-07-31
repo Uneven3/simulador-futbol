@@ -8,7 +8,8 @@ use bevy_time::prelude::*;
 use football_domain::math::normalized_or_2d;
 use football_domain::{
     BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, Player,
-    PitchSides, PlayerId, PlayerMatchState, PlayingPosition, Position, SetPiece, TeamId, Velocity,
+    PitchSides, PlayerId, PlayerMatchState, PlayingPosition, Position, PotentialFoul, SetPiece,
+    TeamId, Velocity,
 };
 use std::time::Duration;
 
@@ -20,6 +21,7 @@ impl Plugin for RefereePlugin {
             FixedUpdate,
             (
                 referee_offside_system,
+                referee_foul_system,
                 referee_system,
                 referee_set_piece_system,
             )
@@ -71,6 +73,39 @@ fn check_for_goal(
     }
 
     true
+}
+
+/// El árbitro juzga los contactos: hoy pita todos los que le llegan.
+///
+/// La ventaja (Ley 5) y la disciplina son lo siguiente, y entran aquí sin tocar
+/// nada más: la decisión ya está separada del incidente, que es lo que costaba.
+fn referee_foul_system(
+    mut match_state: ResMut<MatchState>,
+    mut fouls: MessageReader<PotentialFoul>,
+    mut telemetry: ResMut<MatchTelemetry>,
+) {
+    if match_state.set_piece != SetPiece::None {
+        fouls.clear();
+        return;
+    }
+    let Some(foul) = fouls.read().next().copied() else {
+        return;
+    };
+    fouls.clear();
+
+    let awarded_to = foul.on.team;
+    match_state.set_piece = SetPiece::FreeKick;
+    match_state.set_piece_team = Some(awarded_to);
+    match_state.restart_in = Duration::from_secs_f32(3.0);
+    match_state.restart_pos = Vec3::new(foul.at.x, foul.at.y, 0.0);
+    telemetry.record(MatchFact::FoulGiven {
+        by: foul.by,
+        on: foul.on,
+    });
+    telemetry.record(MatchFact::RestartAwarded {
+        set_piece: SetPiece::FreeKick,
+        team: awarded_to,
+    });
 }
 
 fn referee_system(

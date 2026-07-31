@@ -145,6 +145,18 @@ impl BallTouched {
     }
 }
 
+/// Un contacto que puede ser falta, tal y como ocurrió: quién entró, sobre
+/// quién y dónde.
+///
+/// Es un hecho, no una decisión. Que se pite o no es del árbitro, que puede no
+/// haberlo visto y, cuando exista la ventaja, puede verlo y dejar seguir (§3).
+#[derive(Message, Debug, Clone, Copy)]
+pub struct PotentialFoul {
+    pub by: PlayerId,
+    pub on: PlayerId,
+    pub at: Vec3,
+}
+
 /// Players of the last touching team that stood beyond the offside line at the
 /// moment of the touch, with their position then (original: `Referee::offsidePlayers`).
 #[derive(Resource, Debug, Clone, Default)]

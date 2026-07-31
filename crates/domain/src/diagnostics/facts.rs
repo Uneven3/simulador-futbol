@@ -106,6 +106,11 @@ pub enum MatchFact {
         keeper: PlayerId,
         caught: bool,
     },
+    /// The referee whistled a contact.
+    FoulGiven {
+        by: PlayerId,
+        on: PlayerId,
+    },
 }
 
 impl MatchFact {
@@ -122,6 +127,7 @@ impl MatchFact {
             MatchFact::Touched { .. } | MatchFact::ShotSaved { .. } => DiagnosticChannel::Touches,
             MatchFact::Goal { .. }
             | MatchFact::RestartAwarded { .. }
+            | MatchFact::FoulGiven { .. }
             | MatchFact::OffsideGiven { .. } => DiagnosticChannel::RefereeDecisions,
             MatchFact::PhaseEntered(_) => DiagnosticChannel::PhaseTransitions,
             MatchFact::AttackingRun { .. } => DiagnosticChannel::Formation,
@@ -144,6 +150,7 @@ impl std::fmt::Display for MatchFact {
             MatchFact::PossessionLost { player, at } => {
                 write!(f, "{player} lost the ball at ({:.1}, {:.1})", at.x, at.y)
             }
+            MatchFact::FoulGiven { by, on } => write!(f, "{by} fouled {on}"),
             MatchFact::ShotSaved { keeper, caught } => {
                 let how = if caught { "caught it" } else { "pushed it away" };
                 write!(f, "{keeper} saved the shot and {how}")

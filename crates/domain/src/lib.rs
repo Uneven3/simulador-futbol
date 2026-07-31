@@ -17,7 +17,7 @@ pub use ball::{BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, BALL_RADIUS, Ball};
 pub use identity::{ByTeam, PitchSides, PlayerId, PlayerRegistry, TeamId, TeamSide};
 pub use match_state::{
     BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
-    PossessionDesignation, SetPiece,
+    PossessionDesignation, PotentialFoul, SetPiece,
 };
 pub use player::{Attributes, Mentality, Player, PlayerMatchState, PlayingPosition, TacticalRole};
 pub use scenario::{Scenario, ScenarioOutcome};
