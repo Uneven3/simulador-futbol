@@ -3,11 +3,42 @@
 ## Objetivo activo
 
 **MVP 2 — Partido reglamentariamente completo.** MVP 1.75 quedó cerrado el
-2026-07-30 (abajo, con lo que destapó). Lo primero de MVP 2, por orden de lo
-que la medición señaló: el portero que ataja de verdad y las faltas que
-interrumpen. Antes de eso, dos defectos con evidencia esperando en el paso 3:
-el alcance del receptor que no se aplica nunca, y los robos que son el 1 % de
-los cambios de posesión.
+2026-07-30 (abajo, con lo que destapó), y su primer encargo era investigar dos
+defectos medidos antes de añadir reglas. El primero resultó ser un defecto del
+árbitro, no de la disputa.
+
+### 1. El signo del fuera de juego estaba invertido ✅
+
+`referee_offside_system` usaba `att_dir = -def_side`, y la dirección de ataque
+del que toca es `def_side`. Anotaba en fuera de juego a los jugadores que
+estaban **detrás** de la línea. Como un anotado no puede disputar el balón
+(`select_ball_challenger` lo salta), el efecto no era pitar sino congelar: **9,4
+de 11 jugadores anotados por tick**, y de las 4466 veces en que el receptor de
+un pase llegaba a tiro del balón, las 4466 estaba anotado.
+
+| Métrica | Antes | Después | Real |
+|---|---|---|---|
+| goles/90 min | 51,3 (27-81) | 23,4 (9-36) | ~2,7 |
+| tiros/90 min | 68 | 34 | ~25 |
+| pases completados | 11 % | 55 % | ~80 % |
+| cambios de posesión/min | 19,9 | 14,1 | — |
+
+Sin girar un parámetro. El 11 % de pases nunca fue "falta percepción" (MVP 4),
+como decía la tabla de atribución de MVP 1.75: era un signo. El juicio salió a
+`judge_offside_positions`, pura, con dos tests que afirman el signo.
+
+### 2. La simetría, roja a propósito ⏳ ← siguiente
+
+`two_identical_teams_finish_level` falla: el sesgo local pasó de 0,62 a 1,00
+(7-0). Estaba tapado, no ausente. Causa localizada:
+`referee_set_piece_system` recoloca a los dos equipos en su formación base —un
+espejo exacto— y suelta el balón sin dárselo a nadie; los dos delanteros salen
+a la vez y el empate lo rompen tres desempates que van todos para el local (el
+`<=` de `designated_player_overall`, el de `team_tactics`, y el `<` estricto de
+`select_ball_challenger`, que se queda con el primero que itera).
+
+Se arregla dando el balón a quien saca, que es la Ley y ya estaba en la deuda
+declarada. Después: portero que ataja, faltas, y cambio de mitades.
 
 ## Lo que fue MVP 1.75
 
@@ -295,9 +326,11 @@ Ausencias conocidas, no descubrimientos pendientes:
   de la designación (MVP 5).
 - Los canales `Formation` y `Performance` existen en el hub y casi no tienen
   productores: `Formation` sólo emite carreras de ataque, `Performance` nada.
-- **El ritmo de gol es irreal**: 51/90 min contra ~2,7 reales
-  (`REVISION_2026-07-30-reloj.md`). Ningún resultado de este simulador puede
-  presentarse como predicción hasta calibrarlo.
+- **El ritmo de gol es irreal**: 23/90 min contra ~2,7 reales (eran 51 antes de
+  arreglar el fuera de juego, `REVISION_2026-07-30-reloj.md`). Ningún resultado
+  de este simulador puede presentarse como predicción hasta calibrarlo.
+- **El local gana siempre**: la simetría es un test rojo a propósito, con la
+  causa localizada en la reanudación (arriba).
 - **Lo visual ya está verificado** (`VERIFICACION_VISUAL_2026-07-30.md`): HUD,
   hub, overlays y campo funcionan. Lo que falta es de calidad, no de existencia:
   la cámara ve una fracción del campo (lo más molesto: impide juzgar la forma

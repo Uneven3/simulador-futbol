@@ -38,9 +38,10 @@ Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
 - `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`:
   diez semillas de diez minutos, reportadas como tasas. **Es la comparación
   válida entre dos builds**; una sola corrida es una trayectoria, no una
-  métrica (`docs/REVISION_2026-07-30-reloj.md`). Base actual: 51,3 goles/90 min
-  (rango 27-81), 68 tiros/90 min con el 100 % a puerta, 1732 pases/90 min con
-  el 11 % completados, 19,9 cambios de posesión/min (rango 18,2-22,1).
+  métrica (`docs/REVISION_2026-07-30-reloj.md`). Base actual (2026-07-31, tras
+  arreglar el signo del fuera de juego): 23,4 goles/90 min (rango 9-36), 34
+  tiros/90 min con el 100 % a puerta, 2269 pases/90 min con el 55 %
+  completados, 14,1 cambios de posesión/min (rango 13,0-15,3).
 - `cargo test --release -p gameplayfootball_simulation goal_distribution -- --ignored --nocapture`:
   veinte partidos completos con el histograma de goles contra la Poisson real.
   Cuesta unos dos minutos por partido: es la medición que decide si MVP 1.75

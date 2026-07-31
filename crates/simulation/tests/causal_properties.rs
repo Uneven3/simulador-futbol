@@ -34,6 +34,21 @@ fn situation(tuning: MatchTuning) -> EnvelopeSpec {
 /// un sesgo de lado —una asimetría en la formación, en el saque, en el signo de
 /// un `team_side`— aparecería aquí y en ninguna otra medida, porque todas las
 /// demás suman los dos equipos.
+///
+/// **Rojo desde el 2026-07-31, a propósito.** Al arreglar el signo del fuera de
+/// juego el sesgo pasó de 0,62 a 1,00 (7-0 sobre seis partidos): estaba tapado
+/// por el defecto anterior, no ausente. La causa está localizada y es la
+/// reanudación. `referee_set_piece_system` coloca a los dos equipos en su
+/// formación base y suelta el balón sin dárselo a nadie, y esa formación es un
+/// espejo exacto — los dos delanteros centro salen a la misma distancia del
+/// balón, al mismo tiempo. El empate lo rompen tres desempates que van todos
+/// para el local: el `<=` de `designated_player_overall`, el mismo `<=` de
+/// `team_tactics` y el `<` estricto de `select_ball_challenger`, que en un
+/// empate exacto se queda con el primero que itera. Y como la reanudación pasa
+/// cada pocos minutos, el empate no es un caso raro sino la regla.
+///
+/// Se arregla dando el balón a quien saca, que además es la Ley: hoy la
+/// reanudación es nominal y nadie la ejecuta.
 #[test]
 #[ignore]
 fn two_identical_teams_finish_level() {
@@ -80,26 +95,24 @@ fn a_higher_shooting_gate_produces_fewer_shots() {
     );
 }
 
-/// El alcance del receptor está muerto: triplicarlo no cambia ni un bit.
+/// Un receptor que alcanza más lejos completa más pases.
 ///
-/// Descubierto el 2026-07-30 al intentar afirmar lo contrario ("más alcance,
-/// más pases completados"). `receiver_trap_reach` existe para sustituir las
+/// Este test nació al revés. El 2026-07-30 se escribió para afirmar esto y
+/// falló: triplicar `receiver_trap_reach` daba partidos **idénticos bit a bit**,
+/// así que quedó como caracterización de una perilla muerta. La causa apareció
+/// el 2026-07-31 y no estaba aquí: el árbitro tenía invertido el signo del fuera
+/// de juego y anotaba a los jugadores que estaban **detrás** de la línea —9,4 de
+/// 11 por tick—, y un anotado no puede disputar el balón. El receptor de casi
+/// todos los pases estaba congelado, y ningún alcance sirve para eso.
+///
+/// Arreglado el signo, la perilla gobierna lo que dice gobernar: de 1,1 m a
+/// 3,0 m los pases completados suben del 53 % al 69 %. Es el sustituto de las
 /// animaciones de control del original —el receptor estira la pierna— y de él
-/// depende que un pase se complete contra un marcador que está uno o dos metros
-/// por detrás. Pero pasar de 1,1 m a 3,0 m produce partidos **idénticos**, así
-/// que la rama que lo lee no se toma nunca en el momento que importa.
-///
-/// La sospecha: `update_possession_designation` borra `pass_target` cuando el
-/// balón baja de 0,3 m/s, y los pases resueltos llegan agonizando al receptor —
-/// justo antes de la disputa, que corre después. El propio código ya avisaba de
-/// esta trampa con un umbral anterior. Sin confirmar.
-///
-/// Se afirma como está para que el día que se arregle este test falle y haya
-/// que venir aquí. Es candidato número uno a explicar el 11 % de pases
-/// completados, muy por encima de "falta percepción parcial".
+/// depende que un pase se complete contra el marcador que llega un metro por
+/// detrás.
 #[test]
 #[ignore]
-fn the_receiver_reach_is_dead_code_in_practice() {
+fn a_longer_receiver_reach_completes_more_passes() {
     let baseline = EnvelopeReport::run(&situation(MatchTuning::default()));
 
     let mut generous = MatchTuning::default();
@@ -107,30 +120,31 @@ fn the_receiver_reach_is_dead_code_in_practice() {
     let variant = EnvelopeReport::run(&situation(generous));
 
     let completion = |r: &EnvelopeReport| r.mean_of(|m| m.pass_completion());
-    let goals = |r: &EnvelopeReport| r.mean_of(|m| m.total_goals() as f32);
     println!(
-        "alcance 1,1 → 3,0 m: pases {:.4}% → {:.4}%, goles {:.2} → {:.2}",
+        "alcance 1,1 → 3,0 m: pases completados {:.1}% → {:.1}%",
         completion(&baseline) * 100.0,
         completion(&variant) * 100.0,
-        goals(&baseline),
-        goals(&variant),
     );
 
-    assert_eq!(
-        completion(&baseline),
-        completion(&variant),
-        "el alcance del receptor ha empezado a hacer algo: si es a propósito, \
-         este test debe convertirse en la propiedad causal que intentaba ser"
+    assert!(
+        completion(&variant) > completion(&baseline),
+        "alargar el alcance del receptor no completó más pases: {:.1}% vs {:.1}%",
+        completion(&variant) * 100.0,
+        completion(&baseline) * 100.0
     );
 }
 
 /// Hoy el balón no se roba: se recoge del suelo.
 ///
-/// Medido el 2026-07-30: **22 robos contra 2015 recogidas** cada 90 minutos. El
+/// Medido el 2026-07-31: **62 robos contra 2667 recogidas** cada 90 minutos. El
 /// mecanismo de entrada —con sus enfriamientos, su duelo y su protección del
-/// cuerpo— decide el 1 % de los cambios de posesión; el otro 99 % es balón
+/// cuerpo— decide el 2 % de los cambios de posesión; el otro 98 % es balón
 /// suelto que alguien alcanza primero. Por eso `steal_cooldown` no mueve
-/// ninguna métrica agregada: gobierna una centésima parte del partido.
+/// ninguna métrica agregada: gobierna una cincuentava parte del partido.
+///
+/// El arreglo del fuera de juego triplicó los robos (del 1,4 % al 2,5 %) sin
+/// sacarlos de lo marginal: cuando el rival deja de estar congelado, hay contra
+/// quién entrar.
 ///
 /// Esto se afirma como está, no como debería ser: es la forma de que MVP 3
 /// (motor y contacto) y MVP 4 (percepción) noten el día que lo cambien. Un

@@ -233,53 +233,93 @@ fn referee_offside_system(
         records.players.clear();
         records.team = Some(touch.team());
 
-        // AI_GetOffsideLine: one-but-deepest defender, or the ball, whichever is
-        // deeper; never inside the attackers' own half.
-        let defending_team = touch.team().opponent();
-        let def_side = crate::team_tactics::team_side(defending_team);
+        let bodies: Vec<(PlayerId, Vec3)> = player_query
+            .iter()
+            .map(|(_, position, player)| (player.id, position.0))
+            .collect();
+        let judged = judge_offside_positions(&bodies, touch.player, ball_query.0.x, &pitch_config);
 
-        let mut deepest: Option<(PlayerId, f32)> = None;
-        for (_, position, player) in player_query.iter() {
-            if player.id.team != defending_team {
-                continue;
-            }
-            let depth = position.0.x * def_side;
-            if deepest.is_none() || depth > deepest.unwrap().1 {
-                deepest = Some((player.id, depth));
-            }
-        }
-        let mut second_deepest_x = 0.0f32;
-        for (_, position, player) in player_query.iter() {
-            if player.id.team != defending_team || Some(player.id) == deepest.map(|d| d.0) {
-                continue;
-            }
-            if position.0.x * def_side > second_deepest_x * def_side {
-                second_deepest_x = position.0.x;
-            }
-        }
+        records.judged_line_x = Some(judged.line_x);
+        records.judged_against_team = Some(touch.team().opponent());
+        records.players = judged.beyond_the_line;
+    }
+}
 
-        let mut offside_line = second_deepest_x;
-        let ball_x = ball_query.0.x;
-        if ball_x * def_side > offside_line * def_side {
-            offside_line = ball_x;
-        }
-        if offside_line * def_side < 0.0 {
-            offside_line = 0.01 * -def_side;
-        }
-        offside_line = offside_line.clamp(-pitch_config.half_width, pitch_config.half_width);
-        records.judged_line_x = Some(offside_line);
-        records.judged_against_team = Some(defending_team);
+/// Un jugador cuenta como adelantado sólo si lo está claramente: veinte
+/// centímetros, que es el margen con el que el original evita anotar a quien
+/// está a la altura de la línea.
+const OFFSIDE_TOLERANCE: f32 = 0.20;
 
-        let att_dir = -def_side;
-        for (_, position, player) in player_query.iter() {
-            if player.id.team != touch.team() || player.id == touch.player {
-                continue;
-            }
-            let pos = position.0;
-            if pos.x * att_dir > offside_line * att_dir + 0.20 {
-                records.players.push((player.id, pos));
-            }
+/// Lo que el árbitro juzgó en un toque: contra qué línea, y quién estaba por
+/// delante de ella.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OffsideJudgement {
+    pub line_x: f32,
+    pub beyond_the_line: Vec<(PlayerId, Vec3)>,
+}
+
+/// La línea de fuera de juego en el momento del toque, y los compañeros del que
+/// tocó que están por delante de ella (`AI_GetOffsideLine`).
+///
+/// La línea es el penúltimo defensor o el balón, el que esté más cerca de la
+/// portería defendida, y nunca dentro del campo del que ataca.
+///
+/// Es puro para que el **signo** se pueda afirmar con tres jugadores en un test
+/// (§21). Lo tuvo invertido desde el port: anotaba a los que estaban por detrás
+/// de la línea, es decir a casi toda la plantilla —9,4 de 11 jugadores por
+/// tick— y como un anotado no puede disputar el balón, el efecto no era pitar
+/// fueras de juego sino congelar a un equipo entero alrededor del balón.
+pub fn judge_offside_positions(
+    bodies: &[(PlayerId, Vec3)],
+    touched_by: PlayerId,
+    ball_x: f32,
+    pitch: &PitchConfig,
+) -> OffsideJudgement {
+    let attacking_team = touched_by.team;
+    let defending_team = attacking_team.opponent();
+    // hacia dónde defiende el rival, y por tanto hacia dónde se ataca
+    let def_side = crate::team_tactics::team_side(defending_team);
+    let attacking_towards_x = -crate::team_tactics::team_side(attacking_team);
+
+    let defenders = || bodies.iter().filter(|(id, _)| id.team == defending_team);
+    let mut deepest: Option<(PlayerId, f32)> = None;
+    for (id, pos) in defenders() {
+        let depth = pos.x * def_side;
+        if deepest.is_none_or(|(_, best)| depth > best) {
+            deepest = Some((*id, depth));
         }
+    }
+    let deepest = deepest.map(|(id, _)| id);
+    let mut line_x = 0.0f32;
+    for (id, pos) in defenders() {
+        if Some(*id) == deepest {
+            continue;
+        }
+        if pos.x * def_side > line_x * def_side {
+            line_x = pos.x;
+        }
+    }
+
+    if ball_x * def_side > line_x * def_side {
+        line_x = ball_x;
+    }
+    if line_x * def_side < 0.0 {
+        line_x = 0.01 * -def_side;
+    }
+    let line_x = line_x.clamp(-pitch.half_width, pitch.half_width);
+
+    let beyond_the_line = bodies
+        .iter()
+        .filter(|(id, _)| id.team == attacking_team && *id != touched_by)
+        .filter(|(_, pos)| {
+            pos.x * attacking_towards_x > line_x * attacking_towards_x + OFFSIDE_TOLERANCE
+        })
+        .copied()
+        .collect();
+
+    OffsideJudgement {
+        line_x,
+        beyond_the_line,
     }
 }
 
@@ -287,6 +327,10 @@ fn referee_offside_system(
 /// Ticks down the set piece timer. When it expires, places the ball at the
 /// restart position recorded when play was stopped, teleports players to their
 /// base positions and resets all state (original: `ResetSituation`).
+///
+/// Lo que **no** hace, y es la deuda que abrió el sesgo local de MVP 2: nadie
+/// ejecuta la reanudación. La formación base es un espejo exacto, así que los
+/// dos equipos salen a la vez y el balón se lo lleva quien gane un desempate.
 fn referee_set_piece_system(
     mut match_state: ResMut<MatchState>,
     mut records: ResMut<OffsideRecords>,
@@ -412,5 +456,71 @@ mod tests {
         let prev = Vec3::new(54.0, 0.0, 3.4);
         let current = Vec3::new(55.5, 0.0, 3.3);
         assert!(!check_for_goal(1.0, prev, current, far_predict, &pitch));
+    }
+
+    fn body(team: TeamId, shirt: u8, x: f32) -> (PlayerId, Vec3) {
+        (PlayerId { team, shirt }, Vec3::new(x, 0.0, 0.0))
+    }
+
+    /// El fuera de juego se anota **por delante** de la línea, no por detrás.
+    ///
+    /// Es el test que faltaba: el signo estuvo invertido desde el port y anotaba
+    /// a los 9,4 jugadores que estaban en su sitio en vez de al que se había
+    /// adelantado. Local ataca hacia +x.
+    #[test]
+    fn only_the_player_ahead_of_the_line_is_recorded() {
+        let pitch = PitchConfig::default();
+        let passer = PlayerId {
+            team: TeamId::Home,
+            shirt: 10,
+        };
+        let bodies = [
+            body(TeamId::Home, 10, 0.0), // el que toca, en el centro
+            body(TeamId::Home, 9, 30.0), // adelantado: pasado el penúltimo
+            body(TeamId::Home, 8, 10.0), // en su sitio, detrás de la línea
+            body(TeamId::Away, 1, 52.0), // portero: el más profundo
+            body(TeamId::Away, 4, 25.0), // penúltimo: pone la línea
+            body(TeamId::Away, 6, 15.0),
+        ];
+
+        let judged = judge_offside_positions(&bodies, passer, 0.0, &pitch);
+
+        assert_eq!(judged.line_x, 25.0);
+        let flagged: Vec<u8> = judged
+            .beyond_the_line
+            .iter()
+            .map(|(id, _)| id.shirt)
+            .collect();
+        assert_eq!(flagged, vec![9]);
+    }
+
+    /// La línea la puede poner el balón, y el visitante ataca hacia -x: el mismo
+    /// juicio con los dos signos cambiados tiene que dar lo simétrico.
+    #[test]
+    fn the_ball_can_be_the_line_and_the_sides_are_symmetric() {
+        let pitch = PitchConfig::default();
+        let passer = PlayerId {
+            team: TeamId::Away,
+            shirt: 10,
+        };
+        let bodies = [
+            body(TeamId::Away, 10, 0.0),
+            body(TeamId::Away, 9, -45.0), // adelantado respecto al balón
+            body(TeamId::Away, 8, -10.0),
+            body(TeamId::Home, 1, -52.0),
+            body(TeamId::Home, 4, -20.0), // penúltimo, menos profundo que el balón
+        ];
+
+        // el balón está más cerca de la portería defendida que el penúltimo
+        // defensor: entonces la línea la pone el balón
+        let judged = judge_offside_positions(&bodies, passer, -35.0, &pitch);
+
+        assert_eq!(judged.line_x, -35.0);
+        let flagged: Vec<u8> = judged
+            .beyond_the_line
+            .iter()
+            .map(|(id, _)| id.shirt)
+            .collect();
+        assert_eq!(flagged, vec![9]);
     }
 }
