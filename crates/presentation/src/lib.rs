@@ -11,6 +11,7 @@ pub mod hud;
 pub mod lighting;
 pub mod overlays;
 pub mod pitch_mesh;
+pub mod playback;
 pub mod visuals;
 
 pub use camera::GameCameraPlugin;
@@ -19,4 +20,5 @@ pub use hud::MatchHudPlugin;
 pub use lighting::StadiumLightingPlugin;
 pub use overlays::{DiagnosticOverlaysPlugin, OverlaySettings};
 pub use pitch_mesh::PitchMeshPlugin;
+pub use playback::{MatchPlaybackPlugin, PlaybackSpeed};
 pub use visuals::{PrimitiveVisualsPlugin, VisualOf};
