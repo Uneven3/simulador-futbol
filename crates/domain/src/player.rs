@@ -128,6 +128,14 @@ pub struct Attributes {
     /// suelo y acelerar es empujarlo. Es también el presupuesto con el que se
     /// cambia de dirección, y por eso girar a la carrera describe una curva.
     pub braking: f32,
+    /// A qué velocidad da la vuelta al cuerpo (rad/s). Seis son unos 340 grados
+    /// por segundo: media vuelta en medio segundo, parado.
+    pub turn_rate: f32,
+    /// 0..1: cuánto de su velocidad conserva yendo hacia donde no mira. Cero es
+    /// un jugador de campo, que para correr en serio se gira; uno es un portero,
+    /// que se pasa el partido desplazándose de lado sin perder de vista el
+    /// balón, y a quien eso se le da igual de bien que ir de frente.
+    pub lateral_technique: f32,
     /// Standing height in metres. Used for the body's collision capsule and,
     /// eventually, for aerial duels.
     pub height: f32,
@@ -141,6 +149,8 @@ impl Default for Attributes {
             top_speed: 8.0,
             acceleration: 6.0,
             braking: 9.0,
+            turn_rate: 6.0,
+            lateral_technique: 0.0,
             height: 1.8,
             shot_technique: 0.5,
         }

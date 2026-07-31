@@ -11,8 +11,8 @@ use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 
-use football_domain::tuning::StaminaTuning;
-use football_domain::{Attributes, FatigueState, MatchTuning, MovementIntent, Velocity};
+use football_domain::tuning::{StaminaTuning, TurningTuning};
+use football_domain::{Attributes, Facing, FatigueState, MatchTuning, MovementIntent, Velocity};
 
 /// La velocidad que un cuerpo alcanza este tick.
 ///
@@ -75,8 +75,42 @@ pub fn capacity_of(body: &Attributes, fatigue: FatigueState, tuning: &StaminaTun
     }
 }
 
+/// Hacia dónde mira un cuerpo después de un tick.
+///
+/// Girar es más lento a la carrera que parado, así que la vuelta completa que
+/// se da desde quieto se convierte en un arco largo si viene corriendo.
+pub fn turned(
+    facing: Dir2,
+    towards: Dir2,
+    speed: f32,
+    body: &Attributes,
+    tuning: &TurningTuning,
+    dt: f32,
+) -> Dir2 {
+    let effort = (speed / body.top_speed).clamp(0.0, 1.0);
+    let rate = body.turn_rate * (1.0 - effort * (1.0 - tuning.turn_at_speed));
+    let angle = facing.angle_to(*towards);
+    let step = angle.clamp(-rate * dt, rate * dt);
+    Dir2::new(Vec2::from_angle(step).rotate(*facing)).unwrap_or(facing)
+}
+
+/// Qué fracción de su velocidad alcanza quien corre hacia donde no mira.
+///
+/// De frente, toda; de lado y de espaldas, lo que dice el cuerpo humano. Sin
+/// esto un defensor retrocede tan rápido como corre de cara, que es la razón
+/// por la que nadie desbordaba a nadie.
+pub fn pace_towards(facing: Dir2, heading: Dir2, body: &Attributes, tuning: &TurningTuning) -> f32 {
+    let alignment = facing.dot(*heading);
+    let raw = if alignment >= 0.0 {
+        tuning.sideways_pace + (1.0 - tuning.sideways_pace) * alignment
+    } else {
+        tuning.backpedal_pace + (tuning.sideways_pace - tuning.backpedal_pace) * (1.0 + alignment)
+    };
+    raw + (1.0 - raw) * body.lateral_technique
+}
+
 /// Cada cuerpo persigue la velocidad que le pidieron, dentro de lo que puede —y
-/// lo que puede se le va gastando.
+/// lo que puede se le va gastando, y depende de hacia dónde esté mirando.
 pub fn drive_bodies(
     time: Res<Time>,
     tuning: Res<MatchTuning>,
@@ -84,19 +118,31 @@ pub fn drive_bodies(
         &MovementIntent,
         &Attributes,
         &mut FatigueState,
+        &mut Facing,
         &mut Velocity,
     )>,
 ) {
     let dt = time.delta_secs();
-    let stamina_tuning = &tuning.stamina;
-    for (intent, body, mut fatigue, mut velocity) in bodies.iter_mut() {
+    let (stamina_tuning, turning) = (&tuning.stamina, &tuning.turning);
+    for (intent, body, mut fatigue, mut facing, mut velocity) in bodies.iter_mut() {
         let running = velocity.0.truncate();
-        fatigue.stamina = drained(fatigue.stamina, running.length(), body, stamina_tuning, dt);
+        let speed = running.length();
+        fatigue.stamina = drained(fatigue.stamina, speed, body, stamina_tuning, dt);
 
         let can = capacity_of(body, *fatigue, stamina_tuning);
-        let asked = intent.0.truncate().clamp_length_max(can.top_speed);
-        let reached = reachable_velocity(running, asked, &can, dt);
+        let asked = intent.0.truncate();
+        let reachable_pace = match Dir2::new(asked) {
+            Ok(heading) => can.top_speed * pace_towards(facing.0, heading, body, turning),
+            Err(_) => can.top_speed,
+        };
+        let reached = reachable_velocity(running, asked.clamp_length_max(reachable_pace), &can, dt);
         velocity.0 = Vec3::new(reached.x, reached.y, velocity.0.z);
+
+        // se mira hacia donde se quiere ir, no hacia donde se acabó yendo: un
+        // cuerpo empujado de lado no gira la cabeza por eso
+        if let Ok(towards) = Dir2::new(asked) {
+            facing.0 = turned(facing.0, towards, speed, body, turning, dt);
+        }
     }
 }
 
@@ -191,6 +237,51 @@ mod tests {
         assert!(after_one_tick.x > 5.0, "perdió toda la carrera de golpe");
         assert!(after_one_tick.y > 0.0, "no giró nada");
         assert!(after_one_tick.y < 1.0, "giró demasiado para un tick");
+    }
+
+    /// Correr de espaldas es más lento que de cara, y de lado, intermedio.
+    #[test]
+    fn running_where_you_are_not_looking_is_slower() {
+        let tuning = TurningTuning::default();
+        let looking = Dir2::X;
+
+        let body = Attributes::default();
+        let ahead = pace_towards(looking, Dir2::X, &body, &tuning);
+        let sideways = pace_towards(looking, Dir2::Y, &body, &tuning);
+        let backwards = pace_towards(looking, Dir2::NEG_X, &body, &tuning);
+
+        assert!((ahead - 1.0).abs() < 0.01, "de frente no iba a tope");
+        assert!(backwards < sideways && sideways < ahead);
+        assert!(backwards > 0.4, "de espaldas quedó por debajo de andar");
+    }
+
+    /// Darse la vuelta lleva su tiempo, y parado se hace antes que corriendo.
+    #[test]
+    fn turning_around_takes_longer_at_speed() {
+        let body = Attributes::default();
+        let tuning = TurningTuning::default();
+
+        let turn_from = |speed: f32| {
+            let mut facing = Dir2::X;
+            let mut ticks = 0;
+            while facing.dot(*Dir2::NEG_X) < 0.99 {
+                facing = turned(facing, Dir2::NEG_X, speed, &body, &tuning, TICK);
+                ticks += 1;
+            }
+            ticks as f32 * TICK
+        };
+
+        let standing = turn_from(0.0);
+        let sprinting = turn_from(body.top_speed);
+
+        assert!(
+            (0.3..0.8).contains(&standing),
+            "media vuelta parado tardó {standing} s"
+        );
+        assert!(
+            sprinting > standing * 2.0,
+            "girar a la carrera ({sprinting} s) tenía que costar bastante más que parado"
+        );
     }
 
     /// El trote se sostiene noventa minutos, que es lo que hace un futbolista.

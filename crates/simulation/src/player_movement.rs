@@ -15,7 +15,7 @@ use bevy_time::prelude::*;
 
 use football_domain::math::{normalized_clamp, sign_side};
 use football_domain::{
-    Attributes, Ball, ByTeam, Facing, MatchState, PLAYER_BODY_RADIUS, PitchSides, Player, PlayerId,
+    Attributes, Ball, ByTeam, MatchState, PLAYER_BODY_RADIUS, PitchSides, Player, PlayerId,
     PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation, TeamId,
     Velocity,
 };
@@ -117,22 +117,19 @@ fn update_possession_designation(
 }
 
 /// Kinematic integration of player velocities (players are not physics bodies,
-/// as in the original engine). Also derives the body's facing from the movement
-/// and maintains the ~10 s average velocity used by `GetLazyVelocity` (original
-/// `Player::GetAverageVelocity(10)`).
+/// as in the original engine). Also maintains the ~10 s average velocity used by
+/// `GetLazyVelocity` (original `Player::GetAverageVelocity(10)`).
+///
+/// La orientación ya no sale de aquí: mirar y correr son dos cosas, y las dos
+/// las decide el motor (`locomotion`).
 fn apply_player_velocity(
     time: Res<Time>,
-    mut query: Query<(&mut Position, &mut Facing, &Velocity, &mut PlayerMatchState)>,
+    mut query: Query<(&mut Position, &Velocity, &mut PlayerMatchState)>,
 ) {
     let dt = time.delta_secs();
-    for (mut position, mut facing, velocity, mut player_state) in query.iter_mut() {
+    for (mut position, velocity, mut player_state) in query.iter_mut() {
         position.0.x += velocity.0.x * dt;
         position.0.y += velocity.0.y * dt;
-        // Facing follows the movement instantly: turning is not yet a limited
-        // capability (MVP 3). A standing player keeps his previous facing.
-        if let Ok(direction) = Dir2::new(Vec2::new(velocity.0.x, velocity.0.y)) {
-            facing.0 = direction;
-        }
         let speed = velocity.0.length();
         player_state.recent_speed += (speed - player_state.recent_speed) * (dt / 10.0).min(1.0);
     }

@@ -35,6 +35,7 @@ pub struct MatchTuning {
     pub shooting: ShootingTuning,
     pub striking: StrikingTuning,
     pub stamina: StaminaTuning,
+    pub turning: TurningTuning,
     pub defending: DefendingTuning,
     pub goalkeeping: GoalkeepingTuning,
     pub refereeing: RefereeTuning,
@@ -51,6 +52,7 @@ impl Default for MatchTuning {
             shooting: ShootingTuning::default(),
             striking: StrikingTuning::default(),
             stamina: StaminaTuning::default(),
+            turning: TurningTuning::default(),
             defending: DefendingTuning::default(),
             goalkeeping: GoalkeepingTuning::default(),
             refereeing: RefereeTuning::default(),
@@ -82,6 +84,31 @@ impl Default for StrikingTuning {
             shot_windup: Duration::from_millis(350),
             clearance_windup: Duration::from_millis(250),
             adjust_pace: 2.0,
+        }
+    }
+}
+
+/// Lo que cuesta correr hacia donde no se mira.
+///
+/// Un futbolista de espaldas cubre alrededor del sesenta por ciento de lo que
+/// cubre de frente, y de lado algo más; girar el cuerpo a la carrera es más
+/// lento que girarlo parado, porque las piernas están ocupadas.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TurningTuning {
+    /// Fracción de la velocidad que se alcanza corriendo hacia atrás...
+    pub backpedal_pace: f32,
+    /// ...y de lado, a noventa grados de donde se mira.
+    pub sideways_pace: f32,
+    /// Fracción del giro que queda a velocidad punta: girar corriendo cuesta.
+    pub turn_at_speed: f32,
+}
+
+impl Default for TurningTuning {
+    fn default() -> Self {
+        Self {
+            backpedal_pace: 0.6,
+            sideways_pace: 0.8,
+            turn_at_speed: 0.4,
         }
     }
 }

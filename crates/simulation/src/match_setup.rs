@@ -147,6 +147,9 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
                 Player::new(id, *position, normalized_formation_position(id, *position)),
                 Attributes {
                     height: PLAYER_HEIGHT,
+                    // el portero se mueve de lado de cara al balón, y esa es su
+                    // técnica: no paga lo que paga un jugador de campo
+                    lateral_technique: f32::from(u8::from(position.is_goalkeeper())),
                     ..Default::default()
                 },
                 Mentality::default(),
