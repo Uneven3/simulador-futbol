@@ -238,6 +238,10 @@ mod tests {
     use football_domain::BALL_RADIUS;
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "geometría exacta: la mitad del campo y una recta a velocidad constante"
+    )]
     fn a_velocity_arrow_leads_the_body_by_half_a_second() {
         let position = Position(Vec3::new(10.0, -5.0, 0.0));
         let velocity = Velocity(Vec3::new(8.0, 0.0, 0.0));
@@ -279,6 +283,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "geometría exacta: la mitad del campo y una recta a velocidad constante"
+    )]
     fn the_offside_line_spans_the_pitch_at_the_judged_x() {
         let pitch = PitchConfig::default();
         let (start, end) = offside_line_segment(12.5, &pitch);

@@ -151,7 +151,14 @@ mod tests {
             telemetry.close_tick();
         }
         assert_eq!(telemetry.history().count(), 2);
-        assert_eq!(telemetry.history().next().unwrap().tick, 8);
+        assert_eq!(
+            telemetry
+                .history()
+                .next()
+                .expect("se registró un hecho")
+                .tick,
+            8
+        );
     }
 
     #[test]

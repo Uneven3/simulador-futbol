@@ -223,6 +223,10 @@ mod tests {
     /// Las medias de una corrida salen de sus filas, y los porcentajes se
     /// dividen sobre los totales y no promediando porcentajes.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "el CSV se escribe en el test con estos valores exactos"
+    )]
     fn a_run_is_the_mean_of_its_rows() {
         let dir = std::env::temp_dir().join("gpf-measurements-test");
         let _ = create_dir_all(&dir);
@@ -235,7 +239,7 @@ mod tests {
              A,sha1,5400,0x2,3,1,30,10,300,60,10.0,4,50\n\
              B,sha2,5400,0x1,0,0,10,10,100,80,15.0,1,10\n"
         );
-        std::fs::write(&path, rows).unwrap();
+        std::fs::write(&path, rows).expect("el directorio temporal existe");
 
         let runs = runs(&path);
         assert_eq!(runs.len(), 2);

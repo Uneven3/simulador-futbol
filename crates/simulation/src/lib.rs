@@ -223,7 +223,10 @@ mod tests {
             }
             let ball_pos = {
                 let mut balls = app.world_mut().query_filtered::<&Position, With<Ball>>();
-                balls.single(app.world()).unwrap().0
+                balls
+                    .single(app.world())
+                    .expect("el escenario tiene un balón")
+                    .0
             };
             assert!(
                 ball_pos.is_finite(),
@@ -357,7 +360,9 @@ mod tests {
             }
 
             let mut ball_query = app.world_mut().query::<(&Ball, &Position)>();
-            let (ball, ball_position) = ball_query.single(app.world()).unwrap();
+            let (ball, ball_position) = ball_query
+                .single(app.world())
+                .expect("el escenario tiene un balón");
             if ball.last_touch_team.is_some() {
                 kick_seen = true;
             }

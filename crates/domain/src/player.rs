@@ -178,6 +178,10 @@ mod tests {
     /// a default rather than an identity, but it has to still produce the same
     /// team shape, or every movement envelope silently changes.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "los sesgos son constantes de la tabla, no cálculos"
+    )]
     fn default_roles_reproduce_the_inherited_bias() {
         let expected = [
             (PlayingPosition::Goalkeeper, 0.0),
@@ -204,6 +208,10 @@ mod tests {
     /// The separation is only worth anything if a role can contradict the
     /// position it came from.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "los sesgos son constantes de la tabla, no cálculos"
+    )]
     fn a_role_can_be_given_against_the_position() {
         let mut player = Player::new(
             crate::identity::PlayerId::home(2),

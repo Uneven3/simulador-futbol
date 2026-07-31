@@ -280,7 +280,7 @@ mod tests {
             lines
                 .iter()
                 .find(|line| line.contains(label))
-                .unwrap()
+                .expect("el panel nombra cada interruptor")
                 .clone()
         };
 

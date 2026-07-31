@@ -538,6 +538,10 @@ mod tests {
     /// va a girar, así que conviene que falle aquí y no sesenta mil ticks
     /// después.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "la receta devuelve estas cifras exactas, y el test las repite"
+    )]
     fn a_shot_leaves_the_boot_towards_the_goal_being_attacked() {
         let tuning = MatchTuning::default();
         let mut rng = MatchRng::seeded(7);
@@ -603,6 +607,10 @@ mod tests {
     /// En tráfico el toque se acorta, o el balón rueda fuera del alcance del
     /// portador y se lo queda el rival.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "la receta devuelve estas cifras exactas, y el test las repite"
+    )]
     fn a_knock_on_shortens_in_traffic() {
         let open = solve_knock_on(
             Vec2::ZERO,

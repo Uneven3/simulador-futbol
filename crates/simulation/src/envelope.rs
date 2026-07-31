@@ -416,6 +416,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "dos medias de la misma suma de enteros son el mismo f32"
+    )]
     fn a_distribution_counts_what_a_mean_hides() {
         // dos muestras de media 3: una concentrada, otra en los extremos
         let concentrated = Distribution::of([3, 3, 3, 3].into_iter());
@@ -445,7 +449,7 @@ mod tests {
                 poisson_probability(REAL_GOALS_PER_MATCH, *a)
                     .total_cmp(&poisson_probability(REAL_GOALS_PER_MATCH, *b))
             })
-            .unwrap();
+            .expect("el rango no está vacío");
         assert_eq!(modal, 2);
         assert!((poisson_probability(REAL_GOALS_PER_MATCH, 0) - 0.067).abs() < 0.01);
     }

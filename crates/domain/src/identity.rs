@@ -273,8 +273,8 @@ mod tests {
     #[test]
     fn replacing_a_body_keeps_the_identity_resolvable() {
         let mut registry = PlayerRegistry::default();
-        let first = Entity::from_raw_u32(1).unwrap();
-        let second = Entity::from_raw_u32(2).unwrap();
+        let first = Entity::from_raw_u32(1).expect("1 es un índice válido");
+        let second = Entity::from_raw_u32(2).expect("2 es un índice válido");
 
         registry.insert(PlayerId::home(9), first);
         registry.insert(PlayerId::home(9), second);

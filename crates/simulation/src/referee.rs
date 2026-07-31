@@ -896,6 +896,10 @@ mod tests {
     /// a los 9,4 jugadores que estaban en su sitio en vez de al que se había
     /// adelantado. Local ataca hacia +x.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "la línea es la coordenada del jugador, copiada sin operar"
+    )]
     fn only_the_player_ahead_of_the_line_is_recorded() {
         let pitch = PitchConfig::default();
         let passer = PlayerId {
@@ -925,6 +929,10 @@ mod tests {
     /// La línea la puede poner el balón, y el visitante ataca hacia -x: el mismo
     /// juicio con los dos signos cambiados tiene que dar lo simétrico.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "la línea es la coordenada del jugador, copiada sin operar"
+    )]
     fn the_ball_can_be_the_line_and_the_sides_are_symmetric() {
         let pitch = PitchConfig::default();
         let passer = PlayerId {
