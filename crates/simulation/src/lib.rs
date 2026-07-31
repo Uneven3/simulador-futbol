@@ -2,7 +2,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 pub mod ball_collisions;
+pub mod ball_contest;
 pub mod ball_physics;
+pub mod ball_release;
 pub mod diagnostics;
 pub mod envelope;
 pub mod match_clock;
@@ -13,7 +15,9 @@ pub mod referee;
 pub mod team_tactics;
 
 pub use ball_collisions::BallCollisionPlugin;
+pub use ball_contest::BallContestPlugin;
 pub use ball_physics::BallPhysicsPlugin;
+pub use ball_release::BallReleasePlugin;
 pub use diagnostics::MatchDiagnosticsPlugin;
 pub use match_clock::MatchClockPlugin;
 pub use match_setup::MatchSetupPlugin;
@@ -58,6 +62,8 @@ impl Plugin for MatchKernelPlugin {
             BallCollisionPlugin,
             RefereePlugin,
             PlayerMovementPlugin,
+            BallContestPlugin,
+            BallReleasePlugin,
             MatchDiagnosticsPlugin::retaining(self.retained_facts),
         ));
     }

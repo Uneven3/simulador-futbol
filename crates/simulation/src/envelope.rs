@@ -18,7 +18,7 @@ use bevy_app::prelude::*;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use football_domain::scenario::TICK;
 use football_domain::tuning::TuningVersion;
-use football_domain::{ByTeam, MatchState, MatchTuning, Scenario, TeamId};
+use football_domain::{ByTeam, MatchTuning, Scenario, TeamId};
 use std::fmt::Write as _;
 use std::time::Duration;
 
@@ -93,8 +93,8 @@ impl MatchSummary {
         self.shots[TeamId::Home] + self.shots[TeamId::Away]
     }
 
-    /// Lo que ese número sería en noventa minutos. Una ventana de diez minutos
-    /// no se puede comparar con nada real sin esto.
+    /// Lo que ese número sería en noventa minutos **de juego**. Una ventana de
+    /// diez minutos no se puede comparar con nada real sin esto.
     pub fn per_90(&self, value: f32) -> f32 {
         let minutes = self.elapsed.as_secs_f32() / 60.0;
         if minutes <= 0.0 {
@@ -323,7 +323,12 @@ impl Distribution {
         let beyond: u32 = (top + 1..=self.max()).map(|v| self.count_of(v)).sum();
         if beyond > 0 {
             let observed = beyond as f32 / samples as f32;
-            let expected: f32 = (top + 1..200).map(|v| poisson_probability(lambda, v)).sum();
+            // la cola, por complemento: sumar términos de Poisson hasta el
+            // infinito desborda el factorial y devuelve NaN
+            let expected = 1.0
+                - (0..=top)
+                    .map(|v| poisson_probability(lambda, v))
+                    .sum::<f32>();
             let _ = writeln!(
                 out,
                 "{:>13}+   {:>5.1}% {:<14}  {:>5.1}% {}   ← hasta {}",
@@ -374,8 +379,10 @@ fn run_one_match(scenario: &Scenario, seed: u32) -> MatchSummary {
         app.update();
     }
 
-    let elapsed = app.world().resource::<MatchState>().period_elapsed;
     let ledger = app.world().resource::<MatchLedger>();
+    // el tiempo de juego lo lleva el ledger: `period_elapsed` es solo el periodo
+    // en curso, y en un partido completo dividir por él infla cada tasa
+    let elapsed = ledger.played_time;
     MatchSummary {
         seed,
         goals: ledger.goals,

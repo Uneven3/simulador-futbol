@@ -47,8 +47,13 @@ pub struct MatchLedger {
     /// possession in the broadcast sense (who is on the ball), not time of
     /// controlled contact.
     pub possession_time: ByTeam<Duration>,
+    /// Tiempo de juego transcurrido: la suma de los periodos, sin el descanso.
+    /// Es el denominador de toda tasa — `MatchState::period_elapsed` solo cuenta
+    /// el periodo en curso, y usarlo en un partido completo infla cada número
+    /// por la fracción que se dejó fuera.
+    pub played_time: Duration,
     pub longest_spell: Duration,
-    spell_started_at: Option<u64>,
+    spell_started_at: Option<Duration>,
     holding_team: Option<TeamId>,
     /// The release being tracked for attribution, if the ball is still loose.
     pending_release: Option<PendingRelease>,
@@ -113,8 +118,13 @@ impl MatchLedger {
         completed
     }
 
-    /// One tick of match time passed with `holding_team` on the ball.
-    fn advance_possession_clock(&mut self) {
+    /// Ha pasado un tick **de juego**, con `holding_team` en el balón.
+    ///
+    /// Solo se llama mientras el periodo corre. El descanso no es tiempo de
+    /// juego: contarlo hincha la posesión del último equipo que tocó el balón e
+    /// inventa una racha de quince minutos en la que nadie jugó.
+    fn advance_clocks(&mut self) {
+        self.played_time += TICK;
         if let Some(team) = self.holding_team {
             self.possession_time[team] += TICK;
         }
@@ -127,7 +137,7 @@ impl MatchLedger {
         }
     }
 
-    fn absorb(&mut self, tick: u64, fact: MatchFact) -> Option<MatchFact> {
+    fn absorb(&mut self, fact: MatchFact) -> Option<MatchFact> {
         match fact {
             MatchFact::BallReleased { player, kind, aim } => {
                 self.pending_release = Some(PendingRelease {
@@ -157,14 +167,14 @@ impl MatchLedger {
 
                 if self.holding_team != Some(player.team) {
                     if let Some(started) = self.spell_started_at {
-                        let spell = TICK * (tick.saturating_sub(started) as u32);
+                        let spell = self.played_time.saturating_sub(started);
                         self.longest_spell = self.longest_spell.max(spell);
                     }
                     if self.holding_team.is_some() {
                         self.possession_changes += 1;
                     }
                     self.holding_team = Some(player.team);
-                    self.spell_started_at = Some(tick);
+                    self.spell_started_at = Some(self.played_time);
 
                     // The team that released it did not get it back: attribute
                     // the loss to the action that gave it away.
@@ -246,10 +256,10 @@ fn release_index(kind: ReleaseKind) -> usize {
 pub(super) fn accumulate_facts(
     mut ledger: ResMut<MatchLedger>,
     mut telemetry: ResMut<MatchTelemetry>,
+    match_state: Res<football_domain::MatchState>,
     pitch: Res<PitchConfig>,
     ball_query: Query<&Ball>,
 ) {
-    let tick = telemetry.tick();
     let facts: Vec<MatchFact> = telemetry.this_tick().to_vec();
     let mut derived = Vec::new();
     for fact in facts {
@@ -266,11 +276,13 @@ pub(super) fn accumulate_facts(
             let on_target = trajectory_enters_goal(&ball.predictions, attacking_towards_x, &pitch);
             ledger.record_shot(player.team, on_target);
         }
-        if let Some(turnover) = ledger.absorb(tick, fact) {
+        if let Some(turnover) = ledger.absorb(fact) {
             derived.push(turnover);
         }
     }
-    ledger.advance_possession_clock();
+    if match_state.phase.is_period_of_play() {
+        ledger.advance_clocks();
+    }
     for fact in derived {
         telemetry.record(fact);
     }
@@ -283,32 +295,23 @@ mod tests {
     #[test]
     fn a_ball_given_away_is_attributed_to_the_action_that_gave_it() {
         let mut ledger = MatchLedger::default();
-        ledger.absorb(
-            0,
-            MatchFact::PossessionGained {
-                player: PlayerId::home(8),
-                from: None,
-                cause: PossessionCause::LooseBall,
-                at: Vec2::ZERO,
-            },
-        );
-        ledger.absorb(
-            10,
-            MatchFact::BallReleased {
-                player: PlayerId::home(8),
-                kind: ReleaseKind::Pass,
-                aim: Vec2::new(10.0, 0.0),
-            },
-        );
-        let derived = ledger.absorb(
-            40,
-            MatchFact::PossessionGained {
-                player: PlayerId::away(4),
-                from: None,
-                cause: PossessionCause::LooseBall,
-                at: Vec2::new(10.4, 0.0),
-            },
-        );
+        ledger.absorb(MatchFact::PossessionGained {
+            player: PlayerId::home(8),
+            from: None,
+            cause: PossessionCause::LooseBall,
+            at: Vec2::ZERO,
+        });
+        ledger.absorb(MatchFact::BallReleased {
+            player: PlayerId::home(8),
+            kind: ReleaseKind::Pass,
+            aim: Vec2::new(10.0, 0.0),
+        });
+        let derived = ledger.absorb(MatchFact::PossessionGained {
+            player: PlayerId::away(4),
+            from: None,
+            cause: PossessionCause::LooseBall,
+            at: Vec2::new(10.4, 0.0),
+        });
 
         assert_eq!(ledger.turnovers_of(ReleaseKind::Pass), 1);
         assert_eq!(ledger.possession_changes, 1);
@@ -327,23 +330,17 @@ mod tests {
     #[test]
     fn recovering_your_own_pass_is_not_a_turnover() {
         let mut ledger = MatchLedger::default();
-        ledger.absorb(
-            0,
-            MatchFact::BallReleased {
-                player: PlayerId::home(8),
-                kind: ReleaseKind::Pass,
-                aim: Vec2::ZERO,
-            },
-        );
-        let derived = ledger.absorb(
-            30,
-            MatchFact::PossessionGained {
-                player: PlayerId::home(9),
-                from: None,
-                cause: PossessionCause::LooseBall,
-                at: Vec2::ZERO,
-            },
-        );
+        ledger.absorb(MatchFact::BallReleased {
+            player: PlayerId::home(8),
+            kind: ReleaseKind::Pass,
+            aim: Vec2::ZERO,
+        });
+        let derived = ledger.absorb(MatchFact::PossessionGained {
+            player: PlayerId::home(9),
+            from: None,
+            cause: PossessionCause::LooseBall,
+            at: Vec2::ZERO,
+        });
 
         assert_eq!(ledger.turnovers_of(ReleaseKind::Pass), 0);
         assert!(derived.is_none());
@@ -398,11 +395,11 @@ mod tests {
             ..Default::default()
         };
         for _ in 0..300 {
-            ledger.advance_possession_clock();
+            ledger.advance_clocks();
         }
         ledger.holding_team = Some(TeamId::Away);
         for _ in 0..100 {
-            ledger.advance_possession_clock();
+            ledger.advance_clocks();
         }
 
         let share = ledger.possession_share();
@@ -410,26 +407,58 @@ mod tests {
         assert!((share[TeamId::Away] - 0.25).abs() < 1e-5);
     }
 
+    /// Las rachas se miden en tiempo de juego, y solo el ledger lo lleva: un
+    /// tick de reloj durante el descanso no alarga la posesión de nadie.
     #[test]
     fn the_longest_spell_is_measured_between_changes() {
         let mut ledger = MatchLedger::default();
-        for (tick, team) in [
-            (0u64, TeamId::Home),
-            (500, TeamId::Away),
-            (600, TeamId::Home),
-        ] {
-            ledger.absorb(
-                tick,
-                MatchFact::PossessionGained {
-                    player: PlayerId::new(team, 9),
-                    from: None,
-                    cause: PossessionCause::LooseBall,
-                    at: Vec2::ZERO,
-                },
-            );
+        let take = |ledger: &mut MatchLedger, team| {
+            ledger.absorb(MatchFact::PossessionGained {
+                player: PlayerId::new(team, 9),
+                from: None,
+                cause: PossessionCause::LooseBall,
+                at: Vec2::ZERO,
+            });
+        };
+
+        take(&mut ledger, TeamId::Home);
+        for _ in 0..500 {
+            ledger.advance_clocks();
         }
-        // 500 ticks of 10 ms
+        take(&mut ledger, TeamId::Away);
+        for _ in 0..100 {
+            ledger.advance_clocks();
+        }
+        take(&mut ledger, TeamId::Home);
+
+        // 500 ticks de 10 ms con el balón, contra 100 del rival
         assert_eq!(ledger.longest_spell, Duration::from_secs(5));
         assert_eq!(ledger.possession_changes, 2);
+    }
+
+    /// El descanso no es tiempo de juego. Si lo fuera, la racha más larga de un
+    /// partido completo serían los quince minutos en los que nadie jugó — que es
+    /// exactamente lo que reportaba la primera medición de veinte partidos.
+    #[test]
+    fn a_break_in_play_does_not_extend_anybodys_spell() {
+        let mut ledger = MatchLedger {
+            holding_team: Some(TeamId::Home),
+            ..Default::default()
+        };
+        ledger.spell_started_at = Some(Duration::ZERO);
+        for _ in 0..100 {
+            ledger.advance_clocks();
+        }
+        // el descanso: el sistema simplemente no llama a advance_clocks
+
+        ledger.absorb(MatchFact::PossessionGained {
+            player: PlayerId::away(9),
+            from: None,
+            cause: PossessionCause::LooseBall,
+            at: Vec2::ZERO,
+        });
+
+        assert_eq!(ledger.longest_spell, Duration::from_secs(1));
+        assert_eq!(ledger.played_time, Duration::from_secs(1));
     }
 }

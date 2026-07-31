@@ -136,7 +136,9 @@ tiene dueño, y eso es un bug de arquitectura antes que de código.
 | `simulation::match_clock` | Reloj y fases (Ley 7 IFAB) | Único escritor de `period_elapsed` y `phase` |
 | `simulation::team_tactics` | `TeamTactics`, forma del bloque, trampa del fuera de juego | Lee estado, escribe solo su recurso |
 | `simulation::player_decisions` | Adónde corre cada jugador y qué hace con el balón | Decide; no ejecuta ni toca el balón |
-| `simulation::player_movement` | Designación de posesión, integración de cuerpos y ejecución del toque | Único escritor de `Position` de jugadores y del contacto con el balón |
+| `simulation::player_movement` | Designación de posesión, integración de cuerpos y separación | Único escritor de `Position` de los jugadores |
+| `simulation::ball_contest` | De quién es el balón: escapadas, contacto, entrada, recogida | Único que otorga la posesión; publica `BallContest` como hecho del tick |
+| `simulation::ball_release` | Cómo sale el balón del pie: tiro, pase, despeje, conducción | Ejecuta la decisión ajena; las recetas son funciones puras |
 | `simulation::ball_physics` | Integración y predicción del balón | La predicción es la trayectoria futura real; nadie más la calcula |
 | `simulation::ball_collisions` | Contacto balón-cuerpo y balón-portería | Emite hechos; no decide reglas |
 | `simulation::referee` | Fuera de juego, fuera de banda, gol y reanudaciones | Único que otorga `SetPiece` y cambia el marcador |
@@ -185,21 +187,31 @@ número para que nadie la descubra dos veces.
 
 | Sitio | Medida | Qué contiene |
 |---|---|---|
-| `player_kick_system` | 461 líneas, 12 parámetros | Pérdida de posesión, elección del retador, entrada, balón suelto y ejecución del toque: cinco responsabilidades |
 | `player_decisions.rs` | 1352 líneas | Campo de fuerzas, movimiento sin balón, portero y decisión con balón |
 | `team_tactics.rs` | 896 líneas | `update_team_tactics` (239) y `get_adapted_formation_position` (210) |
-| `player_movement.rs` | 841 líneas | Designación, integración y toque |
 | `ball_physics.rs` | 538 líneas | `calculate_prediction` (415), port directo del integrador original |
+| `ball_contest.rs` | 473 líneas | Cuatro sistemas de una responsabilidad, pero el archivo ya pide separar *quién* toca de *cómo* se toca |
+| `ball_release.rs` | 451 líneas | Un sistema y cuatro recetas puras; un tercio son tests |
 
-`player_kick_system` se parte antes de calibrar (MVP 1.75, paso 3), porque es el
-sistema que la calibración va a girar una y otra vez. El resto se parte al
-tocarlo por otra razón; partirlo antes es riesgo sin lector.
+Se parten al tocarlos por otra razón; partirlos antes es riesgo sin lector.
 
-**§20 — parámetros.** Cinco `#[allow(clippy::too_many_arguments)]` y ningún
-`SystemParam` derivado en el proyecto.
+**Pagado el 2026-07-30:** `player_kick_system` eran 461 líneas y doce
+parámetros haciendo cinco cosas. Hoy son cuatro sistemas encadenados en
+`ball_contest.rs` (`release_escaped_ball`, `select_ball_challenger`,
+`resolve_tackle`, `collect_loose_ball`) más `execute_on_ball_action` en
+`ball_release.rs`, que delega el golpeo en funciones puras (`solve_shot`,
+`solve_pass`, `solve_clearance`, `solve_knock_on`) probables sin `App`.
+`player_movement.rs` bajó de 841 a 302 líneas. La envolvente dio los mismos
+diez números antes y después: el refactor fue fiel.
 
-**§18 — extensión.** Añadir faltas (MVP 2) obliga hoy a editar
-`player_kick_system` en vez de agregar un sistema en su propio set.
+**§20 — parámetros.** Quedan tres `#[allow(clippy::too_many_arguments)]`
+(`team_tactics.rs`, `ball_collisions.rs`, `player_decisions.rs`), de los cinco
+que había. Los sistemas del toque usan `SystemParam` derivado (`Touching`,
+`MatchSettings`) en vez de sumar parámetros.
+
+**§18 — extensión.** Las faltas de MVP 2 ya tienen dónde entrar sin editar nada:
+un sistema propio dentro de `BallTouchSet::Contest`, que es donde ocurre el
+incidente.
 
 La división se valida con la envolvente: si las diez semillas dan números
 idénticos, el refactor fue fiel (`docs/VALIDATION.md`).

@@ -61,7 +61,7 @@ fn ball_body_collisions(
     mut last_collision_at: Local<Duration>,
     time: Res<Time>,
     mut ball_query: Query<(&mut Ball, &mut Position), Without<Player>>,
-    mut player_query: Query<crate::player_movement::BallSystemBody, Without<Ball>>,
+    mut player_query: Query<crate::ball_contest::BallSystemBody, Without<Ball>>,
     mut touched_writer: MessageWriter<BallTouched>,
     mut telemetry: ResMut<MatchTelemetry>,
 ) {

@@ -76,17 +76,34 @@ apunta a un punto entre los palos con una dispersión de ±1 m, así que lo úni
 que puede evitar el gol es que alguien se interponga. El 11 % dice que el
 partido es un intercambio de pérdidas, no una posesión.
 
-### 2.5. Partir `player_kick_system` antes de girar nada
+### 2.5. Partir `player_kick_system` antes de girar nada ✅
 
-Acordado el 2026-07-30, al escribir las leyes de ingeniería
-(`ARCHITECTURE.md`, §17-§26). El sistema tiene 461 líneas y doce parámetros, y
-hace cinco cosas: pérdida de posesión, elección del retador, entrada, balón
-suelto y ejecución del toque. El paso 3 lo va a tocar una y otra vez, y girar
-un parámetro dentro de un sistema que hace cinco cosas no permite atribuir el
-efecto a nada.
+Hecho el 2026-07-30. Eran 461 líneas y doce parámetros haciendo cinco cosas.
+Ahora:
 
-Se parte en sistemas de una responsabilidad, y la división se valida con la
-envolvente: diez semillas idénticas o el refactor no fue fiel.
+- `crates/simulation/src/ball_contest.rs` — de quién es el balón, en cuatro
+  sistemas encadenados: `release_escaped_ball`, `select_ball_challenger`,
+  `resolve_tackle`, `collect_loose_ball`. El contacto se publica como hecho del
+  tick (`BallContest`) en vez de recalcularse.
+- `crates/simulation/src/ball_release.rs` — qué hace con él quien lo tiene:
+  `execute_on_ball_action`, que delega el golpeo en `solve_shot`, `solve_pass`,
+  `solve_clearance` y `solve_knock_on`. Son **funciones puras**: reciben la
+  situación y el tuning, devuelven un `Kick`, y se prueban sin levantar un
+  partido. Son exactamente las que el paso 3 va a girar.
+- `player_movement.rs` se queda con los cuerpos: designación, integración y
+  separación. Bajó de 841 a 302 líneas.
+
+El orden vive en `BallTouchSet::{Contest, Release}`, así que las faltas de
+MVP 2 entran como sistema propio en el set de la disputa sin editar nada de
+esto.
+
+La división se validó con la envolvente: los mismos diez números antes y
+después.
+
+Un hallazgo, de propina: `solve_clearance` mezcla la dirección de carrera con
+un sesgo hacia adelante de 0,7, y un defensa que retrocede **despeja hacia su
+propia portería**. Está afirmado como test para que el día que se arregle sea a
+propósito.
 
 ### 3. Calibrar contra la distribución, no contra la media
 
