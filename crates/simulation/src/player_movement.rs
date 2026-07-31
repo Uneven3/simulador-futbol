@@ -5,8 +5,8 @@
 //! [`crate::ball_contest`] y [`crate::ball_release`].
 
 use crate::SimulationSet;
-use crate::player_decisions;
 use crate::force_field::{self, Falloff, ForceSpot};
+use crate::player_decisions;
 use crate::team_tactics::{self, TeamTactics};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -205,13 +205,19 @@ pub fn dribble_direction(
         origin: Vec2::new(my_pos.x, (36.0 + 5.0) * sign_side(my_pos.y) as f32),
         repel: true,
         power: 7.0,
-        falloff: Falloff::Curved { radius: 20.0, exponent: 0.7 },
+        falloff: Falloff::Curved {
+            radius: 20.0,
+            exponent: 0.7,
+        },
     });
     force_field.push(ForceSpot {
         origin: Vec2::new((55.0 + 5.0) * sign_side(my_pos.x) as f32, my_pos.y),
         repel: true,
         power: 7.0,
-        falloff: Falloff::Curved { radius: 20.0, exponent: 0.7 },
+        falloff: Falloff::Curved {
+            radius: 20.0,
+            exponent: 0.7,
+        },
     });
     // love for da goal
     force_field.push(ForceSpot {

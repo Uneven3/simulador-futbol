@@ -5,8 +5,8 @@ use bevy_time::prelude::*;
 use football_domain::scenario::{PlayState, PlayerSetup, SIMULATION_HZ, Scenario};
 use football_domain::{
     Attributes, Ball, BallTouched, Facing, MatchRng, MatchState, Mentality, PitchSides, Player,
-    PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, SetPiece, TeamSide,
-    TeamId, Velocity,
+    PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position, SetPiece, TeamId,
+    TeamSide, Velocity,
 };
 use std::time::Duration;
 
@@ -185,11 +185,7 @@ pub fn normalized_formation_position(id: PlayerId, position: PlayingPosition) ->
 
 /// Base (kick-off) position on the pitch in metres, used both to spawn and to
 /// re-form the teams for a restart.
-pub fn base_formation_position(
-    id: PlayerId,
-    position: PlayingPosition,
-    sides: PitchSides,
-) -> Vec2 {
+pub fn base_formation_position(id: PlayerId, position: PlayingPosition, sides: PitchSides) -> Vec2 {
     let home_position = match position {
         PlayingPosition::Goalkeeper => Vec2::new(-54.0, 0.0),
         PlayingPosition::LeftBack => Vec2::new(-35.0, -18.0),

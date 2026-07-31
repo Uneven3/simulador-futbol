@@ -25,8 +25,8 @@ use crate::team_tactics::{
     closest_players, cpp_clamp, get_adapted_formation_position,
 };
 use football_domain::math::{
-    curve, sample_index, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
-    rotated_2d,
+    curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
+    rotated_2d, sample_index,
 };
 use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
@@ -645,7 +645,9 @@ fn get_support_position_force_field(
                 origin: mate.pos + mate.vel * 0.1,
                 repel: true,
                 power: teammate_repel_weight,
-                falloff: Falloff::Linear { radius: 14.0 * web_scale },
+                falloff: Falloff::Linear {
+                    radius: 14.0 * web_scale,
+                },
             });
         }
     }
@@ -658,7 +660,10 @@ fn get_support_position_force_field(
                 origin: Vec2::new(p.x, p.y),
                 repel: true,
                 power: ball_repel_weight,
-                falloff: Falloff::Curved { radius: 2.0, exponent: 0.5 },
+                falloff: Falloff::Curved {
+                    radius: 2.0,
+                    exponent: 0.5,
+                },
             });
         }
     }
@@ -669,14 +674,18 @@ fn get_support_position_force_field(
             origin: main_man_pos,
             repel: false,
             power: flock_weight,
-            falloff: Falloff::Linear { radius: 28.0 * web_scale },
+            falloff: Falloff::Linear {
+                radius: 28.0 * web_scale,
+            },
         });
         // ...yet not too close
         force_field.push(ForceSpot {
             origin: main_man_pos,
             repel: true,
             power: flock_weight,
-            falloff: Falloff::Linear { radius: 16.0 * web_scale },
+            falloff: Falloff::Linear {
+                radius: 16.0 * web_scale,
+            },
         });
     }
 
@@ -1142,7 +1151,8 @@ pub fn decide_on_ball_action(
                 continue;
             }
             for kind in [PassKind::Short, PassKind::Long, PassKind::High] {
-                let (odds, aim) = passing_odds_to_player(me, mate, kind, &opponents, 1.0, passing, sides);
+                let (odds, aim) =
+                    passing_odds_to_player(me, mate, kind, &opponents, 1.0, passing, sides);
                 if best_escape.is_none_or(|(_, _, _, r)| odds > r) {
                     best_escape = Some((mate.id, aim, kind, odds));
                 }

@@ -162,19 +162,12 @@ pub fn goalkeepers_save_shots(
 
         let momentum = match save {
             Save::Caught => Vec3::ZERO,
-            Save::Parried => parry_momentum(
-                ball.momentum,
-                shot.crossing.y,
-                goal_x,
-                keeping.parry_pace,
-            ),
+            Save::Parried => {
+                parry_momentum(ball.momentum, shot.crossing.y, goal_x, keeping.parry_pace)
+            }
         };
         if save == Save::Caught {
-            ball_position.0 = Vec3::new(
-                position.0.x,
-                position.0.y,
-                BALL_RADIUS,
-            );
+            ball_position.0 = Vec3::new(position.0.x, position.0.y, BALL_RADIUS);
         }
         touch_ball(&mut ball, &mut ball_position, momentum);
         ball.last_touch_team = Some(player.id.team);
@@ -219,7 +212,10 @@ mod tests {
         let keeper = Vec2::new(-45.0, 0.0);
 
         let at_him = shot_arriving_in(0.05, 1.0, 0.5);
-        assert_eq!(attempt_save(keeper, at_him, 20.0, &tuning), Some(Save::Parried));
+        assert_eq!(
+            attempt_save(keeper, at_him, 20.0, &tuning),
+            Some(Save::Parried)
+        );
 
         let past_him = shot_arriving_in(0.05, tuning.dive_reach + 0.4, 0.5);
         assert_eq!(attempt_save(keeper, past_him, 20.0, &tuning), None);

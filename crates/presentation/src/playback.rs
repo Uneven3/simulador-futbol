@@ -129,7 +129,10 @@ fn spawn_speed_readout(mut commands: Commands) {
 }
 
 /// Solo se anuncia lo que no es normal: a 1× la pantalla no dice nada.
-fn draw_speed_readout(speed: Res<PlaybackSpeed>, mut readout: Query<&mut Text, With<SpeedReadout>>) {
+fn draw_speed_readout(
+    speed: Res<PlaybackSpeed>,
+    mut readout: Query<&mut Text, With<SpeedReadout>>,
+) {
     let Ok(mut text) = readout.single_mut() else {
         return;
     };

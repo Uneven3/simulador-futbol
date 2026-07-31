@@ -193,6 +193,10 @@ mod tests {
             !period_is_over(regulation, stopped_for, regulation),
             "pitó el final con cuatro minutos sin jugar"
         );
-        assert!(period_is_over(regulation + stopped_for, stopped_for, regulation));
+        assert!(period_is_over(
+            regulation + stopped_for,
+            stopped_for,
+            regulation
+        ));
     }
 }

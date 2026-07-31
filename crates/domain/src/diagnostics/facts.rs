@@ -159,7 +159,11 @@ impl std::fmt::Display for MatchFact {
             MatchFact::FoulGiven { by, on } => write!(f, "{by} fouled {on}"),
             MatchFact::AdvantagePlayed { to } => write!(f, "advantage to {to}"),
             MatchFact::ShotSaved { keeper, caught } => {
-                let how = if caught { "caught it" } else { "pushed it away" };
+                let how = if caught {
+                    "caught it"
+                } else {
+                    "pushed it away"
+                };
                 write!(f, "{keeper} saved the shot and {how}")
             }
             MatchFact::BallReleased { player, kind, aim } => write!(

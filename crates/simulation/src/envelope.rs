@@ -292,7 +292,8 @@ impl Distribution {
     }
 
     pub fn min(&self) -> u32 {
-        u32::try_from(self.counts.iter().position(|count| *count > 0).unwrap_or(0)).unwrap_or(u32::MAX)
+        u32::try_from(self.counts.iter().position(|count| *count > 0).unwrap_or(0))
+            .unwrap_or(u32::MAX)
     }
 
     pub fn max(&self) -> u32 {
