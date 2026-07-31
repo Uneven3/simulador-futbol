@@ -13,6 +13,7 @@ pub mod locomotion;
 pub mod match_clock;
 pub mod match_setup;
 pub mod measurements;
+pub mod perception;
 pub mod player_decisions;
 pub mod player_movement;
 pub mod referee;
@@ -25,6 +26,7 @@ pub use ball_release::BallReleasePlugin;
 pub use diagnostics::MatchDiagnosticsPlugin;
 pub use match_clock::MatchClockPlugin;
 pub use match_setup::MatchSetupPlugin;
+pub use perception::PerceptionPlugin;
 pub use player_movement::PlayerMovementPlugin;
 pub use referee::RefereePlugin;
 
@@ -65,6 +67,7 @@ impl Plugin for MatchKernelPlugin {
             BallPhysicsPlugin,
             BallCollisionPlugin,
             RefereePlugin,
+            PerceptionPlugin,
             PlayerMovementPlugin,
             BallContestPlugin,
             BallReleasePlugin,

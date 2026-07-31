@@ -132,6 +132,7 @@ pub struct MatchAsItStands<'w> {
 
 pub fn select_player_movement(
     world: MatchAsItStands,
+    beliefs: Res<crate::perception::Beliefs>,
     committed: Query<&crate::ball_release::ActionCommitment>,
     ball_query: Query<&Ball, Without<Player>>,
     mut player_query: Query<DecidingPlayer, Without<Ball>>,
@@ -156,18 +157,6 @@ pub fn select_player_movement(
     };
     let now_ms = crate::match_clock::engine_elapsed_ms(&time);
 
-    let snaps: Vec<PlayerReading> = player_query
-        .iter()
-        .map(|(_, position, p, _, _, _, v, _)| PlayerReading {
-            id: p.id,
-            playing_position: p.position,
-            role: p.role,
-            pos: position.on_pitch(),
-            vel: Vec2::new(v.0.x, v.0.y),
-            formation_slot: p.formation_slot,
-        })
-        .collect();
-
     let match_designated = match_state.possession_player.or_else(|| {
         if designation.time_to_ball_ms[TeamId::Home] <= designation.time_to_ball_ms[TeamId::Away] {
             designation.designated[TeamId::Home]
@@ -175,17 +164,6 @@ pub fn select_player_movement(
             designation.designated[TeamId::Away]
         }
     });
-
-    let ctx = DecisionContext {
-        snaps: &snaps,
-        sides: match_state.sides,
-        ball,
-        tactics: &tactics,
-        tuning: &tuning,
-        designation: &designation,
-        match_designated,
-        now_ms,
-    };
 
     for (body, position, player, stats, mentality, player_state, velocity, mut intent) in
         player_query.iter_mut()
@@ -201,6 +179,19 @@ pub fn select_player_movement(
             continue;
         }
 
+        // Cada uno decide sobre el campo que cree, no sobre el que hay: a quien
+        // no ha visto no lo tiene, y a quien vio hace tres segundos lo tiene
+        // donde estaría si hubiera seguido igual.
+        let ctx = DecisionContext {
+            snaps: beliefs.of(player.id),
+            sides: match_state.sides,
+            ball,
+            tactics: &tactics,
+            tuning: &tuning,
+            designation: &designation,
+            match_designated,
+            now_ms,
+        };
         let me = PlayerReading {
             id: player.id,
             playing_position: player.position,

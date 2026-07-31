@@ -8,6 +8,7 @@ pub mod diagnostics;
 pub mod identity;
 pub mod match_state;
 pub mod math;
+pub mod perception;
 pub mod player;
 pub mod scenario;
 pub mod spatial;
@@ -19,6 +20,7 @@ pub use match_state::{
     BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
     PossessionDesignation, PotentialFoul, SetPiece,
 };
+pub use perception::{Observation, ObservationMemory, Vision, can_see};
 pub use player::{
     Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
     PlayingPosition, TacticalRole,

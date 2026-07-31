@@ -33,6 +33,7 @@ pub enum DebugSwitch {
     Possession,
     OffsideLine,
     RestartSpot,
+    Vision,
     Log(DiagnosticChannel),
 }
 
@@ -46,6 +47,7 @@ impl DebugSwitch {
             DebugSwitch::Possession,
             DebugSwitch::OffsideLine,
             DebugSwitch::RestartSpot,
+            DebugSwitch::Vision,
         ];
         switches.extend(DiagnosticChannel::ALL.map(DebugSwitch::Log));
         switches
@@ -58,6 +60,7 @@ impl DebugSwitch {
             DebugSwitch::Possession => "Overlay: possession".to_string(),
             DebugSwitch::OffsideLine => "Overlay: offside line".to_string(),
             DebugSwitch::RestartSpot => "Overlay: restart spot".to_string(),
+            DebugSwitch::Vision => "Overlay: vision".to_string(),
             DebugSwitch::Log(channel) => format!("Log: {}", channel_name(channel)),
         }
     }
@@ -71,6 +74,7 @@ impl DebugSwitch {
             DebugSwitch::Possession => "designated player, holder and pass in flight",
             DebugSwitch::OffsideLine => "the line the referee actually judged",
             DebugSwitch::RestartSpot => "where the ball goes back into play",
+            DebugSwitch::Vision => "qué alcanza a ver cada jugador, y a quién recuerda",
             DebugSwitch::Log(channel) => channel.cost(),
         }
     }
@@ -82,6 +86,7 @@ impl DebugSwitch {
             DebugSwitch::Possession => overlays.possession,
             DebugSwitch::OffsideLine => overlays.offside,
             DebugSwitch::RestartSpot => overlays.restart_spot,
+            DebugSwitch::Vision => overlays.vision,
             DebugSwitch::Log(channel) => channels.is_enabled(channel),
         }
     }
@@ -93,6 +98,7 @@ impl DebugSwitch {
             DebugSwitch::Possession => overlays.possession = !overlays.possession,
             DebugSwitch::OffsideLine => overlays.offside = !overlays.offside,
             DebugSwitch::RestartSpot => overlays.restart_spot = !overlays.restart_spot,
+            DebugSwitch::Vision => overlays.vision = !overlays.vision,
             DebugSwitch::Log(channel) => {
                 channels.toggle(channel);
             }

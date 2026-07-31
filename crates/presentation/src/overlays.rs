@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 use football_domain::{
-    Attributes, Ball, MatchState, OffsideRecords, PitchConfig, Player, Position,
-    PossessionDesignation, SetPiece, TeamId, Velocity,
+    Attributes, Ball, Facing, MatchState, ObservationMemory, OffsideRecords, PitchConfig, Player,
+    Position, PossessionDesignation, SetPiece, TeamId, Velocity, Vision,
 };
 
 pub struct DiagnosticOverlaysPlugin;
@@ -31,6 +31,7 @@ impl Plugin for DiagnosticOverlaysPlugin {
                 draw_possession,
                 draw_offside_judgement,
                 draw_restart_spot,
+                draw_vision,
             )
                 .run_if(resource_exists::<GizmoConfigStore>),
         );
@@ -47,6 +48,7 @@ pub struct OverlaySettings {
     pub possession: bool,
     pub offside: bool,
     pub restart_spot: bool,
+    pub vision: bool,
 }
 
 impl Default for OverlaySettings {
@@ -57,6 +59,8 @@ impl Default for OverlaySettings {
             possession: true,
             offside: true,
             restart_spot: true,
+            // apagado: veintidós conos y veintidós telarañas tapan el fútbol
+            vision: false,
         }
     }
 }
@@ -230,6 +234,64 @@ fn draw_restart_spot(
         .circle(Isometry3d::from_translation(spot), 0.6, REFEREE_COLOUR)
         .resolution(20);
     gizmos.line(spot, spot + Vec3::Z * 2.0, REFEREE_COLOUR);
+}
+
+/// Los bordes del cono de visión de un jugador, a la altura de los ojos.
+pub fn vision_cone(
+    position: Position,
+    facing: Dir2,
+    vision: &Vision,
+    eye_height: f32,
+) -> [Vec3; 3] {
+    let eyes = position.0 + Vec3::Z * eye_height;
+    let edge = |angle: f32| {
+        let direction = Vec2::from_angle(angle).rotate(*facing) * vision.range;
+        eyes + Vec3::new(direction.x, direction.y, 0.0)
+    };
+    [eyes, edge(vision.half_angle), edge(-vision.half_angle)]
+}
+
+/// Qué alcanza a ver cada jugador y a quién tiene en la cabeza.
+///
+/// El cono es el sensor; las líneas finas son la memoria, y por eso algunas
+/// apuntan fuera del cono: ahí es donde él cree que sigue estando alguien a
+/// quien ya no ve.
+fn draw_vision(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    time: Res<Time>,
+    watchers: Query<(
+        &Position,
+        &Facing,
+        &Player,
+        &Attributes,
+        &Vision,
+        &ObservationMemory,
+    )>,
+) {
+    if !settings.vision {
+        return;
+    }
+    let now = time.elapsed();
+    for (position, facing, player, attributes, vision, memory) in watchers.iter() {
+        let colour = team_colour(player.id.team);
+        let [eyes, left, right] = vision_cone(*position, facing.0, vision, attributes.height * 0.9);
+        let faded = colour.with_alpha(0.25);
+        gizmos.line(eyes, left, faded);
+        gizmos.line(eyes, right, faded);
+
+        for (_, seen) in memory.everyone() {
+            let believed = seen.projected_to(now);
+            // lo recién visto es lo que menos interesa: lo que se mira aquí es
+            // cuánto se ha quedado atrás lo que cree
+            let staleness = seen.age(now).as_secs_f32().min(3.0) / 3.0;
+            gizmos.line(
+                eyes,
+                Vec3::new(believed.x, believed.y, 0.2),
+                colour.with_alpha(0.05 + staleness * 0.35),
+            );
+        }
+    }
 }
 
 #[cfg(test)]
