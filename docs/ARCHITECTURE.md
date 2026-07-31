@@ -146,6 +146,8 @@ de código.
 | `simulation::player_decisions` | Adónde corre cada jugador y qué hace con el balón | Decide; no ejecuta ni toca el balón |
 | `simulation::player_movement` | Designación de posesión, integración de cuerpos y separación | Único escritor de `Position` de los jugadores |
 | `simulation::ball_contest` | De quién es el balón: escapadas, contacto, entrada, recogida | Único que otorga la posesión; publica `BallContest` como hecho del tick |
+| `simulation::force_field` | `ForceSpot`, `Falloff`, la suma de atractores | Dónde quiere estar un cuerpo; no lo mueve |
+| `simulation::goalkeeping` | Qué pasa cuando el balón llega a la portería | Toca el balón; la posesión sigue siendo del contest |
 | `simulation::ball_release` | Cómo sale el balón del pie: tiro, pase, despeje, conducción | Ejecuta la decisión ajena; las recetas son funciones puras |
 | `simulation::ball_physics` | Integración y predicción del balón | La predicción es la trayectoria futura real; nadie más la calcula |
 | `simulation::ball_collisions` | Contacto balón-cuerpo y balón-portería | Emite hechos; no decide reglas |

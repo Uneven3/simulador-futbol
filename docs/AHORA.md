@@ -35,7 +35,7 @@ Ausencias conocidas, no descubrimientos pendientes:
 - `Ball.predictions` y `PlayerReading` son omniscientes: hoy todos leen el
   futuro real, y en MVP 4 deja de ser válido.
 - `SimulationSet` refleja el orden del original; el pipeline semántico de
-  `ARCHITECTURE.md` sigue pendiente. Árbitro parcial: sin faltas ni disciplina.
+  `ARCHITECTURE.md` sigue pendiente.
 - `PLAYER_HEIGHT` es una constante que se copia a `Attributes`, no un dato por
   jugador.
 - Faltan los overlays sin dato: campo visual, observaciones y memoria (MVP 4), y

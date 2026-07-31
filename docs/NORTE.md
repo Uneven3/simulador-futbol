@@ -91,11 +91,10 @@ Sustituciones, offside, faltas, ventaja, disciplina, tiros libres, penales,
 dropped ball, tanda y variantes configurables. Cada transición nace de un
 escenario.
 
-Empezó arreglando el fuera de juego, que tenía el signo invertido y congelaba a
-casi todo un equipo, porque un jugador anotado no puede disputar el balón. Eso
-partió por la mitad el ritmo de gol **sin girar un parámetro**: la tabla de
-atribución de MVP 1.75 había adjudicado a MVP 4 un desvío que era un error de
-una línea.
+Puestos: fuera de juego, reanudaciones que alguien ejecuta, portero que ataja,
+cambio de mitades y tiempo añadido. La falta y la ventaja están construidas y
+medidas, pero el árbitro no pita: el criterio de hoy no distingue disputar de
+entrar, y eso espera al motor de MVP 3.
 
 ### MVP 3 — Movimiento plausible
 

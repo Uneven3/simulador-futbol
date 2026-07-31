@@ -21,11 +21,10 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 
 Una corrida es una trayectoria, no una métrica. La simulación es determinista
 pero caótica: una perturbación de un milisegundo produce otro partido sin que el
-modelo haya cambiado. Medido: el reloj truncaba a `u64` de milisegundos y perdía
-1 ms en el 1 % de los ticks, y todos los enfriamientos del juego se comparaban
-contra ese contador. Al pasarlo a `Duration` el mismo escenario con la misma
-semilla pasó de 1-0 a 3-3, y el ritmo de gol se dobló. El modelo estaba apoyado
-en ese ruido y ninguna prueba lo notó.
+modelo haya cambiado. El caso que lo demostró: el reloj truncaba milisegundos y
+todos los enfriamientos se comparaban contra ese contador; al arreglarlo, el
+mismo escenario con la misma semilla dio otro marcador y otro ritmo de gol. El
+modelo estaba apoyado en ese ruido y ninguna prueba lo notó.
 
 Por eso **nunca se compara una corrida**, se compara la envolvente sobre varias
 semillas, y a ser posible una distribución y no una media. `seeded_envelope`
@@ -40,8 +39,8 @@ cierto tras cualquier refactor que no cambie el modelo. Un marcador exacto, no.
 Antes de cualquier afirmación de plausibilidad:
 
 - **~2,7 goles por partido**, ~1,35 por equipo, distribuidos casi como una
-  Poisson. Es la referencia más barata que existe y el modelo está a un orden de
-  magnitud de ella (51 por 90 minutos, medido sobre diez semillas).
+  Poisson. Es la referencia más barata que existe, y el modelo sigue a un orden
+  de magnitud de ella: lo que mide `seeded_envelope` en cada corrida.
 - Las demás (tiros, posesión, pases completados) salen de los datasets de la
   sección siguiente.
 

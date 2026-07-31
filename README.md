@@ -20,17 +20,17 @@ está en [`docs/NORTE.md`](docs/NORTE.md).
 
 ## Estado actual: no lo uses como predicción
 
-El proyecto está en **MVP 1.75 — calibración**. MVP 0, 1 y 1.5 están cerrados: hay
-kernel autoritativo, escenarios reproducibles, árbitro parcial, reloj, diagnóstico
-tipado y presentación con primitivas.
+El proyecto está en **MVP 2 — partido reglamentariamente completo**. MVP 0, 1 y
+1.5 están cerrados: hay kernel autoritativo, escenarios reproducibles, reloj con
+sus periodos, diagnóstico tipado y presentación con primitivas.
 
-Lo que todavía no está: **el ritmo de gol es irreal**. El modelo marca unos
-51 goles cada 90 minutos contra ~2,7 de un partido real
-(ver `docs/VALIDATION.md`).
-Hasta calibrarlo, ningún resultado de este simulador puede presentarse como
-predicción de nada. Ese es exactamente el trabajo activo, descrito en
-[`docs/AHORA.md`](docs/AHORA.md), junto con el resto de deuda declarada
-(sin cambio de campo, sin faltas, sin percepción parcial).
+Lo que todavía no está: **el ritmo de gol es irreal**, un orden de magnitud por
+encima de un partido de verdad (`docs/VALIDATION.md`). Hasta calibrarlo —que es
+un hito posterior, cuando existan los mecanismos que lo producen— ningún
+resultado de este simulador puede presentarse como predicción de nada. El
+trabajo activo y la deuda declarada están en
+[`docs/AHORA.md`](docs/AHORA.md): jugadores sin motor ni percepción, y un
+árbitro que ve las faltas y todavía no las pita.
 
 ## Cómo se ejecuta
 
