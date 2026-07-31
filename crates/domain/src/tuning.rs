@@ -62,12 +62,6 @@ pub struct RefereeTuning {
     /// la falta no se pita; si lo pierde, se vuelve a ella.
     pub advantage_window: Duration,
     /// Si el árbitro detiene el juego por las faltas que observa.
-    ///
-    /// Apagado: el criterio de falta de hoy no distingue disputar de entrar
-    /// —lo que le falta es la velocidad de aproximación, que llega con el motor
-    /// de MVP 3— y pitarlas encadena reanudaciones hasta dejar el partido sin
-    /// un solo tiro. Las faltas se observan y se cuentan igual, que es como se
-    /// sabrá que el criterio mejoró.
     pub whistles_fouls: bool,
 }
 
@@ -75,7 +69,7 @@ impl Default for RefereeTuning {
     fn default() -> Self {
         Self {
             advantage_window: Duration::from_secs(3),
-            whistles_fouls: false,
+            whistles_fouls: true,
         }
     }
 }
@@ -104,6 +98,11 @@ pub struct ContestTuning {
     /// con el hombre, y eso es falta. Los cuerpos se separan a 0,7 m, así que
     /// por debajo de eso están literalmente encima.
     pub foul_contact_distance: f32,
+    /// Y va al hombre esto (m/s) más de lo que va al balón: lo que separa
+    /// entrar de disputar. Perseguir a quien lleva el balón en el pie apunta a
+    /// los dos a la vez y no descuenta nada; entrar tarde es la carrera que
+    /// sigue yendo al cuerpo cuando el balón ya no está ahí.
+    pub foul_charge: f32,
     /// The tackler must be this much closer to the ball than the carrier
     /// (fraction of the carrier's distance) to win the duel.
     pub duel_advantage: f32,
@@ -157,6 +156,7 @@ impl Default for ContestTuning {
             max_touch_height: 1.5,
             tackle_contact_distance: 0.50,
             foul_contact_distance: 0.75,
+            foul_charge: 2.0,
             duel_advantage: 0.8,
             shielding_release_distance: 1.0,
             shielding_release_time: Duration::from_millis(2000),

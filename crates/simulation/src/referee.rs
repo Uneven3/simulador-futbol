@@ -7,9 +7,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::math::normalized_or_2d;
 use football_domain::{
-    BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, Player,
-    PitchSides, PlayerId, PlayerMatchState, PlayingPosition, Position, PotentialFoul, SetPiece,
-    TeamId, Velocity,
+    BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, PitchSides,
+    Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PotentialFoul, SetPiece, TeamId,
+    Velocity,
 };
 use std::time::Duration;
 
@@ -20,16 +20,16 @@ impl Plugin for RefereePlugin {
         app.insert_resource(OffsideRecords::default())
             .init_resource::<PendingAdvantage>()
             .add_systems(
-            FixedUpdate,
-            (
-                referee_offside_system,
-                referee_foul_system,
-                referee_system,
-                referee_set_piece_system,
-            )
-                .chain()
-                .in_set(SimulationSet::Referee),
-        );
+                FixedUpdate,
+                (
+                    referee_offside_system,
+                    referee_foul_system,
+                    referee_system,
+                    referee_set_piece_system,
+                )
+                    .chain()
+                    .in_set(SimulationSet::Referee),
+            );
     }
 }
 
@@ -605,9 +605,7 @@ fn referee_set_piece_system(
         let restart_2d = restart_pos.truncate();
         let bodies: Vec<(PlayerId, PlayingPosition, Vec2)> = player_query
             .iter()
-            .map(|(position, _, _, player, _)| {
-                (player.id, player.position, position.on_pitch())
-            })
+            .map(|(position, _, _, player, _)| (player.id, player.position, position.on_pitch()))
             .collect();
         let taker = select_restart_taker(&bodies, taking_team, prev_set_piece, restart_2d);
         let support = taker.and_then(|taker| {
@@ -633,11 +631,8 @@ fn referee_set_piece_system(
                     facing.0 = towards_ball;
                 }
             } else if Some(player.id) == support {
-                let spot = restart_support_spot(
-                    restart_2d,
-                    attacking_towards_x,
-                    position.on_pitch().y,
-                );
+                let spot =
+                    restart_support_spot(restart_2d, attacking_towards_x, position.on_pitch().y);
                 *position = Position::from_pitch(spot, 0.0);
             } else if player.id.team != taking_team {
                 let towards_own_goal = Vec2::new(-attacking_towards_x, 0.0);
@@ -657,12 +652,49 @@ fn referee_set_piece_system(
     match_state.possession_since = Duration::ZERO;
     records.players.clear();
     records.team = None;
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La falta que nadie aprovecha acaba en tiro libre: es la costura entre
+    /// quien juzga la entrada y quien detiene el juego, y ninguna función pura
+    /// la cubre.
+    ///
+    /// Sin jugadores el árbitro no tiene a quién colocar, que es justo lo que
+    /// sobra aquí: lo que se mira es que el hecho llegue a decisión.
+    #[test]
+    fn a_foul_the_offender_profits_from_becomes_a_free_kick() {
+        use bevy_app::TaskPoolPlugin;
+        use bevy_time::{TimePlugin, TimeUpdateStrategy};
+        use football_domain::scenario::{PlayerSetup, TICK};
+
+        let mut app = bevy_app::App::new();
+        app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
+        app.add_plugins(crate::MatchKernelPlugin::new(
+            football_domain::Scenario::kick_off()
+                .with_players(PlayerSetup::BallOnly)
+                .already_in_play(),
+        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+        app.update();
+
+        let offender = PlayerId::new(TeamId::Home, 5);
+        let fouled = PlayerId::new(TeamId::Away, 9);
+        app.world_mut().write_message(PotentialFoul {
+            by: offender,
+            on: fouled,
+            at: Vec3::new(10.0, 5.0, 0.0),
+        });
+        // el infractor se queda el balón: no hay ventaja que dejar correr
+        app.world_mut().resource_mut::<MatchState>().possession_team = Some(offender.team);
+        app.update();
+
+        let state = app.world().resource::<MatchState>();
+        assert_eq!(state.set_piece, SetPiece::FreeKick);
+        assert_eq!(state.set_piece_team, Some(fouled.team));
+    }
 
     fn mirrored_teams(restart: Vec2) -> Vec<(PlayerId, PlayingPosition, Vec2)> {
         vec![
@@ -786,7 +818,12 @@ mod tests {
         let fouled = TeamId::Home;
 
         assert_eq!(
-            judge_advantage(Some(fouled.opponent()), fouled, Duration::from_secs(1), window),
+            judge_advantage(
+                Some(fouled.opponent()),
+                fouled,
+                Duration::from_secs(1),
+                window
+            ),
             Advantage::WhistleTheFoul
         );
     }

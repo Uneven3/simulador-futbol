@@ -223,22 +223,57 @@ pub enum Tackle {
     Missed,
 }
 
+/// Cómo llega el que entra al cuerpo del que lleva el balón: a qué distancia
+/// está, y cuánto de su carrera va al hombre y no al balón.
+#[derive(Debug, Clone, Copy)]
+pub struct BodyApproach {
+    pub apart: f32,
+    pub into_the_man: f32,
+}
+
+/// A qué velocidad se va hacia un punto. Es la velocidad propia y no la de
+/// acercamiento mutuo, porque la falta es de quien la lleva encima: si es el
+/// portador quien retrocede contra un rival parado, no ha entrado nadie.
+///
+/// Encima del punto no hay línea que seguir, y entonces no se va a ninguna
+/// parte.
+fn speed_towards(from: Vec2, velocity: Vec2, target: Vec2) -> f32 {
+    Dir2::new(target - from).map_or(0.0, |line| velocity.dot(*line))
+}
+
+/// Cuánto va contra el hombre quien va a por el balón que lleva.
+///
+/// Con el balón en el pie del rival las dos direcciones son la misma y la
+/// diferencia es cero: perseguir a alguien no es entrarle. Se separan cuando el
+/// balón sale del pie, y lo que queda entonces yendo hacia el cuerpo es la
+/// carrera que ya no tiene por qué ir ahí.
+pub fn approach_of(challenger: Vec2, velocity: Vec2, carrier: Vec2, ball: Vec2) -> BodyApproach {
+    BodyApproach {
+        apart: challenger.distance(carrier),
+        into_the_man: speed_towards(challenger, velocity, carrier)
+            - speed_towards(challenger, velocity, ball),
+    }
+}
+
 /// Qué sale de ir a por un balón que lleva otro.
 ///
 /// El orden importa y es el del fútbol: primero se mira si llegó al balón,
 /// porque quien lo gana no comete falta por mucho que hubiera contacto. Solo
-/// cuando no lo gana empieza a contar que estuviera encima del hombre.
+/// cuando no lo gana empieza a contar cómo llegó al hombre, y llegar no es
+/// entrar: hacen falta las dos cosas, el contacto y la carrera contra el cuerpo.
 pub fn judge_tackle(
     challenger_to_ball: f32,
     carrier_to_ball: f32,
-    bodies_apart: f32,
+    approach: BodyApproach,
     tuning: &ContestTuning,
 ) -> Tackle {
     let reached_the_ball = challenger_to_ball < tuning.tackle_contact_distance;
     if reached_the_ball && challenger_to_ball < carrier_to_ball * tuning.duel_advantage {
         return Tackle::WonTheBall;
     }
-    if reached_the_ball && bodies_apart < tuning.foul_contact_distance {
+    let went_through_the_man =
+        approach.apart < tuning.foul_contact_distance && approach.into_the_man > tuning.foul_charge;
+    if reached_the_ball && went_through_the_man {
         return Tackle::Foul;
     }
     Tackle::Missed
@@ -292,16 +327,26 @@ pub fn resolve_tackle(
         return;
     }
 
-    let bodies_apart = carrier_position.on_pitch().distance(
-        touching
-            .registry
-            .body(challenger)
-            .and_then(|body| touching.players.get(body).ok())
-            .map_or(Vec2::splat(f32::MAX), |(_, position, ..)| {
-                position.on_pitch()
-            }),
-    );
-    match judge_tackle(contest.distance, carrier_distance, bodies_apart, tuning) {
+    let carrier_spot = carrier_position.on_pitch();
+    let approach = touching
+        .registry
+        .body(challenger)
+        .and_then(|body| touching.players.get(body).ok())
+        .map_or(
+            BodyApproach {
+                apart: f32::MAX,
+                into_the_man: 0.0,
+            },
+            |(_, position, _, _, _, velocity)| {
+                approach_of(
+                    position.on_pitch(),
+                    velocity.0.truncate(),
+                    carrier_spot,
+                    ball_pos_2d,
+                )
+            },
+        );
+    match judge_tackle(contest.distance, carrier_distance, approach, tuning) {
         Tackle::Missed => {
             contact.pairs.retain(|pair| *pair != (challenger, current));
             return;
@@ -578,15 +623,22 @@ impl Plugin for BallContestPlugin {
 mod tests {
     use super::*;
 
+    /// Encima del hombre y yendo contra él: la entrada del criterio.
+    fn going_through_the_man(tuning: &ContestTuning) -> BodyApproach {
+        BodyApproach {
+            apart: tuning.foul_contact_distance * 0.5,
+            into_the_man: tuning.foul_charge * 2.0,
+        }
+    }
+
     /// Quien llega al balón no comete falta, por mucho que se lleve al hombre
     /// por delante. Es el orden del fútbol y el de la función.
     #[test]
     fn winning_the_ball_is_never_a_foul() {
         let tuning = ContestTuning::default();
-        let touching_bodies = tuning.foul_contact_distance * 0.5;
 
         assert_eq!(
-            judge_tackle(0.1, 1.0, touching_bodies, &tuning),
+            judge_tackle(0.1, 1.0, going_through_the_man(&tuning), &tuning),
             Tackle::WonTheBall
         );
     }
@@ -596,10 +648,9 @@ mod tests {
     fn missing_the_ball_and_hitting_the_man_is_a_foul() {
         let tuning = ContestTuning::default();
         let inside = tuning.tackle_contact_distance * 0.9;
-        let touching_bodies = tuning.foul_contact_distance * 0.5;
 
         assert_eq!(
-            judge_tackle(inside, inside, touching_bodies, &tuning),
+            judge_tackle(inside, inside, going_through_the_man(&tuning), &tuning),
             Tackle::Foul,
             "entró tarde y encima, y no se pitó"
         );
@@ -610,13 +661,67 @@ mod tests {
     fn a_tackle_that_touches_nothing_is_not_a_foul() {
         let tuning = ContestTuning::default();
         let inside = tuning.tackle_contact_distance * 0.9;
-        let apart = tuning.foul_contact_distance * 2.0;
+        let apart = BodyApproach {
+            apart: tuning.foul_contact_distance * 2.0,
+            ..going_through_the_man(&tuning)
+        };
 
         assert_eq!(judge_tackle(inside, inside, apart, &tuning), Tackle::Missed);
         assert_eq!(
-            judge_tackle(5.0, 0.2, 0.1, &tuning),
+            judge_tackle(5.0, 0.2, going_through_the_man(&tuning), &tuning),
             Tackle::Missed,
             "pitó falta a quien ni fue a por el balón"
+        );
+    }
+
+    /// Lo que separa disputar de entrar: el que persigue va rapidísimo hacia el
+    /// cuerpo del rival, y aun así no le está entrando a él.
+    #[test]
+    fn chasing_the_carrier_is_not_a_foul() {
+        let tuning = ContestTuning::default();
+        let inside = tuning.tackle_contact_distance * 0.9;
+        let chasing = BodyApproach {
+            apart: tuning.foul_contact_distance * 0.5,
+            into_the_man: 0.0,
+        };
+
+        assert_eq!(
+            judge_tackle(inside, inside, chasing, &tuning),
+            Tackle::Missed,
+            "pitó falta por perseguir a alguien"
+        );
+    }
+
+    /// Y perseguir es exactamente eso: el balón en el pie del rival pone las
+    /// dos direcciones en la misma línea, corra a la velocidad que corra.
+    #[test]
+    fn a_ball_at_the_carriers_feet_puts_the_man_and_the_ball_in_one_line() {
+        let carrier = Vec2::new(4.0, 0.0);
+        let at_his_feet = carrier + Vec2::new(0.3, 0.0);
+        let sprint = Vec2::new(7.0, 0.0);
+
+        let chase = approach_of(Vec2::ZERO, sprint, carrier, at_his_feet);
+
+        assert!(
+            chase.into_the_man.abs() < 0.1,
+            "perseguir contó como {} m/s contra el hombre",
+            chase.into_the_man
+        );
+        assert!((chase.apart - 4.0).abs() < 0.01);
+    }
+
+    /// Cuando el balón sale del pie, lo que sigue yendo al cuerpo se ve.
+    #[test]
+    fn going_at_the_body_while_the_ball_is_elsewhere_counts_as_a_charge() {
+        let carrier = Vec2::new(2.0, 0.0);
+        let ball_poked_away = Vec2::new(2.0, 6.0);
+
+        let charge = approach_of(Vec2::ZERO, Vec2::new(6.0, 0.0), carrier, ball_poked_away);
+
+        assert!(
+            charge.into_the_man > 2.0,
+            "la carga contra el cuerpo dio solo {} m/s",
+            charge.into_the_man
         );
     }
 }
