@@ -15,6 +15,18 @@ pub fn kick_off() -> Scenario {
     Scenario::kick_off()
 }
 
+/// Los diez minutos que de verdad se miran.
+///
+/// Mientras los cuerpos sean cápsulas sin motor ni atributos, noventa minutos
+/// no dicen más que diez: la misma unidad que mide `comparing_builds`, para que
+/// mirar y medir sean la misma situación. El partido reglamentario vuelve a ser
+/// el escenario de la app cuando haya jugadores que lo llenen.
+pub fn lab_match() -> Scenario {
+    Scenario::kick_off()
+        .named("lab match")
+        .for_duration(Duration::from_secs(10 * 60))
+}
+
 /// The first minutes of open play. Same situation as [`kick_off`], short enough
 /// to run in a test.
 pub fn opening_minute() -> Scenario {
