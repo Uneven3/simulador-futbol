@@ -15,8 +15,9 @@ use bevy_time::prelude::*;
 
 use football_domain::math::{normalized_clamp, sign_side};
 use football_domain::{
-    Attributes, Ball, ByTeam, Facing, MatchState, PitchSides, Player, PlayerId, PlayerMatchState,
-    PlayerRegistry, PlayingPosition, Position, PossessionDesignation, TeamId, Velocity,
+    Attributes, Ball, ByTeam, Facing, MatchState, PLAYER_BODY_RADIUS, PitchSides, Player, PlayerId,
+    PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation, TeamId,
+    Velocity,
 };
 
 /// Speed below which a ball counts as dead, in m/s.
@@ -137,12 +138,11 @@ fn apply_player_velocity(
     }
 }
 
-/// Positional separation between player bodies: two bodies of radius 0.35 m
-/// cannot occupy the same spot, so overlapping pairs get pushed apart. This is
-/// the cheap stand-in for body contact until the motor model of MVP 3; without
-/// it, both designated players superimpose on the contested ball.
+/// Positional separation between player bodies: dos cuerpos no pueden ocupar el
+/// mismo sitio, así que las parejas superpuestas se separan. Sin esto los dos
+/// designados se superponen sobre el balón en disputa.
 fn resolve_player_overlap(mut query: Query<&mut Position, With<Player>>) {
-    const MIN_DIST: f32 = 0.7; // two body radii
+    const MIN_DIST: f32 = PLAYER_BODY_RADIUS * 2.0;
 
     let mut combinations = query.iter_combinations_mut();
     while let Some([mut a, mut b]) = combinations.fetch_next() {

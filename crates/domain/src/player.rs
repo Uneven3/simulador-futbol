@@ -104,6 +104,10 @@ impl Player {
     }
 }
 
+/// Medio ancho de un cuerpo, en metros. Es lo que dos jugadores no pueden
+/// compartir, y lo que uno puede interponer entre un rival y el balón.
+pub const PLAYER_BODY_RADIUS: f32 = 0.35;
+
 /// What a player is physically capable of: stable for the match, and the thing
 /// MVP 3 will calibrate against real data.
 ///

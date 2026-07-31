@@ -19,11 +19,12 @@ use std::time::Duration;
 use crate::SimulationSet;
 use crate::diagnostics::{MatchFact, MatchTelemetry, PossessionCause};
 use crate::player_movement::dribble_direction;
+use football_domain::math::line_distance_to_point_2d;
 use football_domain::tuning::ContestTuning;
 use football_domain::{
-    Attributes, Ball, BallTouched, MatchState, MatchTuning, PitchConfig, Player, PlayerId,
-    PlayerMatchState, PlayerRegistry, Position, PossessionDesignation, PotentialFoul, SetPiece,
-    TeamId, Velocity,
+    Attributes, Ball, BallTouched, MatchState, MatchTuning, PLAYER_BODY_RADIUS, PitchConfig,
+    Player, PlayerId, PlayerMatchState, PlayerRegistry, Position, PossessionDesignation,
+    PotentialFoul, SetPiece, TeamId, Velocity,
 };
 
 /// Lo que los sistemas del balón necesitan de un cuerpo, más lo único que le
@@ -145,6 +146,14 @@ pub fn select_ball_challenger(
     let ball_pos = ball_position.0;
     let ball_pos_2d = ball_position.on_pitch();
 
+    // dónde está el cuerpo que hoy protege el balón, si hay alguno
+    let carrier_spot = match_state.possession_player.and_then(|holder| {
+        players
+            .iter()
+            .find(|(_, player)| player.id == holder)
+            .map(|(position, _)| position.on_pitch())
+    });
+
     let mut closest_distance = f32::MAX;
     for (player_position, player) in players.iter() {
         // a quien el árbitro anotó en fuera de juego en el último toque no le
@@ -154,6 +163,16 @@ pub fn select_ball_challenger(
                 .players
                 .iter()
                 .any(|(id, _)| *id == player.id)
+        {
+            continue;
+        }
+
+        // al balón no se llega a través de un cuerpo: quien tiene al poseedor
+        // metido entre el balón y él no está en contacto con nada
+        if Some(player.id) != match_state.possession_player
+            && carrier_spot.is_some_and(|carrier| {
+                shields_the_ball(player_position.on_pitch(), carrier, ball_pos_2d)
+            })
         {
             continue;
         }
@@ -224,11 +243,24 @@ pub enum Tackle {
 }
 
 /// Cómo llega el que entra al cuerpo del que lleva el balón: a qué distancia
-/// está, y cuánto de su carrera va al hombre y no al balón.
+/// está, cuánto de su carrera va al hombre y no al balón, y si tiene ese cuerpo
+/// entre el balón y él.
 #[derive(Debug, Clone, Copy)]
 pub struct BodyApproach {
     pub apart: f32,
     pub into_the_man: f32,
+    pub shielded: bool,
+}
+
+/// Si el portador tiene el cuerpo metido entre el rival y el balón.
+///
+/// Es proteger el balón, que hasta ahora no existía: el rival podía robarlo
+/// desde el lado equivocado del cuerpo como si el cuerpo no estuviera. Solo
+/// cuenta cuando el portador está *entre* los dos —de ahí el `0.0..1.0` sobre
+/// el segmento—, porque un cuerpo detrás del balón no tapa nada.
+pub fn shields_the_ball(challenger: Vec2, carrier: Vec2, ball: Vec2) -> bool {
+    let (distance_to_line, along) = line_distance_to_point_2d(challenger, ball, carrier);
+    (0.0..1.0).contains(&along) && distance_to_line < PLAYER_BODY_RADIUS
 }
 
 /// A qué velocidad se va hacia un punto. Es la velocidad propia y no la de
@@ -252,6 +284,7 @@ pub fn approach_of(challenger: Vec2, velocity: Vec2, carrier: Vec2, ball: Vec2) 
         apart: challenger.distance(carrier),
         into_the_man: speed_towards(challenger, velocity, carrier)
             - speed_towards(challenger, velocity, ball),
+        shielded: shields_the_ball(challenger, carrier, ball),
     }
 }
 
@@ -261,19 +294,24 @@ pub fn approach_of(challenger: Vec2, velocity: Vec2, carrier: Vec2, ball: Vec2) 
 /// porque quien lo gana no comete falta por mucho que hubiera contacto. Solo
 /// cuando no lo gana empieza a contar cómo llegó al hombre, y llegar no es
 /// entrar: hacen falta las dos cosas, el contacto y la carrera contra el cuerpo.
+///
+/// Y no se llega al balón a través de un cuerpo. Quien tiene al portador metido
+/// en medio no puede ganarlo por mucho que esté cerca, y si insiste llega al
+/// hombre: eso es empujar por detrás, y es lo que pita cualquier árbitro.
 pub fn judge_tackle(
     challenger_to_ball: f32,
     carrier_to_ball: f32,
     approach: BodyApproach,
     tuning: &ContestTuning,
 ) -> Tackle {
-    let reached_the_ball = challenger_to_ball < tuning.tackle_contact_distance;
+    let reached_the_ball =
+        challenger_to_ball < tuning.tackle_contact_distance && !approach.shielded;
     if reached_the_ball && challenger_to_ball < carrier_to_ball * tuning.duel_advantage {
         return Tackle::WonTheBall;
     }
     let went_through_the_man =
         approach.apart < tuning.foul_contact_distance && approach.into_the_man > tuning.foul_charge;
-    if reached_the_ball && went_through_the_man {
+    if (reached_the_ball || approach.shielded) && went_through_the_man {
         return Tackle::Foul;
     }
     Tackle::Missed
@@ -336,6 +374,7 @@ pub fn resolve_tackle(
             BodyApproach {
                 apart: f32::MAX,
                 into_the_man: 0.0,
+                shielded: false,
             },
             |(_, position, _, _, _, velocity)| {
                 approach_of(
@@ -628,7 +667,62 @@ mod tests {
         BodyApproach {
             apart: tuning.foul_contact_distance * 0.5,
             into_the_man: tuning.foul_charge * 2.0,
+            shielded: false,
         }
+    }
+
+    /// Un cuerpo entre el balón y el rival tapa el balón; el mismo cuerpo al
+    /// otro lado del balón no tapa nada.
+    #[test]
+    fn a_body_only_shields_what_it_stands_in_front_of() {
+        let challenger = Vec2::ZERO;
+        let ball = Vec2::new(3.0, 0.0);
+
+        assert!(
+            shields_the_ball(challenger, Vec2::new(2.6, 0.0), ball),
+            "el portador estaba justo delante del balón y no lo protegía"
+        );
+        assert!(
+            !shields_the_ball(challenger, Vec2::new(3.4, 0.0), ball),
+            "protegió el balón desde detrás del balón"
+        );
+        assert!(
+            !shields_the_ball(challenger, Vec2::new(1.5, 1.2), ball),
+            "protegió el balón desde un metro fuera de la línea"
+        );
+    }
+
+    /// Robarle el balón a quien te da la espalda deja de ser gratis: el cuerpo
+    /// está en medio, y llegar cerca del balón ya no basta.
+    #[test]
+    fn the_ball_cannot_be_won_through_a_body() {
+        let tuning = ContestTuning::default();
+        let shielded = BodyApproach {
+            shielded: true,
+            ..going_through_the_man(&tuning)
+        };
+
+        assert_ne!(
+            judge_tackle(0.1, 1.0, shielded, &tuning),
+            Tackle::WonTheBall,
+            "se lo quitó a través del cuerpo del rival"
+        );
+    }
+
+    /// Y quien insiste contra esa espalda llega al hombre: empujar por detrás.
+    #[test]
+    fn charging_into_a_shielding_back_is_a_foul() {
+        let tuning = ContestTuning::default();
+        let from_behind = BodyApproach {
+            shielded: true,
+            ..going_through_the_man(&tuning)
+        };
+
+        assert_eq!(
+            judge_tackle(0.1, 1.0, from_behind, &tuning),
+            Tackle::Foul,
+            "empujó por la espalda al que protegía y no se pitó"
+        );
     }
 
     /// Quien llega al balón no comete falta, por mucho que se lleve al hombre
@@ -683,6 +777,7 @@ mod tests {
         let chasing = BodyApproach {
             apart: tuning.foul_contact_distance * 0.5,
             into_the_man: 0.0,
+            shielded: false,
         };
 
         assert_eq!(
