@@ -1,22 +1,11 @@
-//! The parameters that fix the result of a match, as versioned data.
+//! The parameters that fix the result of a match, as versioned data: a number
+//! that decides whether a shot is taken is the model, not an implementation
+//! detail, and it has to be sweepable and reportable (§8, `VALIDATION.md`).
 //!
-//! Everything here used to be a literal inside the decision and kick systems.
-//! A number that decides whether a shot is taken, whether a tackle succeeds or
-//! how long a carrier keeps the ball is not an implementation detail: it is the
-//! model, and the model has to be sweepable without editing code and reportable
-//! alongside any result it produced (`docs/VALIDATION.md`).
-//!
-//! Two rules hold this file together:
-//!
-//! 1. **One home per default.** A value that appears here appears nowhere else.
-//! 2. **Units in the name or in a comment.** Metres, seconds, m/s, or a
-//!    dimensionless rating in 0..1 — never a bare number whose meaning has to be
-//!    reconstructed from the call site.
-//!
-//! What is deliberately NOT here yet: the movement velocities and the force
-//! field weights of the port (`team_tactics.rs`), which belong to the motor
-//! model of MVP 3, and the ball physics constants (`ball_physics.rs`), which
-//! are calibrated against ball flight rather than against match statistics.
+//! One home per default — a value here appears nowhere else — and every name
+//! carries its unit. Still outside: the movement velocities and force field
+//! weights (motor model, MVP 3) and the ball physics constants, which are
+//! calibrated against ball flight rather than match statistics.
 
 use bevy_ecs::prelude::*;
 use std::time::Duration;

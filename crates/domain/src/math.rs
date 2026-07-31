@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use bevy_math::{Quat, Vec3};
 
 pub fn normalized_clamp(value: f32, min: f32, max: f32) -> f32 {

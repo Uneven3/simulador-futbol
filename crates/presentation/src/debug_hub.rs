@@ -1,15 +1,9 @@
-//! One panel for everything that can be switched on.
+//! One panel for everything that can be switched on: the switches are data —
+//! overlays and log channels in one list — so adding one costs a variant, not a
+//! function key nobody can guess.
 //!
-//! Five unlabelled function keys were already one design decision short of
-//! twelve: nothing told you what existed, and the space runs out. So the
-//! switches are data — overlays and log channels in one list — and the panel
-//! renders whatever the list contains. Adding a switch costs a variant.
-//!
-//! **F1** opens it, **↑/↓** move, **Space** toggles, **P** dumps the current
-//! snapshot to the log. Those four are all a person has to remember.
-//!
-//! Writing here is confined to the diagnostics' own switches: the panel never
-//! touches match state.
+//! **F1** opens it, **↑/↓** move, **Space** toggles, **P** dumps the snapshot.
+//! Writes nothing but the diagnostics' own switches.
 
 use crate::overlays::OverlaySettings;
 use bevy::prelude::*;

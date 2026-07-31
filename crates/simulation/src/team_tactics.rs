@@ -1,21 +1,10 @@
 //! What a team decides as a team: possession amounts, the offside trap line,
-//! the shape each player is asked to hold, man marking, attacking runs and the
-//! forward support player.
+//! the shape each player holds, man marking, attacking runs and the forward
+//! support player. Reads the match, writes only its own resource.
 //!
-//! Derived from `TeamAIController` (onthepitch/teamAIcontroller.cpp); the
-//! references below point into `references/gameplay_football/`. Computes
-//! possession amounts, the offside trap line, adapted formation positions (`GetAdaptedFormationPosition` + the underlying
-//! `AI_GetAdaptedFormationPosition` from AIfunctions.cpp), man marking
-//! (`CalculateManMarking` / `CalculateMarkingQuality`), attacking runs and the
-//! forward support player.
-//!
-//! Deliberate simplifications vs the original:
-//! - `CalculateDynamicRoles` (Hungarian assignment of formation spots) is NOT
-//!   ported; dynamic roles equal static formation roles.
-//! - Team tactics are the original's `baseTeamTactics` constants; the per-team
-//!   user tactics modifiers (database properties) don't exist here.
-//! - `ApplyTeamPressure` is not triggered (its trigger is commented out in the
-//!   original as well).
+//! Ported from `TeamAIController` (onthepitch/teamAIcontroller.cpp). Dynamic
+//! roles equal static ones — `CalculateDynamicRoles` is not ported — and the
+//! tactics are the original's `baseTeamTactics` with no user modifiers.
 
 use crate::diagnostics::{MatchFact, MatchTelemetry};
 use bevy_ecs::prelude::*;
@@ -35,16 +24,12 @@ use football_domain::{
 // gamedefines.hpp velocity constants
 // ---------------------------------------------------------------------------
 // (the switch thresholds are consumed once human controls arrive in Phase 4)
-#[allow(dead_code)]
 pub const IDLE_VELOCITY: f32 = 0.0;
 pub const DRIBBLE_VELOCITY: f32 = 3.5;
 pub const WALK_VELOCITY: f32 = 5.0;
 pub const SPRINT_VELOCITY: f32 = 8.0;
-#[allow(dead_code)]
 pub const IDLE_DRIBBLE_SWITCH: f32 = 1.8;
-#[allow(dead_code)]
 pub const DRIBBLE_WALK_SWITCH: f32 = 4.2;
-#[allow(dead_code)]
 pub const WALK_SPRINT_SWITCH: f32 = 6.0;
 pub const DISTANCE_TO_VELOCITY_MULTIPLIER: f32 = 2.6;
 pub const PITCH_HALF_W: f32 = 55.0;

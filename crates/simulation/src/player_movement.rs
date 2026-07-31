@@ -19,6 +19,9 @@ use football_domain::{
     PlayerRegistry, PlayingPosition, Position, PossessionDesignation, TeamId, Velocity,
 };
 
+/// Speed below which a ball counts as dead, in m/s.
+const BALL_AT_REST_SPEED: f32 = 0.3;
+
 pub struct PlayerMovementPlugin;
 
 impl Plugin for PlayerMovementPlugin {
@@ -83,12 +86,10 @@ fn update_possession_designation(
         best[possessor.team] = Some((possessor, 0.0));
     }
 
-    // a pass is only "in flight" while the ball travels; once it truly dies the
-    // normal designation race resumes (otherwise a lost pass freezes the team).
-    // The threshold must be near-rest: the solved passes ARRIVE dying at the
-    // receiver, and expiring at 1.0 m/s stripped the receiver of his priority
-    // and trap reach exactly at the moment of reception.
-    if ball.momentum.length() < 0.3 {
+    // A pass in flight suspends the designation race, so the threshold has to
+    // be near-rest: solved passes arrive dying, and expiring earlier strips the
+    // receiver of his priority at the very moment of reception.
+    if ball.momentum.length() < BALL_AT_REST_SPEED {
         match_state.pass_target = None;
     }
 

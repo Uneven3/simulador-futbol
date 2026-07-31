@@ -1,28 +1,17 @@
 //! What one player decides to do this tick: where to run, and — if he has the
 //! ball — what to do with it.
 //!
-//! Derived from the original's `ElizaController`
-//! (onthepitch/player/controller/elizacontroller.cpp), its base
-//! `PlayerController`, the off-the-ball strategies
-//! (strategies/offtheball/default_def|mid|off.cpp) and the keeper
-//! (goalie_default.cpp). Those references are provenance, kept because the
-//! source is in `references/gameplay_football/` and the envelopes here have not
-//! been calibrated against anything else yet.
+//! It decides and nothing else: the ball is touched in [`crate::ball_contest`]
+//! and [`crate::ball_release`].
 //!
-//! Architecture note: the original controller emits `PlayerCommand`s consumed by
-//! the humanoid animation system. This port has no animation layer, so movement
-//! commands become a per-tick `Velocity` (in `select_player_movement`) and
-//! on-the-ball commands become an `OnBallAction` that `player_kick_system`
-//! executes as a discrete ball touch.
+//! Ported from `ElizaController`
+//! (onthepitch/player/controller/elizacontroller.cpp), the off-the-ball
+//! strategies (strategies/offtheball/default_def|mid|off.cpp) and the keeper
+//! (goalie_default.cpp).
 //!
-//! Deliberate simplifications:
-//! - No `MentalImage` reaction-time delay: controllers see the true state.
-//! - `GetOnTheBallCommands` decides among panic / pass / shot / dribble in the
-//!   original queue order; `AI_GetPass` execution (direction/power solving) is
-//!   approximated with the existing tuned kick recipes.
-//! - Pass receivers beyond the offside line are skipped (our earlier fix; the
-//!   original relies on support positioning being offside-aware, which
-//!   `get_support_position_force_field` also enforces here).
+//! Without an animation layer, the original's `PlayerCommand`s become a per-tick
+//! `Velocity` and an `OnBallAction`. Deciders still read the true world, not an
+//! observed one: the `MentalImage` delay arrives with MVP 4.
 
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
@@ -196,12 +185,9 @@ pub fn select_player_movement(
             // the magnet branch of _MovementCommand: go win the ball
             to_ball_movement(&me, stats, ball)
         } else {
-            // NOTE: a designated player whose ball is NOT winnable behaves like
-            // any off-the-ball player (strategy + conditional hunting) — in the
-            // original the defensive designated has autoBias ≈ 0. A permanent
-            // 1-2 m containment shadow presses the opposing back line nonstop,
-            // forces escape passes into the presser, and the presser intercepts
-            // them (measured: interceptors were the pressing CFs/CBs).
+            // A designated player who cannot win the ball plays off it like
+            // anyone else: a permanent containment shadow presses the back line
+            // nonstop and the presser intercepts the escape passes he forced.
             off_ball_movement(&ctx, &me, man_marking, avg_velocity, work_rate)
         };
 
@@ -1124,10 +1110,9 @@ pub fn decide_on_ball_action(
         }
     }
 
-    // hemmed in (2+ opponents on top): dribbling on only feeds the herd-out
-    // towards the sideline — look for ANY escape pass (ignoring the tactical
-    // improvement threshold), else blast it clear. The original resolves this
-    // with body-shielded turn animations we don't have.
+    // Hemmed in, dribbling on only feeds the herd-out towards the sideline, so
+    // any escape pass will do and otherwise it gets blasted clear. The original
+    // resolves this with body-shielded turns we do not have.
     let hemmed = opponents
         .iter()
         .filter(|o| (o.pos - me.pos).length() < passing.hemmed_distance)

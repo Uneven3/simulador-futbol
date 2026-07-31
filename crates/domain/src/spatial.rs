@@ -2,19 +2,13 @@ use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
 
-/// Authoritative position on the pitch, in metres, in the simulation's Z-up
-/// frame: `x` runs from goal to goal, `y` from touchline to touchline and `z` is
-/// height above the grass.
+/// The only spatial truth, in metres, Z-up: `x` goal to goal, `y` touchline to
+/// touchline, `z` above the grass. A `Transform` is never authoritative — those
+/// belong to presentation, derived from this (§1).
 ///
-/// This is the only spatial truth. No `Transform` is ever read as authoritative
-/// state: presentation owns transforms and derives them from this component
-/// (architecture law 2, "authoritative entity without visuals").
-///
-/// Conventions, because the two bodies anchor differently:
-/// - a player's position is his support point on the ground, so `z == 0.0`;
-///   the body is raised by presentation.
-/// - the ball's position is its centre, so a ball at rest sits at
-///   `z == BALL_RADIUS`.
+/// The two bodies anchor differently: a player's position is his support point
+/// (`z == 0.0`, presentation raises the body), the ball's is its centre, so a
+/// ball at rest sits at `z == BALL_RADIUS`.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Reflect)]
 pub struct Position(pub Vec3);
 

@@ -370,10 +370,8 @@ mod tests {
             );
             assert!(pos.is_finite(), "Ball position is not finite: {pos:?}");
 
-            // Team discipline: off-the-ball players
-            // may legitimately sprint back into formation, so the real
-            // regression signal is CROWDING — how many players stand within 8 m
-            // of the ball. If everyone chases the ball, this count explodes.
+            // Off-the-ball players may legitimately sprint, so the regression
+            // signal is crowding: how many stand within 8 m of the ball.
             let mut crowders = 0;
             let mut player_query = app
                 .world_mut()

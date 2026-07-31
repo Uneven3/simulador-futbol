@@ -95,10 +95,9 @@ pub fn solve_pass(
     pitch: &PitchConfig,
     tuning: &PassingTuning,
 ) -> Kick {
-    // El alcance se mide desde el jugador y la trayectoria se resuelve desde el
-    // balón: son dos puntos distintos, a medio metro uno del otro, y confundirlos
-    // cambia el vuelo de los pases altos lo bastante para mover un partido
-    // entero (medido: dos goles de diferencia sobre diez minutos).
+    // El alcance se mide desde el jugador y la trayectoria desde el balón: son
+    // dos puntos a medio metro uno del otro, y confundirlos cambia el vuelo de
+    // los pases altos lo bastante para mover un partido entero.
     let distance = from.distance(aim);
     let (lift, pace) = match kind {
         PassKind::Short => (tuning.short_lift, tuning.short_pace),
@@ -205,10 +204,9 @@ pub fn execute_on_ball_action(
     // el toque exige el balón en el pie
     let in_reach = ball_pos_2d.distance(from) < contest.ball_at_feet_distance
         && ball_pos.z < contest.ball_at_feet_height;
-    // Los porteros golpean sin demora. Una suelta deliberada solo necesita un
-    // tiempo de reacción corto — el original encadena control → pase en su cola
-    // de comandos, y un portador presionado obligado a esperar 350 ms alimenta
-    // el bucle de robos. El toque de conducción sí mantiene la cadencia lenta.
+    // Los porteros golpean sin demora, y una suelta deliberada solo necesita
+    // reacción corta: obligar a esperar a un portador presionado alimenta el
+    // bucle de robos. La conducción sí mantiene la cadencia lenta.
     let since_touch = now.saturating_sub(ball.last_touch_at);
     let can_decide = since_touch > contest.decision_cadence || is_goalkeeper;
     let can_knock_on = since_touch > contest.knock_on_cadence || is_goalkeeper;

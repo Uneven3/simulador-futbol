@@ -1,19 +1,9 @@
-//! How to watch a simulation nobody is looking at.
+//! How to watch a simulation nobody is looking at: [`telemetry`] is the fact
+//! stream, [`snapshot`] the present as data, [`ledger`] what the facts add up
+//! to, so no test accumulates its own totals (`docs/DIAGNOSTICS.md`).
 //!
-//! Three parts, deliberately separate (the contract is `docs/DIAGNOSTICS.md`):
-//!
-//! - [`telemetry`] is the per-tick fact stream: moments, appended in order.
-//! - [`snapshot`] is the present as pure data, drawn by the HUD and written by
-//!   the console. Neither sink formats anything itself.
-//! - [`ledger`] is what the facts add up to, so no test has to accumulate its
-//!   own totals from a log it had to parse.
-//!
-//! Everything is off by default. A log that is always on is a log nobody
-//! reads, and each channel is a question you turn on when you are asking it.
-//!
-//! This lives in the simulation crate, not in presentation: a headless run is
-//! the normal case here, and being able to see is not a property of having a
-//! window.
+//! Off by default, and here rather than in presentation: seeing is not a
+//! property of having a window.
 
 mod collect;
 pub mod ledger;

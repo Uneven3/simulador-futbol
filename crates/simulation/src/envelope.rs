@@ -1,17 +1,10 @@
 //! N partidos, reportados como distribución.
 //!
-//! Una corrida es una trayectoria, no una métrica: la simulación es
-//! determinista pero caótica, y una perturbación de un milisegundo produce otro
-//! partido sin que el modelo haya cambiado (`docs/VALIDATION.md`).
-//! Lo que sí se puede comparar es la envolvente sobre varias semillas.
-//!
-//! Y entre envolventes, la distribución antes que la media: la referencia real
-//! son ~2,7 goles por partido repartidos casi como una Poisson, así que un
-//! modelo puede acertar la media y seguir sin parecerse a un partido. Por eso
-//! [`Distribution::render_against_poisson`] pone los dos histogramas juntos.
-//!
-//! Esto es una herramienta, no un test: los tests la usan (`seeded_envelope`),
-//! y las propiedades causales de MVP 1.75 se afirmarán sobre lo que devuelve.
+//! Una corrida es una trayectoria, no una métrica: determinista pero caótica,
+//! una perturbación de un milisegundo da otro partido sin que el modelo haya
+//! cambiado. Solo la envolvente sobre varias semillas se puede comparar, y por
+//! la distribución antes que por la media: un modelo puede acertar la media y
+//! no parecerse a un partido (`docs/VALIDATION.md`).
 
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;

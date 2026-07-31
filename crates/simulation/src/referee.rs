@@ -262,13 +262,9 @@ pub struct OffsideJudgement {
 /// tocó que están por delante de ella (`AI_GetOffsideLine`).
 ///
 /// La línea es el penúltimo defensor o el balón, el que esté más cerca de la
-/// portería defendida, y nunca dentro del campo del que ataca.
-///
-/// Es puro para que el **signo** se pueda afirmar con tres jugadores en un test
-/// (§8). Lo tuvo invertido desde el port: anotaba a los que estaban por detrás
-/// de la línea, es decir a casi toda la plantilla —9,4 de 11 jugadores por
-/// tick— y como un anotado no puede disputar el balón, el efecto no era pitar
-/// fueras de juego sino congelar a un equipo entero alrededor del balón.
+/// portería defendida, y nunca dentro del campo del que ataca. El signo importa
+/// más que el valor: invertido anota a media plantilla, y como un anotado no
+/// disputa el balón, congela al equipo en vez de pitar fuera de juego.
 pub fn judge_offside_positions(
     bodies: &[(PlayerId, Vec3)],
     touched_by: PlayerId,

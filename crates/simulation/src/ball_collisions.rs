@@ -81,11 +81,9 @@ fn ball_body_collisions(
     let mut toucher: Option<(Entity, PlayerId)> = None;
 
     for (entity, position, player, attributes, player_state, velocity) in player_query.iter() {
-        // Original: the designated team possession player triggers a CONTROLLED
-        // ball collision instead of an accidental deflection — his deliberate
-        // touches happen in the kick system (pickup/tackle/knock-on). Without
-        // this exclusion, two designated players over a contested ball deflect
-        // it back and forth forever, wiping possession every 150 ms.
+        // A designated player's touches are deliberate and belong to the kick
+        // system; without this exclusion two of them over a contested ball
+        // deflect it back and forth forever.
         if match_state.possession_player == Some(player.id)
             || designation.designated[player.id.team] == Some(player.id)
         {

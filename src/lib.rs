@@ -132,10 +132,8 @@ impl ScenarioRunner {
 
     /// Panics with every way the run failed the scenario's claims.
     pub fn assert_scenario_holds(self) {
-        // A scenario that contradicts itself would either fail forever or pass
-        // for the wrong reason, and one with a match-length window would stall
-        // the suite. Both are the scenario's fault, not the kernel's, so they
-        // are reported as such before a single tick runs.
+        // A self-contradicting scenario is the scenario's fault, not the
+        // kernel's, so it is reported as such before a single tick runs.
         let contradictions = self.scenario.contradictions();
         assert!(
             contradictions.is_empty(),
