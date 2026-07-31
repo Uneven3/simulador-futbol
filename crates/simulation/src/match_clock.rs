@@ -10,11 +10,9 @@ use football_domain::{
 };
 use std::time::Duration;
 
-/// Law 7: the clock and the phases of a match.
-///
-/// The clock owns every phase transition, and it is the first thing to run in a
-/// tick — the match lifecycle decides whether there is a match to simulate at
-/// all before anyone moves.
+/// Law 7: the clock and the phases of a match. It owns every phase transition
+/// and runs first in a tick — whether there is a match to simulate at all is
+/// decided before anyone moves.
 pub struct MatchClockPlugin;
 
 impl Plugin for MatchClockPlugin {
@@ -28,11 +26,9 @@ impl Plugin for MatchClockPlugin {
     }
 }
 
-/// Milliseconds since the app started, which is what cooldowns and timestamps
-/// outside the match clock are measured against.
-///
-/// Saturating: a run long enough to overflow `u64` milliseconds is 584 million
-/// years, and the alternative is a panic mid-match.
+/// Milliseconds since the app started: what cooldowns and timestamps outside the
+/// match clock are measured against. Saturating, because the alternative to 584
+/// million years of match is a panic.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -44,11 +40,8 @@ pub fn engine_elapsed_ms(time: &Time) -> u64 {
 }
 
 /// Un periodo se acaba cuando se ha jugado lo que dura, y lo que se pasó parado
-/// no se jugó (Ley 7).
-///
-/// El reloj no se detiene en las reanudaciones —como en un partido real—, así
-/// que la forma de devolver ese tiempo es alargar el periodo, que es
-/// exactamente lo que hace el árbitro cuando añade minutos.
+/// no se jugó (Ley 7). El reloj no se detiene en las reanudaciones, así que ese
+/// tiempo vuelve alargando el periodo: el añadido del árbitro.
 pub fn period_is_over(elapsed: Duration, stopped_for: Duration, regulation: Duration) -> bool {
     elapsed >= regulation + stopped_for
 }
@@ -130,12 +123,9 @@ fn advance_match_clock(
     }
 }
 
-/// At the final whistle the players stop, and their state has to say so.
-///
-/// Their decision systems have already stopped running, so nobody would move
-/// either way — but a body left carrying 8 m/s is a lie the diagnostics would
-/// faithfully draw: twenty-two velocity arrows on a pitch where the match is
-/// over.
+/// At the final whistle the players stop, and their state has to say so. Nobody
+/// would move either way, but a body left carrying 8 m/s is a lie the
+/// diagnostics would faithfully draw.
 fn still_the_players_at_full_time(
     match_state: Res<MatchState>,
     mut players: Query<(&mut Velocity, &mut MovementIntent), With<Player>>,

@@ -135,11 +135,9 @@ impl MatchLedger {
         completed
     }
 
-    /// Ha pasado un tick **de juego**, con `holding_team` en el balón.
-    ///
-    /// Solo se llama mientras el periodo corre. El descanso no es tiempo de
-    /// juego: contarlo hincha la posesión del último equipo que tocó el balón e
-    /// inventa una racha de quince minutos en la que nadie jugó.
+    /// Ha pasado un tick **de juego**, con `holding_team` en el balón. Solo se
+    /// llama mientras el periodo corre: el descanso hincharía la posesión del
+    /// último que tocó el balón e inventaría una racha de quince minutos.
     fn advance_clocks(&mut self) {
         self.played_time += TICK;
         if let Some(team) = self.holding_team {
@@ -235,13 +233,9 @@ impl MatchLedger {
     }
 }
 
-/// Whether a struck ball was going in, judged on the trajectory the physics
-/// just computed for it.
-///
-/// This is what "on target" means here: the shot was entering the goal mouth
-/// when it left the boot. Whether a keeper then reaches it is a different
-/// question, and answering both with one counter would hide which of the two is
-/// broken.
+/// Whether a struck ball was going in, on the trajectory the physics just
+/// computed. That is what "on target" means here; whether a keeper reaches it is
+/// a different question, and one counter for both would hide which is broken.
 pub fn trajectory_enters_goal(
     predictions: &[Vec3],
     attacking_towards_x: f32,
@@ -278,10 +272,8 @@ fn release_index(kind: ReleaseKind) -> usize {
 }
 
 /// Reads this tick's facts, updates the totals, and reports the turnovers it
-/// derived back into the stream so the log can show them.
-///
-/// Runs before the console sink, so a derived fact lands in the same tick as
-/// the events it was derived from.
+/// derived back into the stream. Runs before the console sink, so a derived fact
+/// lands in the same tick as the events it came from.
 pub(super) fn accumulate_facts(
     mut ledger: ResMut<MatchLedger>,
     mut telemetry: ResMut<MatchTelemetry>,

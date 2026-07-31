@@ -43,10 +43,8 @@ pub struct ForceSpot {
 }
 
 /// Weighted mean direction of the whole field, or `None` when no spot reaches
-/// `at` — the caller decides what standing in a dead field means.
-///
-/// Attractors closer than `attractor_damping_distance` lose pull, so a player
-/// settles onto the spot instead of orbiting it.
+/// `at`. Attractors closer than `attractor_damping_distance` lose pull, so a
+/// player settles onto the spot instead of orbiting it.
 pub fn resolve(field: &[ForceSpot], at: Vec2, attractor_damping_distance: f32) -> Option<Vec2> {
     let mut cumulative_direction = Vec2::ZERO;
     let mut cumulative_force = 0.0;

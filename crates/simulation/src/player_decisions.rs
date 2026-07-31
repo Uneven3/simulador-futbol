@@ -255,12 +255,9 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
     }
 }
 
-/// Port of the magnet decision in `_MovementCommand`: the designated player
-/// goes to the ball ONLY when it is genuinely winnable — `possessionAmount >
-/// 0.99` (we would beat everyone to it), or a loose ball with decent odds
-/// (`!oppTeamHasPossession && possessionAmount > 0.5`). Otherwise he behaves
-/// like any off-the-ball player (the original's defensive designated branch
-/// has autoBias ≈ 0 for AI players).
+/// Port of the magnet decision in `_MovementCommand`: the designated player goes
+/// to the ball ONLY when it is genuinely winnable — he would beat everyone to
+/// it, or it is loose with decent odds. Otherwise he plays off the ball.
 fn ball_winnable(
     ctx: &DecisionContext,
     me: &PlayerReading,

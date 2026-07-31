@@ -11,12 +11,8 @@ use football_domain::{
 use std::time::Duration;
 
 /// Installs a scenario: the state the match starts from, its seed, its pitch and
-/// its bodies.
-///
-/// The scenario is the single source of the initial situation, so a run is
-/// reproducible from one value. Nothing here is renderable: these entities carry
-/// domain state only, and their visual representations are created independently
-/// by presentation and linked back with `VisualOf`.
+/// its bodies — the single source of the initial situation, so a run is
+/// reproducible from one value. Nothing here is renderable (§1).
 pub struct MatchSetupPlugin {
     scenario: Scenario,
 }
@@ -71,11 +67,9 @@ fn initial_match_state(scenario: &Scenario) -> MatchState {
 /// becomes per-player data (MVP 3).
 pub const PLAYER_HEIGHT: f32 = 1.8;
 
-/// Keeps the identity → body index in step with the world.
-///
-/// Runs once per frame rather than per tick: bodies are only created at setup
-/// today, and substitutions (MVP 2) will arrive as a request the kernel serves
-/// at a restart, not mid-tick.
+/// Keeps the identity → body index in step with the world. Once per frame and
+/// not per tick: bodies are only created at setup, and substitutions will arrive
+/// as a request served at a restart.
 fn register_bodies(
     mut registry: ResMut<PlayerRegistry>,
     arrived: Query<(Entity, &Player), Added<Player>>,
@@ -166,13 +160,9 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
     }
 }
 
-/// Normalized formation entry (original `FormationEntry::position`, -1..1 in
-/// both axes) for the default 4-4-2; `AI_GetAdaptedFormationPosition` scales
-/// this into the dynamic team block.
-///
-/// Paired positions are told apart by shirt, the way a team sheet does it: 3 is
-/// the left-sided centre back, 7 the left-sided centre midfielder, 10 the
-/// left-sided forward.
+/// Normalized formation entry (original `FormationEntry::position`, -1..1) for
+/// the default 4-4-2; `AI_GetAdaptedFormationPosition` scales it into the team
+/// block. Paired positions are told apart by shirt, as a team sheet does.
 pub fn normalized_formation_position(id: PlayerId, position: PlayingPosition) -> Vec2 {
     match position {
         PlayingPosition::Goalkeeper => Vec2::new(-1.0, 0.0),

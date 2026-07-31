@@ -11,11 +11,9 @@ use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
 use std::time::Duration;
 
-/// Qué alcanza a ver un cuerpo, y desde dónde.
-///
-/// El campo visual humano útil son unos 180 grados en total; la visión nítida
-/// es mucho más estrecha, pero para saber dónde está un cuerpo que se mueve
-/// basta la periférica.
+/// Qué alcanza a ver un cuerpo, y desde dónde. El campo visual humano útil son
+/// unos 180 grados: la visión nítida es mucho más estrecha, pero para situar un
+/// cuerpo que se mueve basta la periférica.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Vision {
     /// Medio ángulo del campo visual, en radianes: lo que hay a cada lado de
@@ -35,11 +33,8 @@ impl Default for Vision {
     }
 }
 
-/// Lo último que un jugador supo de otro cuerpo.
-///
-/// Guarda cuándo lo supo, porque una posición de hace tres segundos no es una
-/// posición: es un punto de partida. Quien decide con esto tiene que poder
-/// preguntar cuánto hace.
+/// Lo último que un jugador supo de otro cuerpo, con cuándo lo supo: una
+/// posición de hace tres segundos no es una posición, es un punto de partida.
 #[derive(Debug, Clone, Copy, Reflect)]
 pub struct Observation {
     pub spot: Vec2,
@@ -60,11 +55,9 @@ impl Observation {
     }
 }
 
-/// Lo que un jugador sabe del resto del campo, uno por uno.
-///
-/// Es memoria y no una foto: lo que no se ve no desaparece, se queda como
-/// estaba y envejece. Un `Vec` y no un mapa porque son veintiuno como mucho y
-/// se recorre entero cada tick (§12).
+/// Lo que un jugador sabe del resto del campo. Es memoria y no una foto: lo que
+/// no se ve no desaparece, se queda como estaba y envejece. Un `Vec` porque son
+/// veintiuno y se recorre entero cada tick (§12).
 #[derive(Component, Debug, Clone, Default, Reflect)]
 pub struct ObservationMemory {
     seen: Vec<(PlayerId, Observation)>,

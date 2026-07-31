@@ -18,11 +18,8 @@ pub struct Recorded {
 }
 
 /// What the match reported this tick, and optionally a window of history.
-///
-/// Recording is unconditional and allocation-free after warm-up: facts are
-/// `Copy` and the tick buffer is reused. What is conditional is what happens to
-/// them — the console sink only writes enabled channels, and history is only
-/// kept when someone asked for it.
+/// Recording is unconditional and allocation-free after warm-up; what is
+/// conditional is what happens to the facts afterwards.
 #[derive(Resource, Debug, Default)]
 pub struct MatchTelemetry {
     tick: u64,

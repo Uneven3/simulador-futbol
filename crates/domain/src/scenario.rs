@@ -55,11 +55,9 @@ impl BallSetup {
     }
 }
 
-/// Which players take part.
-///
-/// Placing individual players explicitly is what MVP 6 needs to reconstruct a
-/// real situation; until there is something to reconstruct from, a scenario
-/// either fields both teams or isolates the ball.
+/// Which players take part. Placing individuals explicitly is what MVP 6 needs
+/// to reconstruct a real situation; until then a scenario either fields both
+/// teams or isolates the ball.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerSetup {
     /// Both teams at their base 4-4-2 positions.
@@ -221,12 +219,9 @@ pub struct ScenarioOutcome {
 }
 
 impl Scenario {
-    /// Every way this scenario contradicts itself, in plain language. Empty
-    /// means it is worth running.
-    ///
-    /// A scenario is a claim about a situation, and a claim nobody can satisfy
-    /// is worse than no claim: it either fails forever or, worse, passes for the
-    /// wrong reason.
+    /// Every way this scenario contradicts itself, in plain language; empty
+    /// means it is worth running. A claim nobody can satisfy is worse than no
+    /// claim: it fails forever, or passes for the wrong reason.
     pub fn contradictions(&self) -> Vec<String> {
         let mut found = Vec::new();
 

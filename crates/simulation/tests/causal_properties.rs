@@ -30,24 +30,9 @@ fn situation(tuning: MatchTuning) -> EnvelopeSpec {
     }
 }
 
-/// Dos equipos idénticos terminan parejos.
-///
-/// Es la propiedad más barata y la que más cosas descarta: un sesgo de lado
-/// —en la formación, en el saque, en el signo de un `team_side`— aparece aquí y
-/// en ninguna otra medida, porque las demás suman los dos equipos.
-///
-/// Solo la posesión se afirma con banda estrecha, y es deliberado. Los goles de
-/// doce partidos son dos docenas de sucesos, y los pases y tiros no son
-/// independientes entre sí: llegan en rachas de posesión, así que su muestra
-/// efectiva se parece más al número de partidos que al de sucesos. Una banda
-/// estrecha sobre ellos salta con el modelo sano y calla con el roto. La
-/// posesión promedia el tick, que es donde de verdad hay muestra.
-///
-/// Los demás se acotan a tres desviaciones, que es la red para un sesgo
-/// grosero. La banda no se eligió mirando el resultado: se comprobó contra los
-/// dos defectos que este test ya encontró —el 7-0 del desempate y el 2-10 de la
-/// reanudación sin apoyo—, y salta con los dos. Afirmar simetría de
-/// finalización más fina que eso pide cien partidos, y eso es un barrido.
+/// Dos equipos idénticos terminan parejos: un sesgo de lado solo aparece aquí.
+/// Banda estrecha solo sobre la posesión, que promedia el tick; pases y tiros
+/// llegan en rachas, y sobre ellos tres sigma atrapa un sesgo grosero y nada más.
 #[test]
 #[ignore]
 fn two_identical_teams_finish_level() {
@@ -89,11 +74,8 @@ fn two_identical_teams_finish_level() {
     );
 }
 
-/// Subir el listón del tiro reduce los tiros.
-///
-/// Afirma que la perilla manda sobre lo que dice mandar. Si un día deja de ser
-/// cierto, el umbral habrá dejado de ser el que decide disparar y habrá que
-/// buscar quién lo decide de verdad.
+/// Subir el listón del tiro reduce los tiros: la perilla manda sobre lo que dice
+/// mandar. Si deja de ser cierto, habrá que buscar quién decide disparar.
 #[test]
 #[ignore]
 fn a_higher_shooting_gate_produces_fewer_shots() {
@@ -118,21 +100,9 @@ fn a_higher_shooting_gate_produces_fewer_shots() {
     );
 }
 
-/// Un receptor que alcanza más lejos completa más pases.
-///
-/// Este test nació al revés. El 2026-07-30 se escribió para afirmar esto y
-/// falló: triplicar `receiver_trap_reach` daba partidos **idénticos bit a bit**,
-/// así que quedó como caracterización de una perilla muerta. La causa apareció
-/// el 2026-07-31 y no estaba aquí: el árbitro tenía invertido el signo del fuera
-/// de juego y anotaba a los jugadores que estaban **detrás** de la línea —9,4 de
-/// 11 por tick—, y un anotado no puede disputar el balón. El receptor de casi
-/// todos los pases estaba congelado, y ningún alcance sirve para eso.
-///
-/// Arreglado el signo, la perilla gobierna lo que dice gobernar: de 1,1 m a
-/// 3,0 m los pases completados suben del 53 % al 69 %. Es el sustituto de las
-/// animaciones de control del original —el receptor estira la pierna— y de él
-/// depende que un pase se complete contra el marcador que llega un metro por
-/// detrás.
+/// Un receptor que alcanza más lejos completa más pases: es el sustituto de las
+/// animaciones de control del original, y de él depende que un pase se complete
+/// contra el marcador que llega un metro por detrás.
 #[test]
 #[ignore]
 fn a_longer_receiver_reach_completes_more_passes() {
@@ -157,21 +127,9 @@ fn a_longer_receiver_reach_completes_more_passes() {
     );
 }
 
-/// Hoy el balón no se roba: se recoge del suelo.
-///
-/// Medido el 2026-07-31: **62 robos contra 2667 recogidas** cada 90 minutos. El
-/// mecanismo de entrada —con sus enfriamientos, su duelo y su protección del
-/// cuerpo— decide el 2 % de los cambios de posesión; el otro 98 % es balón
-/// suelto que alguien alcanza primero. Por eso `steal_cooldown` no mueve
-/// ninguna métrica agregada: gobierna una cincuentava parte del partido.
-///
-/// El arreglo del fuera de juego triplicó los robos (del 1,4 % al 2,5 %) sin
-/// sacarlos de lo marginal: cuando el rival deja de estar congelado, hay contra
-/// quién entrar.
-///
-/// Esto se afirma como está, no como debería ser: es la forma de que MVP 3
-/// (motor y contacto) y MVP 4 (percepción) noten el día que lo cambien. Un
-/// partido real reparte esto muchísimo más parejo.
+/// Hoy el balón no se roba: se recoge del suelo, y la entrada decide una
+/// cincuentava parte de los cambios de posesión. Se afirma como está para que el
+/// día que eso cambie haya que venir aquí a decidirlo.
 #[test]
 #[ignore]
 fn the_ball_changes_hands_by_being_dropped_not_taken() {

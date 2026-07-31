@@ -37,13 +37,9 @@ pub struct Kick {
     pub aim: Vec2,
 }
 
-/// El disparo, tal y como lo ejecuta el port.
-///
-/// Apunta a la LÍNEA de gol y no a un punto delante de ella: apuntar corto hace
-/// que todo disparo en diagonal se marche fuera. La dispersión es lo único que
-/// separa este golpeo de uno perfecto, y hoy vale `1 - técnica`, que sobre un
-/// jugador medio es ±0,5 m sobre una portería de 7,4: por eso el 100 % de los
-/// tiros van a puerta (`docs/AHORA.md`).
+/// El disparo, tal y como lo ejecuta el port. Apunta a la LÍNEA de gol y no a
+/// un punto delante de ella, o todo disparo en diagonal se marcha fuera. La
+/// dispersión es lo único que lo separa de un golpeo perfecto.
 pub fn solve_shot(
     from: Vec2,
     target_y: f32,
@@ -84,11 +80,9 @@ pub fn solve_shot(
     }
 }
 
-/// El pase, resuelto contra la física real para que LLEGUE.
-///
-/// Un balón que muere en el receptor recorre sus últimos metros arrastrándose,
-/// y cualquier rival que lea la predicción recoge esa cola lenta. El extra de
-/// ritmo es el que compensa la falta de animaciones de control.
+/// El pase, resuelto contra la física real para que LLEGUE: un balón que muere
+/// en el receptor recorre sus últimos metros arrastrándose, y cualquier rival
+/// recoge esa cola lenta.
 pub fn solve_pass(
     from: Vec2,
     ball_pos: Vec3,
@@ -139,12 +133,9 @@ pub fn solve_clearance(
     }
 }
 
-/// El toque de conducción: el balón rueda libre y el portador lo persigue.
-///
-/// En tráfico el toque se acorta a paso de conducción para que el balón se
-/// quede en rango; en espacio abierto sigue la velocidad del portador. Un toque
-/// a velocidad punta entre rivales rueda tres metros, suelta la posesión y se la
-/// regala al designado contrario.
+/// El toque de conducción: el balón rueda libre y el portador lo persigue. En
+/// tráfico se acorta a paso de conducción, porque un toque a velocidad punta
+/// entre rivales rueda tres metros y le regala la posesión al contrario.
 pub fn solve_knock_on(
     from: Vec2,
     running: Vec2,
@@ -166,12 +157,9 @@ pub fn solve_knock_on(
     }
 }
 
-/// Lo que un jugador ya empezó a hacer con el balón y todavía no ha hecho.
-///
-/// Es `ActionCommitment` del vocabulario reservado, en su forma mínima: la
-/// acción y el instante en que el pie llega al balón. Mientras dura, el partido
-/// no se detiene —el rival puede quitárselo y el compañero al que iba el pase
-/// sigue corriendo—, y por eso decidir un golpeo pasa a costar algo.
+/// Lo que un jugador ya empezó a hacer con el balón y todavía no ha hecho: la
+/// acción y el instante en que el pie llega. Mientras dura, el partido sigue, y
+/// por eso comprometerse cuesta algo.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct ActionCommitment {
     action: OnBallAction,
@@ -299,11 +287,9 @@ fn readings_of(touching: &Touching) -> Vec<PlayerReading> {
         .collect()
 }
 
-/// El pie llega al balón, y lo que se decidió hace dos décimas ocurre ahora.
-///
-/// O no ocurre: si por el camino le quitaron el balón o se le fue del pie, el
-/// golpeo se queda sin balón que golpear, que es lo que le pasa a un futbolista
-/// al que entran mientras arma la pierna.
+/// El pie llega al balón, y lo que se decidió hace dos décimas ocurre ahora. O
+/// no: si por el camino se lo quitaron, el golpeo se queda sin balón, como le
+/// pasa a quien recibe una entrada mientras arma la pierna.
 pub fn complete_committed_strike(
     mut commands: Commands,
     striking: Striking,
@@ -582,12 +568,9 @@ mod tests {
         assert!(kick.momentum.z > 0.0, "la levanta");
     }
 
-    /// Y este es el límite del modelo heredado: un defensa que corre hacia su
-    /// propia portería despeja HACIA ella, porque el sesgo hacia adelante (0,7)
-    /// no llega a compensar la dirección de la carrera.
-    ///
-    /// Se afirma tal cual para que la calibración de MVP 1.75 sepa que existe:
-    /// el día que se arregle, este test cambia a propósito y no por sorpresa.
+    /// El límite del modelo heredado: un defensa que corre hacia su propia
+    /// portería despeja HACIA ella. Se afirma tal cual para que el día que se
+    /// arregle, este test cambie a propósito y no por sorpresa.
     #[test]
     fn a_clearance_while_retreating_still_goes_backwards_today() {
         let tuning = MatchTuning::default();

@@ -108,14 +108,10 @@ impl Player {
 /// compartir, y lo que uno puede interponer entre un rival y el balón.
 pub const PLAYER_BODY_RADIUS: f32 = 0.35;
 
-/// What a player is physically capable of: stable for the match, and the thing
-/// MVP 3 will calibrate against real data.
+/// What a player is physically capable of: stable for the match.
 ///
 /// Admission rule (`AHORA.md`): an attribute lives here only once a mechanism
-/// reads it, it has a real unit and something calibrates it. Stamina and
-/// agility were inherited from the port with none of the three and were
-/// removed rather than left as decoration; they come back attached to the
-/// mechanism that uses them, as acceleration just did.
+/// reads it, it has a real unit and something calibrates it.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Attributes {
     /// Top speed in m/s (the port's `sprintVelocity`).
@@ -157,11 +153,9 @@ impl Default for Attributes {
     }
 }
 
-/// Lo que le queda de lo que salió teniendo: 1 fresco, 0 vacío.
-///
-/// Es capacidad y no disposición —un jugador vacío no es que no quiera, es que
-/// no puede—, así que lo lee el motor y no la decisión. Empieza el partido en
-/// uno y solo baja: los cambios y el descanso son de MVP 2.
+/// Lo que le queda de lo que salió teniendo: 1 fresco, 0 vacío. Es capacidad y
+/// no disposición —un jugador vacío no es que no quiera—, así que lo lee el
+/// motor. Solo baja: los cambios y el descanso son de MVP 2.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct FatigueState {
     pub stamina: f32,

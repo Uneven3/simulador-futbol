@@ -95,11 +95,9 @@ pub enum Advantage {
     WhistleTheFoul,
 }
 
-/// Ley 5: la falta no se pita si el equipo infringido saca provecho de seguir.
-///
-/// El balón suelto no cierra nada: mientras nadie lo tenga, la jugada sigue
-/// viva y la ventaja está por decidirse. Solo la recuperación del infractor
-/// devuelve al árbitro a la falta.
+/// Ley 5: la falta no se pita si el infringido saca provecho de seguir. El balón
+/// suelto no cierra nada —mientras nadie lo tenga, la ventaja está por
+/// decidirse—; solo la recuperación del infractor devuelve a la falta.
 pub fn judge_advantage(
     holder: Option<TeamId>,
     fouled_team: TeamId,
@@ -371,13 +369,9 @@ pub struct OffsideJudgement {
     pub beyond_the_line: Vec<(PlayerId, Vec3)>,
 }
 
-/// La línea de fuera de juego en el momento del toque, y los compañeros del que
-/// tocó que están por delante de ella (`AI_GetOffsideLine`).
-///
-/// La línea es el penúltimo defensor o el balón, el que esté más cerca de la
-/// portería defendida, y nunca dentro del campo del que ataca. El signo importa
-/// más que el valor: invertido anota a media plantilla, y como un anotado no
-/// disputa el balón, congela al equipo en vez de pitar fuera de juego.
+/// La línea de fuera de juego en el momento del toque y quién la rebasa
+/// (`AI_GetOffsideLine`): el penúltimo defensor o el balón, nunca dentro del
+/// campo propio. El signo importa más que el valor; invertido, congela al equipo.
 pub fn judge_offside_positions(
     bodies: &[(PlayerId, Vec3)],
     touched_by: PlayerId,
@@ -443,11 +437,8 @@ const OPPONENT_CLEARANCE: f32 = 9.15;
 const THROW_IN_CLEARANCE: f32 = 2.0;
 
 /// Quién saca: el portero en el saque de puerta, y en el resto el jugador de
-/// campo que tenga más cerca el balón.
-///
-/// El equipo lo decide la regla antes que esto; aquí no hay desempate entre
-/// equipos, que es de donde salía el sesgo local: dos formaciones espejo
-/// empatan en todo y los tres desempates iban al mismo lado.
+/// campo más cercano al balón. El equipo lo decide la regla antes que esto;
+/// aquí no hay desempate entre equipos, que es de donde salía el sesgo de lado.
 fn select_restart_taker(
     bodies: &[(PlayerId, PlayingPosition, Vec2)],
     taking_team: TeamId,
@@ -475,12 +466,9 @@ fn select_restart_taker(
         .map(|(id, _, _)| *id)
 }
 
-/// A qué distancia se ofrece el compañero de apoyo, en metros.
-///
-/// Sin él, sacar es una desventaja: el que saca queda solo contra un bloque
-/// entero, pierde el balón cerca de su área y el rival contraataca. Como saca
-/// quien encaja, eso se realimenta hasta la goleada. La Ley solo aparta a los
-/// rivales; a los compañeros los deja acercarse, y esto es lo que hacen.
+/// A qué distancia se ofrece el compañero de apoyo, en metros. Sin él sacar es
+/// una desventaja —solo contra un bloque entero—, y como saca quien encaja, eso
+/// se realimenta. La Ley aparta a los rivales y deja acercarse a los propios.
 const SUPPORT_DISTANCE: f32 = 6.0;
 const SUPPORT_WIDTH: f32 = 4.0;
 
@@ -508,12 +496,9 @@ fn restart_taker_spot(restart_pos: Vec2, attacking_towards_x: f32, set_piece: Se
     restart_pos - Vec2::new(attacking_towards_x * TAKER_DISTANCE, 0.0)
 }
 
-/// Aparta radialmente lo justo: quien ya respeta la distancia no se mueve, y
-/// quien no, sale por donde estaba en vez de teletransportarse a un sitio nuevo.
-///
-/// Quien esté justo encima del balón retrocede hacia su propia portería, que es
-/// lo que hace un defensa y además es simétrico: una dirección fija de reserva
-/// —`Vec2::X`— apartaría a los dos equipos hacia el mismo lado del campo.
+/// Aparta radialmente lo justo: quien respeta la distancia no se mueve, y quien
+/// no, sale por donde estaba. Encima del balón se retrocede hacia la portería
+/// propia, que además es simétrico: una dirección fija sesgaría un lado.
 fn cleared_position(
     position: Vec2,
     restart_pos: Vec2,
@@ -658,12 +643,9 @@ fn referee_set_piece_system(
 mod tests {
     use super::*;
 
-    /// La falta que nadie aprovecha acaba en tiro libre: es la costura entre
-    /// quien juzga la entrada y quien detiene el juego, y ninguna función pura
-    /// la cubre.
-    ///
-    /// Sin jugadores el árbitro no tiene a quién colocar, que es justo lo que
-    /// sobra aquí: lo que se mira es que el hecho llegue a decisión.
+    /// La falta que nadie aprovecha acaba en tiro libre: la costura entre quien
+    /// juzga la entrada y quien detiene el juego, que ninguna función pura cubre.
+    /// Sin jugadores, porque lo que se mira es que el hecho llegue a decisión.
     #[test]
     fn a_foul_the_offender_profits_from_becomes_a_free_kick() {
         use bevy_app::TaskPoolPlugin;
@@ -891,10 +873,8 @@ mod tests {
     }
 
     /// El fuera de juego se anota **por delante** de la línea, no por detrás.
-    ///
-    /// Es el test que faltaba: el signo estuvo invertido desde el port y anotaba
-    /// a los 9,4 jugadores que estaban en su sitio en vez de al que se había
-    /// adelantado. Local ataca hacia +x.
+    /// Es el test que faltaba: con el signo invertido se anotaba a los que
+    /// estaban en su sitio. Local ataca hacia +x.
     #[test]
     #[expect(
         clippy::float_cmp,

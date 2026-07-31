@@ -3,12 +3,8 @@ use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
 
 /// The only spatial truth, in metres, Z-up: `x` goal to goal, `y` touchline to
-/// touchline, `z` above the grass. A `Transform` is never authoritative — those
-/// belong to presentation, derived from this (§1).
-///
-/// The two bodies anchor differently: a player's position is his support point
-/// (`z == 0.0`, presentation raises the body), the ball's is its centre, so a
-/// ball at rest sits at `z == BALL_RADIUS`.
+/// touchline, `z` above the grass; a `Transform` is never authoritative (§1).
+/// A player anchors at his support point and the ball at its centre.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Reflect)]
 pub struct Position(pub Vec3);
 
@@ -24,12 +20,9 @@ impl Position {
     }
 }
 
-/// Direction the body faces on the pitch plane.
-///
-/// Derivada del movimiento, y por ahí heredada del límite del motor: la
-/// velocidad ya no salta, así que esto tampoco. Lo que sigue sin existir es la
-/// diferencia entre hacia dónde se mira y hacia dónde se corre, así que nadie
-/// puede tratarla todavía como una orientación con vida propia.
+/// Hacia dónde mira el cuerpo. La escribe el motor con su propio límite de
+/// giro; lo que sigue sin existir es querer mirar a un sitio y correr a otro,
+/// así que nadie puede tratarla aún como una orientación con vida propia.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Facing(pub Dir2);
 
@@ -44,10 +37,8 @@ impl Default for Facing {
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]
 pub struct Velocity(pub Vec3);
 
-/// La velocidad que la decisión pide, que no es la que el cuerpo consigue.
-///
-/// Son dos componentes y no uno porque son dos escalones distintos: decidir e
-/// ir (§3). Quien decide escribe aquí y nunca en [`Velocity`]; entre los dos
-/// está el motor, que es lo único que convierte lo pedido en lo alcanzable.
+/// La velocidad que la decisión pide, que no es la que el cuerpo consigue: dos
+/// componentes porque son dos escalones (§3). Quien decide escribe aquí y nunca
+/// en [`Velocity`]; en medio está el motor.
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]
 pub struct MovementIntent(pub Vec3);

@@ -157,11 +157,9 @@ impl TeamTactics {
     }
 }
 
-/// What the decision systems read about one player this tick.
-///
-/// Omniscient today: everyone reads everyone's exact position. MVP 4 replaces
-/// this with per-player observation, and the name should stop being honest at
-/// that point rather than quietly stay.
+/// What the decision systems read about one player this tick. No longer the
+/// truth: `perception::Beliefs` fills these from what each player has seen, so
+/// two of them can disagree about where a third one is.
 #[derive(Debug, Clone, Copy)]
 pub struct PlayerReading {
     pub id: PlayerId,

@@ -28,7 +28,13 @@ disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 `PlayingPosition` es la posición nominal y `TacticalRole` la función.
 
 **Balón.** `Ball` lleva su momentum y su predicción, que hoy es la trayectoria
-futura real y todo el mundo lee: es la omnisciencia que MVP 4 tiene que romper.
+futura real y todo el mundo lee: es la omnisciencia que queda por romper.
+
+**Percepción.** `Vision` es el cono —medio ángulo y alcance—, `Observation` lo
+último que se supo de un cuerpo y cuándo, y `ObservationMemory` eso por cabeza:
+lo que sale del cono no se olvida, envejece. `Beliefs` arma con ello un campo
+por jugador, y es lo que la decisión lee en vez de la verdad. `PlayerReading`
+sigue llamándose igual y ya no lo es.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del
@@ -48,9 +54,9 @@ todo lo que puede) y `ScenarioOutcome` lo que pasó.
 Nombres que aún no existen, con el MVP que los trae. Están escritos para que el
 día que aparezcan no se inventen dos veces:
 
-- **Percepción (MVP 4):** `Observation`, `ObservationMemory`, `BeliefState`. Una
-  decisión leerá creencias y no verdad; `PlayerReading` es el marcador de hoy, y
-  debería dejar de compilar entonces.
+- **Percepción (MVP 4):** lo que falta es el balón. `Ball.predictions` sigue
+  siendo la trayectoria futura real; `ObservationMemory.ball` se llena y nadie
+  la usa. Y falta el error: hoy lo que se ve se ve exacto.
 - **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez
   de un solo instante de contacto. La aceleración, el frenado y la fatiga ya no
   están aquí: existen, con el mecanismo que los lee.

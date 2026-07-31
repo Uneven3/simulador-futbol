@@ -77,16 +77,9 @@ pub fn touch_ball(ball: &mut Ball, position: &mut Position, target_momentum: Vec
     ball.momentum = target_momentum;
 }
 
-/// Port of `Ball::CalculatePrediction()`: integrates 3 seconds of trajectory in
-/// 10 ms steps and returns the state at the first step, which is the real ball
-/// state for the next tick. Woodwork is only resolved on the first step
-/// (`firstTime` in the original): post bounces are deliberately unpredictable
-/// for the AI. Netting also only acts on the first step.
-/// Solve the kick momentum that carries the ball from `from` to the 2D point
-/// `to`, arriving with `pace_bonus` m/s of extra pace. The original resolves
-/// pass power in `AI_GetAutoPass` + the kick animations; here we bisect the
-/// initial speed against the real ball integrator, so the pass physically
-/// arrives at the receiver instead of dying short or overshooting.
+/// Solve the kick momentum that carries the ball from `from` to `to` with
+/// `pace_bonus` m/s of extra pace, bisecting the initial speed against the real
+/// integrator so the pass arrives instead of dying short or overshooting.
 pub fn solve_pass_momentum(
     pitch: &PitchConfig,
     from: Vec3,
@@ -120,6 +113,9 @@ pub fn solve_pass_momentum(
     dir * (hi + pace_bonus)
 }
 
+/// Port of `Ball::CalculatePrediction()`: integrates 3 s of trajectory in 10 ms
+/// steps and returns the first, which is the real next tick. Woodwork and
+/// netting only resolve on that step: post bounces are unpredictable by design.
 pub fn calculate_prediction(
     start_pos: Vec3,
     start_orientation: Quat,

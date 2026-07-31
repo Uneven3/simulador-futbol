@@ -46,14 +46,9 @@ impl MatchPhase {
     }
 }
 
-/// Law 7 lengths, as competition data rather than constants.
-///
-/// The Laws set two equal halves of 45 minutes and an interval of at most 15,
-/// but both are competition-modifiable — and a scenario shortens them so the
-/// clock can be demonstrated in seconds instead of an hour and a half.
-///
-/// Not covered yet, and deliberately so: allowance for time lost (added time),
-/// which needs the referee to account for stoppages, and extra time.
+/// Law 7 lengths, as competition data rather than constants: the Laws set two
+/// halves of 45 and an interval of at most 15, both competition-modifiable, and
+/// a scenario shortens them to demonstrate the clock in seconds. Extra time no.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub struct MatchRegulations {
     pub half_duration: Duration,
@@ -145,11 +140,9 @@ impl BallTouched {
     }
 }
 
-/// Un contacto que puede ser falta, tal y como ocurrió: quién entró, sobre
-/// quién y dónde.
-///
-/// Es un hecho, no una decisión. Que se pite o no es del árbitro, que puede no
-/// haberlo visto y, cuando exista la ventaja, puede verlo y dejar seguir (§3).
+/// Un contacto que puede ser falta, tal y como ocurrió: quién entró, sobre quién
+/// y dónde. Es un hecho y no una decisión: pitarlo es del árbitro, que puede no
+/// haberlo visto o verlo y dejar seguir (§3).
 #[derive(Message, Debug, Clone, Copy)]
 pub struct PotentialFoul {
     pub by: PlayerId,

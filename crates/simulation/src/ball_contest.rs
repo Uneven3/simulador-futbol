@@ -62,11 +62,8 @@ pub struct MatchSettings<'w> {
 }
 
 /// Quién está en contacto con el balón este tick, y a qué distancia efectiva.
-///
-/// Es un hecho derivado, no estado del partido: lo escribe
-/// [`select_ball_challenger`] y lo consumen la entrada y la recogida. Guarda
-/// una identidad de dominio y no una `Entity`, que solo vale para este tick
-/// (ley 4).
+/// Hecho derivado y no estado: lo escribe [`select_ball_challenger`], y guarda
+/// identidad de dominio porque una `Entity` solo vale para este tick (§4).
 #[derive(Resource, Debug, Default)]
 pub struct BallContest {
     pub challenger: Option<PlayerId>,
@@ -124,12 +121,9 @@ pub fn release_escaped_ball(
     }
 }
 
-/// El jugador en contacto con el balón, si hay alguno.
-///
-/// El receptor de un pase alcanza más lejos y gana los empates dentro de su
-/// radio: es el sustituto de las animaciones de control del original, que
-/// estiran una pierna. Sin eso la recepción es cara o cruz contra el marcador
-/// que está uno o dos metros por detrás, y casi ningún pase se completa.
+/// El jugador en contacto con el balón, si hay alguno. El receptor de un pase
+/// alcanza más lejos y gana los empates dentro de su radio, que es el sustituto
+/// de las animaciones de control: sin eso, casi ningún pase se completa.
 pub fn select_ball_challenger(
     match_state: Res<MatchState>,
     offside_records: Res<football_domain::OffsideRecords>,
@@ -209,11 +203,9 @@ pub struct Contesting<'w> {
     pub contact: ResMut<'w, BodyContact>,
 }
 
-/// Quién estaba encima de quién al acabar el tick anterior.
-///
-/// Una falta es un suceso, no un estado: entrar es cruzar la distancia de
-/// contacto, y quedarse dentro de ella es disputar. Sin esta memoria, perseguir
-/// a un rival un segundo son cien faltas.
+/// Quién estaba encima de quién al acabar el tick anterior. Una falta es un
+/// suceso y no un estado: entrar es cruzar la distancia de contacto, y quedarse
+/// dentro es disputar. Sin esto, perseguir un segundo son cien faltas.
 #[derive(Resource, Debug, Default)]
 pub struct BodyContact {
     pairs: Vec<(PlayerId, PlayerId)>,
@@ -252,33 +244,24 @@ pub struct BodyApproach {
     pub shielded: bool,
 }
 
-/// Si el portador tiene el cuerpo metido entre el rival y el balón.
-///
-/// Es proteger el balón, que hasta ahora no existía: el rival podía robarlo
-/// desde el lado equivocado del cuerpo como si el cuerpo no estuviera. Solo
-/// cuenta cuando el portador está *entre* los dos —de ahí el `0.0..1.0` sobre
-/// el segmento—, porque un cuerpo detrás del balón no tapa nada.
+/// Si el portador tiene el cuerpo metido entre el rival y el balón. Solo cuenta
+/// estando *entre* los dos —de ahí el `0.0..1.0` sobre el segmento—, porque un
+/// cuerpo detrás del balón no tapa nada.
 pub fn shields_the_ball(challenger: Vec2, carrier: Vec2, ball: Vec2) -> bool {
     let (distance_to_line, along) = line_distance_to_point_2d(challenger, ball, carrier);
     (0.0..1.0).contains(&along) && distance_to_line < PLAYER_BODY_RADIUS
 }
 
-/// A qué velocidad se va hacia un punto. Es la velocidad propia y no la de
-/// acercamiento mutuo, porque la falta es de quien la lleva encima: si es el
-/// portador quien retrocede contra un rival parado, no ha entrado nadie.
-///
-/// Encima del punto no hay línea que seguir, y entonces no se va a ninguna
-/// parte.
+/// A qué velocidad se va hacia un punto: la propia y no la de acercamiento
+/// mutuo, porque la falta es de quien la lleva encima. Encima del punto no hay
+/// línea que seguir, y entonces no se va a ninguna parte.
 fn speed_towards(from: Vec2, velocity: Vec2, target: Vec2) -> f32 {
     Dir2::new(target - from).map_or(0.0, |line| velocity.dot(*line))
 }
 
-/// Cuánto va contra el hombre quien va a por el balón que lleva.
-///
-/// Con el balón en el pie del rival las dos direcciones son la misma y la
-/// diferencia es cero: perseguir a alguien no es entrarle. Se separan cuando el
-/// balón sale del pie, y lo que queda entonces yendo hacia el cuerpo es la
-/// carrera que ya no tiene por qué ir ahí.
+/// Cuánto va contra el hombre quien va a por el balón que lleva. Con el balón
+/// en su pie las dos direcciones coinciden y la diferencia es cero: perseguir
+/// no es entrar. Se separan cuando el balón sale del pie.
 pub fn approach_of(challenger: Vec2, velocity: Vec2, carrier: Vec2, ball: Vec2) -> BodyApproach {
     BodyApproach {
         apart: challenger.distance(carrier),
@@ -288,16 +271,9 @@ pub fn approach_of(challenger: Vec2, velocity: Vec2, carrier: Vec2, ball: Vec2) 
     }
 }
 
-/// Qué sale de ir a por un balón que lleva otro.
-///
-/// El orden importa y es el del fútbol: primero se mira si llegó al balón,
-/// porque quien lo gana no comete falta por mucho que hubiera contacto. Solo
-/// cuando no lo gana empieza a contar cómo llegó al hombre, y llegar no es
-/// entrar: hacen falta las dos cosas, el contacto y la carrera contra el cuerpo.
-///
-/// Y no se llega al balón a través de un cuerpo. Quien tiene al portador metido
-/// en medio no puede ganarlo por mucho que esté cerca, y si insiste llega al
-/// hombre: eso es empujar por detrás, y es lo que pita cualquier árbitro.
+/// Qué sale de ir a por un balón que lleva otro, en el orden del fútbol: quien
+/// llega al balón no comete falta, y al balón no se llega a través de un cuerpo.
+/// Llegar al hombre no es entrarle: hacen falta el contacto y la carrera.
 pub fn judge_tackle(
     challenger_to_ball: f32,
     carrier_to_ball: f32,
@@ -317,14 +293,9 @@ pub fn judge_tackle(
     Tackle::Missed
 }
 
-/// Robarle el balón a quien lo lleva.
-///
-/// Tres condiciones, y las tres existen porque aquí no hay cuerpo que proteja
-/// el balón como en el original: solo el jugador designado entra, tiene que
-/// estar genuinamente más cerca que el portador, y el balón tiene que estar
-/// robable — fuera del pie o retenido tanto tiempo que la presión justifique la
-/// pérdida. Sin ellas los dos designados se intercambian el balón en cada
-/// ventana de enfriamiento y el partido degenera en un metrónomo de robos.
+/// Robarle el balón a quien lo lleva: solo entra el designado, tiene que estar
+/// genuinamente más cerca, y el balón tiene que estar robable. Sin las tres, los
+/// dos designados se lo intercambian en cada ventana de enfriamiento.
 pub fn resolve_tackle(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
@@ -448,13 +419,9 @@ pub fn resolve_tackle(
     );
 }
 
-/// Recoger un balón que no es de nadie.
-///
-/// Tres frenos, todos por la misma razón que la entrada: sin animaciones, el
-/// balón cambiaría de dueño cada pocos milisegundos. Hay un enfriamiento
-/// después de cualquier golpeo, uno más largo para quien acaba de golpearlo, y
-/// la prioridad del último que la jugó (`GetLastTouchBias` del original), que
-/// obliga al rival a llegar claramente antes.
+/// Recoger un balón que no es de nadie, con tres frenos: sin animaciones el
+/// balón cambiaría de dueño cada pocos milisegundos. Enfriamiento tras un
+/// golpeo, más largo para quien golpeó, y prioridad del último que la jugó.
 pub fn collect_loose_ball(
     mut match_state: ResMut<MatchState>,
     settings: MatchSettings,
@@ -562,13 +529,9 @@ fn take_possession(match_state: &mut MatchState, player: PlayerId, now: Duration
     match_state.pass_target = None;
 }
 
-/// El primer toque al ganar la posesión: mata casi todo el momentum para que el
-/// balón se quede en el pie (sustituto de las animaciones de control).
-///
-/// Y es un toque DIRIGIDO: el balón se coloca hacia donde el portador quiere
-/// ir, no hacia donde venía corriendo. Un control en la dirección cruda de la
-/// carrera, junto a la banda, echa el balón fuera y encadena saques de banda
-/// sin fin.
+/// El primer toque al ganar la posesión: mata casi todo el momentum y coloca el
+/// balón hacia donde el portador quiere ir, no hacia donde venía corriendo. En
+/// la dirección cruda de la carrera, junto a la banda, el balón se marcha fuera.
 fn control_touch(
     ball: &mut Ball,
     ball_position: &mut Position,
@@ -614,12 +577,9 @@ fn control_touch(
     });
 }
 
-/// Las dos mitades de un toque, en orden. Primero se decide de quién es el
-/// balón; solo después puede su dueño hacer algo con él.
-///
-/// Son sets y no un `.chain()` suelto para que lo que venga después —faltas,
-/// que son un incidente durante la disputa— entre como sistema propio en el set
-/// que le toca, sin editar ninguno de estos (§7).
+/// Las dos mitades de un toque, en orden: de quién es el balón, y qué hace con
+/// él quien lo tiene. Son sets y no un `.chain()` suelto para que lo que venga
+/// después entre como sistema propio sin editar ninguno de estos (§7).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BallTouchSet {
     /// De quién es el balón: escapadas, contacto, entrada y recogida.

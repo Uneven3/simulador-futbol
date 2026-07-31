@@ -53,15 +53,9 @@ fn last_touch_bias(now: Duration, touched_at: Duration, window: Duration) -> f32
     }
 }
 
-/// Si un cuerpo puede desviar el balón o está exento por estar disputándolo.
-///
-/// Quien lo disputa —el poseedor y el designado de cada equipo— se salta el
-/// choque, porque sus toques son deliberados y los resuelve el sistema de
-/// golpeo; dos de ellos sobre el mismo balón se lo devolverían sin fin. Pero un
-/// balón que viaja no se está disputando: va a alguna parte, y quien se cruza
-/// lo desvía aunque fuese el designado. Sin esta segunda mitad no había forma
-/// de bloquear un tiro, porque el único que llegaba a estar delante era
-/// justamente el designado.
+/// Si un cuerpo puede desviar el balón o está exento por disputarlo: los toques
+/// de quien lo disputa son deliberados y los resuelve el sistema de golpeo. Un
+/// balón que viaja ya no se disputa, y ahí sí lo desvía quien se cruce.
 pub fn deflects_it(contesting_it: bool, ball_speed: f32, tuning: &ContestTuning) -> bool {
     !contesting_it || ball_speed > tuning.travelling_ball_speed
 }

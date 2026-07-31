@@ -107,11 +107,9 @@ fn draw_velocities(
     }
 }
 
-/// The ball's own prediction buffer, thinned for legibility.
-///
-/// This is not an estimate drawn for the viewer: it is the very buffer the AI
-/// reads, and in this model the prediction IS the physics, so the line shows
-/// where the ball will actually be.
+/// The ball's own prediction buffer, thinned for legibility. Not an estimate
+/// drawn for the viewer: it is the buffer the AI reads, and in this model the
+/// prediction IS the physics.
 pub fn ball_future_polyline(ball: &Ball, every_n_steps: usize) -> Vec<Vec3> {
     ball.predictions
         .iter()
@@ -251,11 +249,9 @@ pub fn vision_cone(
     [eyes, edge(vision.half_angle), edge(-vision.half_angle)]
 }
 
-/// Qué alcanza a ver cada jugador y a quién tiene en la cabeza.
-///
-/// El cono es el sensor; las líneas finas son la memoria, y por eso algunas
-/// apuntan fuera del cono: ahí es donde él cree que sigue estando alguien a
-/// quien ya no ve.
+/// Qué alcanza a ver cada jugador y a quién tiene en la cabeza: el cono es el
+/// sensor y las líneas finas la memoria. Las que apuntan fuera del cono son
+/// dónde cree que sigue alguien a quien ya no ve.
 fn draw_vision(
     mut gizmos: Gizmos,
     settings: Res<OverlaySettings>,

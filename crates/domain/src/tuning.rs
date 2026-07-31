@@ -10,11 +10,8 @@
 use bevy_ecs::prelude::*;
 use std::time::Duration;
 
-/// Which calibration produced a result.
-///
-/// A goal rate means nothing without the parameters behind it, so every run can
-/// name them. `MatchRegulations` records the edition of the Laws for the same
-/// reason.
+/// Which calibration produced a result. A goal rate means nothing without the
+/// parameters behind it, so every run can name them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TuningVersion {
     /// The envelope inherited from the C++ original, never calibrated against
@@ -60,12 +57,9 @@ impl Default for MatchTuning {
     }
 }
 
-/// Lo que tarda un golpeo desde que se decide hasta que el pie llega al balón.
-///
-/// Es el único sitio donde el fútbol de este simulador ocurre en el futuro:
-/// mientras dura, el rival sigue jugando y el compañero al que va el pase sigue
-/// corriendo, así que comprometerse cuesta algo. Un pase corto se arma en dos
-/// décimas y un disparo con carrera necesita más del doble.
+/// Lo que tarda un golpeo desde que se decide hasta que el pie llega al balón:
+/// mientras dura, el rival sigue jugando y el compañero sigue corriendo, así
+/// que comprometerse cuesta algo.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StrikingTuning {
     pub pass_windup: Duration,
@@ -88,11 +82,9 @@ impl Default for StrikingTuning {
     }
 }
 
-/// Lo que cuesta correr hacia donde no se mira.
-///
-/// Un futbolista de espaldas cubre alrededor del sesenta por ciento de lo que
-/// cubre de frente, y de lado algo más; girar el cuerpo a la carrera es más
-/// lento que girarlo parado, porque las piernas están ocupadas.
+/// Lo que cuesta correr hacia donde no se mira: de espaldas se cubre alrededor
+/// del sesenta por ciento de lo que se cubre de frente, y girar el cuerpo a la
+/// carrera es más lento que girarlo parado.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TurningTuning {
     /// Fracción de la velocidad que se alcanza corriendo hacia atrás...
@@ -113,13 +105,9 @@ impl Default for TurningTuning {
     }
 }
 
-/// Lo que cuesta correr y lo que se recupera andando.
-///
-/// La referencia es el partido real: un futbolista cubre diez u once
-/// kilómetros en noventa minutos casi todos al trote, y lo que no aguanta es el
-/// sprint —del orden de medio minuto acumulado antes de tener que bajar—. De
-/// ahí que el trote no gaste nada y la punta vacíe el depósito en cuarenta
-/// segundos.
+/// Lo que cuesta correr y lo que se recupera andando. La referencia es el
+/// partido real: once kilómetros casi todos al trote, y lo que no se aguanta es
+/// el sprint. De ahí que el trote no gaste y la punta vacíe en cuarenta segundos.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StaminaTuning {
     /// Fracción del depósito que cuesta un segundo a velocidad punta.
@@ -379,11 +367,9 @@ impl Default for PassingTuning {
     }
 }
 
-/// Panic: hoofing the ball away instead of playing it (`_AddPanicPass`).
-///
-/// Not a goalkeeper matter — any defensive player close to his own goal with no
-/// pass on does it, and how readily he does it decides how often possession is
-/// simply given back.
+/// Panic: hoofing the ball away instead of playing it (`_AddPanicPass`). Not a
+/// goalkeeper matter: any defender near his own goal with no pass on does it,
+/// and how readily decides how often possession is simply given back.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClearanceTuning {
     /// Only players below this attacking bias (0..1) panic at all.
@@ -552,10 +538,8 @@ pub struct GoalkeepingTuning {
     /// then he is moving, not saving.
     pub reaction_window: f32,
     /// How far he gets to either side of himself, arms out (m). It does not grow
-    /// with the time available — getting there is what `goalie_movement` does —
-    /// so what beats him is a ball passing wide of wherever he managed to be.
-    /// Standing ten metres off his line he already covers most of the angle, so
-    /// this is a body and an arm, not a leap across the goal.
+    /// with the time available — getting there is `goalie_movement` — so what
+    /// beats him is a ball wide of wherever he managed to be.
     pub dive_reach: f32,
     /// How high he gets a hand to (m), standing or airborne.
     pub reach_height: f32,

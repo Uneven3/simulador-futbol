@@ -25,12 +25,9 @@ pub struct GoalBoundShot {
     pub time_to_arrival: f32,
 }
 
-/// Lo que el portero puede tocar cuando el balón le llega.
-///
-/// Es su envergadura estirado, y no depende del tiempo: el tiempo ya decidió
-/// dónde está, porque colocarse es cosa de `goalie_movement`. Un disparo se ata
-/// o entra según lo lejos que le pase, y le pasa lejos cuando no le dio tiempo
-/// a moverse. Por eso la estirada no salva un tiro rápido y colocado.
+/// Lo que el portero puede tocar cuando el balón le llega: su envergadura
+/// estirado, sin depender del tiempo. El tiempo ya decidió dónde está, que es
+/// cosa de `goalie_movement`, y por eso la estirada no salva un tiro colocado.
 pub fn diving_reach(tuning: &GoalkeepingTuning) -> f32 {
     tuning.dive_reach
 }
@@ -83,11 +80,9 @@ pub enum Save {
     Parried,
 }
 
-/// Si el portero llega al disparo, y qué puede hacer con él.
-///
-/// Solo interviene sobre lo que está a punto de pasarle: mientras el balón viaja
-/// no lo toca, se coloca. Atraparlo o rechazarlo depende de la velocidad a la
-/// que le llegue.
+/// Si el portero llega al disparo y qué puede hacer con él. Solo interviene
+/// sobre lo que está a punto de pasarle: mientras el balón viaja, se coloca.
+/// Atraparlo o rechazarlo depende de a qué velocidad le llegue.
 pub fn attempt_save(
     keeper_pos: Vec2,
     shot: GoalBoundShot,
@@ -118,11 +113,8 @@ pub fn parry_momentum(incoming: Vec3, crossing_y: f32, goal_x: f32, pace: f32) -
     direction * incoming.length() * pace
 }
 
-/// El portero ataja lo que alcanza.
-///
-/// Solo toca el balón: quién lo tiene después lo decide `ball_contest`, que es
-/// su dueño, y para un balón atrapado la respuesta es el propio portero porque
-/// se le queda en las manos.
+/// El portero ataja lo que alcanza. Solo toca el balón: quién lo tiene después
+/// lo decide `ball_contest`, que es su dueño.
 pub fn goalkeepers_save_shots(
     match_state: Res<MatchState>,
     tuning: Res<MatchTuning>,

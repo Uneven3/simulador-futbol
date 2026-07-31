@@ -117,11 +117,8 @@ fn update_possession_designation(
 }
 
 /// Kinematic integration of player velocities (players are not physics bodies,
-/// as in the original engine). Also maintains the ~10 s average velocity used by
-/// `GetLazyVelocity` (original `Player::GetAverageVelocity(10)`).
-///
-/// La orientación ya no sale de aquí: mirar y correr son dos cosas, y las dos
-/// las decide el motor (`locomotion`).
+/// as in the original). Also maintains the ~10 s average velocity used by
+/// `GetLazyVelocity`. La orientación es del motor (`locomotion`), no de aquí.
 fn apply_player_velocity(
     time: Res<Time>,
     mut query: Query<(&mut Position, &Velocity, &mut PlayerMatchState)>,
@@ -158,10 +155,8 @@ fn resolve_player_overlap(mut query: Query<&mut Position, With<Player>>) {
 }
 
 /// Port of `AI_GetBestDribbleMovement` + `AI_GetForceFieldMovement`
-/// (aifunctions.cpp): the carrier is repelled by the 5 nearest opponents
-/// (projected 0.25 s ahead) and by the side/back lines, and attracted to the
-/// opponent goal (with a center magnet that grows near the backline). Returns
-/// the desired dribble direction.
+/// (aifunctions.cpp): the carrier is repelled by the 5 nearest opponents and by
+/// the lines, and attracted to the opponent goal.
 pub fn dribble_direction(
     my_pos: Vec2,
     my_vel: Vec2,

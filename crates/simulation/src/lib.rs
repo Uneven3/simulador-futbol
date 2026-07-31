@@ -32,11 +32,9 @@ pub use referee::RefereePlugin;
 
 use football_domain::Scenario;
 
-/// The whole authoritative kernel for one scenario.
-///
-/// Every consumer — the game, the headless runner, the rendered runner — adds
-/// exactly this and nothing else to get a match. It owns the fixed-tick order,
-/// so no caller can reorder the pipeline by accident.
+/// The whole authoritative kernel for one scenario: every consumer adds exactly
+/// this and nothing else to get a match. It owns the fixed-tick order, so no
+/// caller can reorder the pipeline by accident.
 pub struct MatchKernelPlugin {
     scenario: Scenario,
     retained_facts: usize,
@@ -198,16 +196,9 @@ mod tests {
         );
     }
 
-    /// Aggregate-statistics run (10 simulated minutes). The simulation is
-    /// deterministic but chaotic, so gameplay must be judged on aggregates,
-    /// never on a single minute. Run explicitly with:
-    /// `cargo test long_match_stats -- --ignored --nocapture`
-    ///
-    /// Everything printed here is read from the diagnostics subsystem. This
-    /// test used to run its own possession bookkeeping, its own turnover
-    /// attribution and its own ASCII pitch, which meant the numbers a run
-    /// reported existed nowhere else and could not be asked for in any other
-    /// context.
+    /// Aggregate-statistics run (10 simulated minutes), read entirely from the
+    /// diagnostics subsystem: a number this run reports has to be askable in any
+    /// other context. `cargo test long_match_stats -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn long_match_stats() {
@@ -285,17 +276,9 @@ mod tests {
         }
     }
 
-    /// The same ten minutes under several seeds, reported as rates.
-    ///
-    /// One run of a deterministic but chaotic model says nothing: two builds
-    /// that differ by a rounding decision produce different matches without
-    /// either being worse. What can be compared is the envelope across seeds.
-    ///
-    /// Cada corrida se anexa a `measurements/envelope.csv` y el test imprime el
-    /// delta contra la anterior: lo que hay que leer tras un refactor es esa
-    /// tabla, no el informe entero.
-    ///
-    /// `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`
+    /// Las mismas diez semillas, como tasas: una corrida de un modelo caótico no
+    /// dice nada, y lo comparable es la envolvente. Se anexa a
+    /// `measurements/envelope.csv` con el delta contra la anterior.
     #[test]
     #[ignore]
     fn seeded_envelope() {
@@ -316,14 +299,9 @@ mod tests {
         }
     }
 
-    /// Goles por partido contra la distribución real, sobre partidos completos.
-    ///
-    /// Es la medición que decide si MVP 1.75 terminó: la referencia son ~2,7
-    /// goles por partido casi como una Poisson, y acertar la media con otra
-    /// forma no es acertar. Cuesta un par de minutos por partido, así que se
-    /// corre al calibrar, no para comparar builds.
-    ///
-    /// `cargo test --release -p gameplayfootball_simulation goal_distribution -- --ignored --nocapture`
+    /// Goles por partido contra la distribución real: ~2,7 casi como una
+    /// Poisson, y acertar la media con otra forma no es acertar. Un par de
+    /// minutos por partido, así que se corre al calibrar y no para comparar.
     #[test]
     #[ignore]
     fn goal_distribution() {
@@ -333,11 +311,9 @@ mod tests {
         println!("{}", report.render());
     }
 
-    /// Headless integration test: runs the full simulation (players, kicks,
-    /// collisions, ball physics, referee) at 100 Hz without any rendering and
-    /// checks that a match actually unfolds: kickoff restart fires, someone
-    /// gains possession, the ball gets kicked around and stays on the pitch
-    /// (or triggers a proper set piece when it leaves).
+    /// Headless integration test: the full simulation at 100 Hz without any
+    /// rendering, checking that a match actually unfolds — restart, possession,
+    /// the ball kicked around and either on the pitch or a proper set piece.
     #[test]
     fn test_headless_match_flow() {
         let mut app = build_headless_app();

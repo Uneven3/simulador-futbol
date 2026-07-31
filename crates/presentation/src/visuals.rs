@@ -1,12 +1,9 @@
 use bevy::prelude::*;
 use football_domain::{Attributes, BALL_RADIUS, Ball, Facing, Player, Position, TeamId};
 
-/// Primitive representations of the authoritative bodies.
-///
-/// This plugin is a pure consumer: it creates one disposable visual entity per
-/// simulation entity, linked with [`VisualOf`], and derives its `Transform` from
-/// the authoritative [`Position`] and [`Facing`]. It never writes simulation
-/// state, and removing it changes nothing about the match.
+/// Primitive representations of the authoritative bodies: one disposable visual
+/// entity per simulation entity, linked with [`VisualOf`], its `Transform`
+/// derived from [`Position`] and [`Facing`]. Removing it changes no match (§1).
 pub struct PrimitiveVisualsPlugin;
 
 impl Plugin for PrimitiveVisualsPlugin {

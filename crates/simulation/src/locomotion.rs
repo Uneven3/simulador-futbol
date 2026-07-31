@@ -14,17 +14,9 @@ use bevy_time::prelude::*;
 use football_domain::tuning::{StaminaTuning, TurningTuning};
 use football_domain::{Attributes, Facing, FatigueState, MatchTuning, MovementIntent, Velocity};
 
-/// La velocidad que un cuerpo alcanza este tick.
-///
-/// El presupuesto es uno solo y se reparte solo: cambiar de dirección gasta lo
-/// mismo que cambiar de rapidez, porque las dos cosas son la misma —empujar el
-/// suelo en alguna dirección—. De ahí sale gratis lo que antes no existía: para
-/// darse la vuelta a la carrera hay que frenar primero, y girar sin frenar
-/// describe una curva de radio proporcional al cuadrado de la rapidez.
-///
-/// Frenar cuesta menos que acelerar, y el que decide cuál es el caso es el
-/// cambio proyectado sobre la carrera: lo que le quita al avance es freno,
-/// venga acompañado de lo que venga.
+/// La velocidad que un cuerpo alcanza este tick, dentro de un único presupuesto
+/// de m/s²: girar gasta lo mismo que acelerar, y de ahí salen solas la curva de
+/// giro y el frenazo para darse la vuelta. Frenar cuesta menos que acelerar.
 pub fn reachable_velocity(current: Vec2, desired: Vec2, body: &Attributes, dt: f32) -> Vec2 {
     let change = desired - current;
     let slowing_down = Dir2::new(current).is_ok_and(|heading| change.dot(*heading) < 0.0);
@@ -40,11 +32,9 @@ pub fn reachable_velocity(current: Vec2, desired: Vec2, body: &Attributes, dt: f
     current + change.normalize_or_zero() * budget
 }
 
-/// Lo que queda del depósito después de un tick a esta velocidad.
-///
-/// El gasto va con el cuadrado del esfuerzo, que es lo que hace que el trote
-/// salga casi gratis y el sprint no: correr al doble no cuesta el doble. Por
-/// debajo del trote no se gasta, se recupera.
+/// Lo que queda del depósito tras un tick a esta velocidad. El gasto va con el
+/// cuadrado del esfuerzo —correr al doble no cuesta el doble—, y por debajo del
+/// trote no se gasta: se recupera.
 pub fn drained(
     stamina: f32,
     speed: f32,
@@ -94,11 +84,9 @@ pub fn turned(
     Dir2::new(Vec2::from_angle(step).rotate(*facing)).unwrap_or(facing)
 }
 
-/// Qué fracción de su velocidad alcanza quien corre hacia donde no mira.
-///
-/// De frente, toda; de lado y de espaldas, lo que dice el cuerpo humano. Sin
-/// esto un defensor retrocede tan rápido como corre de cara, que es la razón
-/// por la que nadie desbordaba a nadie.
+/// Qué fracción de su velocidad alcanza quien corre hacia donde no mira: de
+/// frente toda, y de lado o de espaldas lo que da el cuerpo humano. Sin esto un
+/// defensor retrocede tan rápido como corre de cara.
 pub fn pace_towards(facing: Dir2, heading: Dir2, body: &Attributes, tuning: &TurningTuning) -> f32 {
     let alignment = facing.dot(*heading);
     let raw = if alignment >= 0.0 {

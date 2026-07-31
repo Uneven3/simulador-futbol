@@ -31,12 +31,9 @@ impl Plugin for PerceptionPlugin {
     }
 }
 
-/// El campo tal y como se lo imagina cada jugador.
-///
-/// Uno por jugador y no uno para todos, que era la omnisciencia: dos jugadores
-/// del mismo equipo pueden estar decidiendo sobre campos distintos, y esa
-/// diferencia es la que produce el error. Los `Vec` se reutilizan entre ticks
-/// (§12).
+/// El campo tal y como se lo imagina cada jugador: uno por cabeza y no uno para
+/// todos, que era la omnisciencia. Dos compañeros pueden decidir sobre campos
+/// distintos, y esa diferencia es el error. Los `Vec` se reutilizan (§12).
 #[derive(Resource, Debug, Default)]
 pub struct Beliefs {
     by_player: Vec<(PlayerId, Vec<PlayerReading>)>,
@@ -62,10 +59,8 @@ impl Beliefs {
 }
 
 /// Lo que cada jugador cree del resto: donde los vio, adelantados hasta ahora.
-///
-/// A quien nunca ha visto no está: no aparece en su campo, y por tanto no puede
-/// recibir un pase suyo ni contar como marca. Eso es lo que separa esto de la
-/// verdad que se leía antes.
+/// A quien nunca ha visto no está —no puede recibir un pase suyo ni contar como
+/// marca—, y eso es lo que separa esto de la verdad que se leía antes.
 pub fn believe_the_pitch(
     time: Res<Time>,
     mut beliefs: ResMut<Beliefs>,

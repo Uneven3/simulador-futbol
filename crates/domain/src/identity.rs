@@ -74,11 +74,8 @@ impl TeamSide {
     }
 }
 
-/// Who defends which half right now.
-///
-/// The whole geometry of the match hangs off this: where a team attacks, which
-/// goal is its own, which way the offside line runs. It changes once, at the
-/// interval (Law 8), and nothing else in the match may change it.
+/// Who defends which half right now: the whole geometry of the match hangs off
+/// it. Changes once, at the interval (Law 8), and nothing else may change it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 pub struct PitchSides {
     home_defends: TeamSide,
@@ -123,10 +120,8 @@ impl PitchSides {
     }
 }
 
-/// A participant in the match: a team and a shirt number.
-///
-/// Shirt numbers are unique within a team and are how football itself names
-/// players, so this reads in a log without a lookup table (`Away #9`) and
+/// A participant in the match: a team and a shirt number, which is how football
+/// itself names players. Reads in a log without a lookup table (`Away #9`) and
 /// survives being written to disk, which `Entity` does not.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 pub struct PlayerId {
@@ -204,12 +199,9 @@ impl<T> std::ops::IndexMut<TeamId> for ByTeam<T> {
     }
 }
 
-/// Resolves a domain identity back to the body currently representing it.
-///
-/// The match state names players by `PlayerId`; the systems that have to read
-/// their position need an `Entity`. This is the only place the two are related,
-/// and it is maintained from the world rather than written by hand, so a body
-/// that leaves the pitch stops resolving instead of leaving a dangling id.
+/// Resolves a domain identity back to the body currently representing it: the
+/// only place the two are related, maintained from the world rather than by
+/// hand, so a body that leaves the pitch stops resolving (§4).
 #[derive(Resource, Debug, Clone, Default)]
 pub struct PlayerRegistry {
     bodies: HashMap<PlayerId, Entity>,

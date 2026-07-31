@@ -59,11 +59,9 @@ impl Default for Ball {
 }
 
 impl Ball {
-    /// A ball at `position` moving at `momentum`.
-    ///
-    /// The prediction IS the physics (see the type's note), so the buffer has to
-    /// start from where the ball actually is: a ball built with `default()` and
-    /// then moved would spend its first tick teleporting back to the centre spot.
+    /// A ball at `position` moving at `momentum`. The prediction IS the physics,
+    /// so the buffer starts where the ball actually is: built with `default()`
+    /// and then moved, it would teleport back on its first tick.
     pub fn placed_at(position: Vec3, momentum: Vec3) -> Self {
         Self {
             momentum,
