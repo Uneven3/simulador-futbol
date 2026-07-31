@@ -144,7 +144,7 @@ de código.
 | `simulation::match_clock` | Reloj y fases (Ley 7 IFAB) | Único escritor de `period_elapsed` y `phase` |
 | `simulation::team_tactics` | `TeamTactics`, forma del bloque, trampa del fuera de juego | Lee estado, escribe solo su recurso |
 | `simulation::player_decisions` | Adónde corre cada jugador y qué hace con el balón | Decide; no ejecuta ni toca el balón. Escribe `MovementIntent` y nunca `Velocity` |
-| `simulation::locomotion` | Lo que un cuerpo consigue de lo que le pidieron | Único que convierte intención en `Velocity` (§3) |
+| `simulation::locomotion` | Lo que un cuerpo consigue de lo que le pidieron, y lo que le queda de piernas | Único que convierte intención en `Velocity` y único escritor de `FatigueState` (§3) |
 | `simulation::player_movement` | Designación de posesión, integración de cuerpos y separación | Único escritor de `Position` de los jugadores |
 | `simulation::ball_contest` | De quién es el balón: escapadas, contacto, entrada, recogida | Único que otorga la posesión; publica `BallContest` como hecho del tick |
 | `simulation::force_field` | `ForceSpot`, `Falloff`, la suma de atractores | Dónde quiere estar un cuerpo; no lo mueve |

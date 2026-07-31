@@ -20,10 +20,10 @@ juzga sobre piezas.
 1. **Girarse y salir**: es lo que le falta a proteger el balón. La regla
    —al balón no se llega a través de un cuerpo— ya está; ponerse en medio sin
    salida deja al portador clavado y el partido sin un solo tiro.
-2. **Fatiga**: la aceleración de `Attributes` es la de salida, y nadie la
-   sostiene noventa minutos.
-3. **Mirar y correr son dos cosas**: `Facing` sigue derivándose del movimiento,
+2. **Mirar y correr son dos cosas**: `Facing` sigue derivándose del movimiento,
    así que nadie corre de espaldas ni llega girado.
+3. **Nadie se recupera nunca**: la fatiga solo baja dentro del partido, y el
+   descanso entre partes no repone nada.
 
 ## Deuda declarada, no escondida
 

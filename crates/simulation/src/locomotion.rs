@@ -11,7 +11,8 @@ use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 
-use football_domain::{Attributes, MovementIntent, Velocity};
+use football_domain::tuning::StaminaTuning;
+use football_domain::{Attributes, FatigueState, MatchTuning, MovementIntent, Velocity};
 
 /// La velocidad que un cuerpo alcanza este tick.
 ///
@@ -39,14 +40,62 @@ pub fn reachable_velocity(current: Vec2, desired: Vec2, body: &Attributes, dt: f
     current + change.normalize_or_zero() * budget
 }
 
-/// Cada cuerpo persigue la velocidad que le pidieron, dentro de lo que puede.
+/// Lo que queda del depósito después de un tick a esta velocidad.
+///
+/// El gasto va con el cuadrado del esfuerzo, que es lo que hace que el trote
+/// salga casi gratis y el sprint no: correr al doble no cuesta el doble. Por
+/// debajo del trote no se gasta, se recupera.
+pub fn drained(
+    stamina: f32,
+    speed: f32,
+    body: &Attributes,
+    tuning: &StaminaTuning,
+    dt: f32,
+) -> f32 {
+    let change = if speed <= tuning.recovery_pace {
+        tuning.recovery
+    } else {
+        let effort = (speed / body.top_speed).clamp(0.0, 1.0);
+        -tuning.sprint_drain * effort * effort
+    };
+    (stamina + change * dt).clamp(0.0, 1.0)
+}
+
+/// Lo que este cuerpo puede hoy, que es lo suyo menos lo que lleva corrido.
+///
+/// Devuelve unos `Attributes` y no un factor porque lo que cambia es lo que el
+/// cuerpo es capaz de hacer, y el motor no tiene por qué saber por qué.
+pub fn capacity_of(body: &Attributes, fatigue: FatigueState, tuning: &StaminaTuning) -> Attributes {
+    let scaled = |fresh: f32, spent: f32| fresh * (spent + (1.0 - spent) * fatigue.stamina);
+    Attributes {
+        top_speed: scaled(body.top_speed, tuning.spent_speed),
+        acceleration: scaled(body.acceleration, tuning.spent_acceleration),
+        braking: body.braking,
+        ..*body
+    }
+}
+
+/// Cada cuerpo persigue la velocidad que le pidieron, dentro de lo que puede —y
+/// lo que puede se le va gastando.
 pub fn drive_bodies(
     time: Res<Time>,
-    mut bodies: Query<(&MovementIntent, &Attributes, &mut Velocity)>,
+    tuning: Res<MatchTuning>,
+    mut bodies: Query<(
+        &MovementIntent,
+        &Attributes,
+        &mut FatigueState,
+        &mut Velocity,
+    )>,
 ) {
     let dt = time.delta_secs();
-    for (intent, body, mut velocity) in bodies.iter_mut() {
-        let reached = reachable_velocity(velocity.0.truncate(), intent.0.truncate(), body, dt);
+    let stamina_tuning = &tuning.stamina;
+    for (intent, body, mut fatigue, mut velocity) in bodies.iter_mut() {
+        let running = velocity.0.truncate();
+        fatigue.stamina = drained(fatigue.stamina, running.length(), body, stamina_tuning, dt);
+
+        let can = capacity_of(body, *fatigue, stamina_tuning);
+        let asked = intent.0.truncate().clamp_length_max(can.top_speed);
+        let reached = reachable_velocity(running, asked, &can, dt);
         velocity.0 = Vec3::new(reached.x, reached.y, velocity.0.z);
     }
 }
@@ -142,6 +191,60 @@ mod tests {
         assert!(after_one_tick.x > 5.0, "perdió toda la carrera de golpe");
         assert!(after_one_tick.y > 0.0, "no giró nada");
         assert!(after_one_tick.y < 1.0, "giró demasiado para un tick");
+    }
+
+    /// El trote se sostiene noventa minutos, que es lo que hace un futbolista.
+    #[test]
+    fn a_jog_can_be_held_for_a_whole_match() {
+        let body = Attributes::default();
+        let tuning = StaminaTuning::default();
+        let mut stamina = 1.0;
+
+        for _ in 0..(90 * 60 * 100) {
+            stamina = drained(stamina, tuning.recovery_pace, &body, &tuning, TICK);
+        }
+
+        assert!(stamina > 0.99, "el trote lo dejó en {stamina}");
+    }
+
+    /// Y el sprint no: medio minuto largo a punta y hay que bajar el ritmo.
+    #[test]
+    fn a_flat_out_sprint_empties_the_tank_in_under_a_minute() {
+        let body = Attributes::default();
+        let tuning = StaminaTuning::default();
+        let mut stamina = 1.0;
+        let mut seconds = 0.0;
+
+        while stamina > 0.0 {
+            stamina = drained(stamina, body.top_speed, &body, &tuning, TICK);
+            seconds += TICK;
+        }
+
+        assert!(
+            (20.0..90.0).contains(&seconds),
+            "aguantó {seconds} s a velocidad punta"
+        );
+    }
+
+    /// Y lo que se pierde cansado es sobre todo el arranque, no la punta: un
+    /// jugador vacío sigue corriendo, pero le cuesta ponerse.
+    #[test]
+    fn an_empty_tank_costs_more_acceleration_than_top_speed() {
+        let body = Attributes::default();
+        let tuning = StaminaTuning::default();
+
+        let spent = capacity_of(&body, FatigueState { stamina: 0.0 }, &tuning);
+        let fresh = capacity_of(&body, FatigueState::default(), &tuning);
+
+        assert!(
+            (fresh.top_speed - body.top_speed).abs() < 0.01,
+            "fresco no es él mismo"
+        );
+        assert!(spent.top_speed < body.top_speed);
+        assert!(
+            spent.acceleration / body.acceleration < spent.top_speed / body.top_speed,
+            "el arranque tenía que caer más que la punta"
+        );
     }
 
     /// Lo que cabe en el presupuesto se consigue entero: un cuerpo casi parado

@@ -21,7 +21,8 @@ se pasó parado. `MatchRegulations` son las duraciones de la competición,
 **Cuerpos.** `Position` es la única verdad espacial —metros, Z arriba— y
 `Facing` y `Velocity` la acompañan; un `Transform` nunca es autoritativo.
 `MovementIntent` es la velocidad que se pidió y `Velocity` la que se consiguió:
-entre las dos está el motor, y `Attributes` dice cuánto separa a una de la otra.
+entre las dos está el motor, `Attributes` dice cuánto separa a una de la otra y
+`FatigueState` cuánto de eso queda a estas alturas del partido.
 `Player` es identidad e instrucción, `Attributes` capacidad, `Mentality`
 disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 `PlayingPosition` es la posición nominal y `TacticalRole` la función.
@@ -50,9 +51,9 @@ día que aparezcan no se inventen dos veces:
 - **Percepción (MVP 4):** `Observation`, `ObservationMemory`, `BeliefState`. Una
   decisión leerá creencias y no verdad; `PlayerReading` es el marcador de hoy, y
   debería dejar de compilar entonces.
-- **Motor (MVP 3):** `ActionCommitment` —plan motor con duración, fases y
-  cancelación—, `FatigueState`, `BodyEnvelope`. La aceleración y el frenado ya
-  no están aquí: son `Attributes` con el mecanismo que los lee.
+- **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez
+  de un solo instante de contacto. La aceleración, el frenado y la fatiga ya no
+  están aquí: existen, con el mecanismo que los lee.
 - **Táctica (MVP 5):** `TacticalPlan`, `TacticalResponsibility`,
   `PositionFamiliarity`, `RoleFamiliarity`. Un atributo modifica operaciones
   concretas; nunca es un bonus global.

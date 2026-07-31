@@ -34,6 +34,7 @@ pub struct MatchTuning {
     pub clearance: ClearanceTuning,
     pub shooting: ShootingTuning,
     pub striking: StrikingTuning,
+    pub stamina: StaminaTuning,
     pub defending: DefendingTuning,
     pub goalkeeping: GoalkeepingTuning,
     pub refereeing: RefereeTuning,
@@ -49,6 +50,7 @@ impl Default for MatchTuning {
             clearance: ClearanceTuning::default(),
             shooting: ShootingTuning::default(),
             striking: StrikingTuning::default(),
+            stamina: StaminaTuning::default(),
             defending: DefendingTuning::default(),
             goalkeeping: GoalkeepingTuning::default(),
             refereeing: RefereeTuning::default(),
@@ -80,6 +82,40 @@ impl Default for StrikingTuning {
             shot_windup: Duration::from_millis(350),
             clearance_windup: Duration::from_millis(250),
             adjust_pace: 2.0,
+        }
+    }
+}
+
+/// Lo que cuesta correr y lo que se recupera andando.
+///
+/// La referencia es el partido real: un futbolista cubre diez u once
+/// kilómetros en noventa minutos casi todos al trote, y lo que no aguanta es el
+/// sprint —del orden de medio minuto acumulado antes de tener que bajar—. De
+/// ahí que el trote no gaste nada y la punta vacíe el depósito en cuarenta
+/// segundos.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StaminaTuning {
+    /// Fracción del depósito que cuesta un segundo a velocidad punta.
+    pub sprint_drain: f32,
+    /// ...y la que se recupera por segundo por debajo del trote.
+    pub recovery: f32,
+    /// Por debajo de esta velocidad (m/s) se recupera en vez de gastar.
+    pub recovery_pace: f32,
+    /// A qué fracción de su punta corre un jugador vacío...
+    pub spent_speed: f32,
+    /// ...y con qué fracción de su aceleración arranca, que cae más: lo primero
+    /// que se pierde cansado es el arranque, no la punta.
+    pub spent_acceleration: f32,
+}
+
+impl Default for StaminaTuning {
+    fn default() -> Self {
+        Self {
+            sprint_drain: 0.025,
+            recovery: 0.012,
+            recovery_pace: 3.0,
+            spent_speed: 0.8,
+            spent_acceleration: 0.65,
         }
     }
 }

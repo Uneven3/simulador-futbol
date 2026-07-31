@@ -147,6 +147,22 @@ impl Default for Attributes {
     }
 }
 
+/// Lo que le queda de lo que salió teniendo: 1 fresco, 0 vacío.
+///
+/// Es capacidad y no disposición —un jugador vacío no es que no quiera, es que
+/// no puede—, así que lo lee el motor y no la decisión. Empieza el partido en
+/// uno y solo baja: los cambios y el descanso son de MVP 2.
+#[derive(Component, Debug, Clone, Copy, Reflect)]
+pub struct FatigueState {
+    pub stamina: f32,
+}
+
+impl Default for FatigueState {
+    fn default() -> Self {
+        Self { stamina: 1.0 }
+    }
+}
+
 /// Disposition: what a player is inclined to do, as opposed to what he can do.
 /// MVP 5 fills this out (discipline, risk, familiarity with the instruction).
 #[derive(Component, Debug, Clone, Copy, Reflect)]

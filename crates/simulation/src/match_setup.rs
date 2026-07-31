@@ -4,9 +4,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::scenario::{PlayState, PlayerSetup, SIMULATION_HZ, Scenario};
 use football_domain::{
-    Attributes, Ball, BallTouched, Facing, MatchRng, MatchState, Mentality, MovementIntent,
-    PitchSides, Player, PlayerId, PlayerMatchState, PlayerRegistry, PlayingPosition, Position,
-    SetPiece, TeamId, TeamSide, Velocity,
+    Attributes, Ball, BallTouched, Facing, FatigueState, MatchRng, MatchState, Mentality,
+    MovementIntent, PitchSides, Player, PlayerId, PlayerMatchState, PlayerRegistry,
+    PlayingPosition, Position, SetPiece, TeamId, TeamSide, Velocity,
 };
 use std::time::Duration;
 
@@ -153,6 +153,7 @@ fn spawn_scenario_players(mut commands: Commands, scenario: Res<Scenario>) {
                 PlayerMatchState::default(),
                 Velocity::default(),
                 MovementIntent::default(),
+                FatigueState::default(),
                 Facing(attacking_direction),
                 Position::from_pitch(base, 0.0),
             ));

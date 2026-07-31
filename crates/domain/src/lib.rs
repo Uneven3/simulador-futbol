@@ -20,8 +20,8 @@ pub use match_state::{
     PossessionDesignation, PotentialFoul, SetPiece,
 };
 pub use player::{
-    Attributes, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState, PlayingPosition,
-    TacticalRole,
+    Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
+    PlayingPosition, TacticalRole,
 };
 pub use scenario::{Scenario, ScenarioOutcome};
 pub use spatial::{Facing, MovementIntent, Position, Velocity};
