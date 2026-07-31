@@ -290,6 +290,32 @@ pub fn shot_beyond_the_keepers_reach() -> Scenario {
         })
 }
 
+/// Ley 7: una parte con una interrupción, para que el añadido tenga qué añadir.
+///
+/// El balón sale por la banda al segundo de empezar y nadie lo devuelve al
+/// juego —no hay jugadores—, así que la parada es una, dura lo que dura la
+/// reanudación y se puede comparar contra el reloj sin depender del azar.
+pub fn interrupted_half() -> Scenario {
+    Scenario::kick_off()
+        .named("interrupted half")
+        .with_players(PlayerSetup::BallOnly)
+        .with_regulations(MatchRegulations {
+            half_duration: Duration::from_secs(10),
+            half_time_interval: Duration::from_secs(2),
+        })
+        .with_ball(
+            BallSetup::travelling_from(Vec3::new(0.0, 30.0, 0.11), Vec3::new(0.0, 12.0, 0.0))
+                .last_touched_by(TeamId::Home),
+        )
+        .already_in_play()
+        .for_duration(Duration::from_secs(30))
+        .expecting(Expectations {
+            set_pieces: vec![SetPiece::ThrowIn],
+            phases: vec![MatchPhase::FirstHalf, MatchPhase::HalfTime],
+            ..Default::default()
+        })
+}
+
 /// Every scenario in the catalogue, for suites that run them all.
 pub fn all() -> Vec<Scenario> {
     vec![
@@ -306,5 +332,6 @@ pub fn all() -> Vec<Scenario> {
         shot_into_the_side_netting(),
         shot_saved_by_the_keeper(),
         shot_beyond_the_keepers_reach(),
+        interrupted_half(),
     ]
 }

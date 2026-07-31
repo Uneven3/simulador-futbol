@@ -20,7 +20,6 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **Sin tiempo añadido** (Ley 7): una parte dura exactamente su reglamento.
 - **La simetría solo se afirma sobre la posesión.** Goles y tiros de doce
   partidos no dan muestra para más que una banda de tres sigma, que atrapa un
   sesgo grosero y nada fino. Medirla de verdad pide un barrido de cien partidos.

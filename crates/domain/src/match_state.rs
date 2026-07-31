@@ -80,6 +80,10 @@ pub struct MatchState {
     /// stopped, as it does in a real match; what is missing is the allowance for
     /// time lost, which would be added on top at the end of each period.
     pub period_elapsed: Duration,
+    /// Cuánto de este periodo se ha jugado con el balón parado. Es lo que el
+    /// árbitro añade al final (Ley 7): el reloj no se detiene en las
+    /// reanudaciones, así que el periodo se alarga en vez de descontarse.
+    pub stoppage_elapsed: Duration,
     /// Team that kicked off the match, so the other one kicks off the second
     /// half (Law 8).
     pub opening_kick_off_team: TeamId,
@@ -175,6 +179,7 @@ impl Default for MatchState {
             set_piece: SetPiece::KickOff,
             set_piece_team: Some(TeamId::Home),
             period_elapsed: Duration::ZERO,
+            stoppage_elapsed: Duration::ZERO,
             opening_kick_off_team: TeamId::Home,
             sides: crate::PitchSides::opening(),
             is_ball_in_goal: false,

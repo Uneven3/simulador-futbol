@@ -41,10 +41,19 @@ pub fn engine_elapsed_ms(time: &Time) -> u64 {
     millis as u64
 }
 
+/// Un periodo se acaba cuando se ha jugado lo que dura, y lo que se pasó parado
+/// no se jugó (Ley 7).
+///
+/// El reloj no se detiene en las reanudaciones —como en un partido real—, así
+/// que la forma de devolver ese tiempo es alargar el periodo, que es
+/// exactamente lo que hace el árbitro cuando añade minutos.
+pub fn period_is_over(elapsed: Duration, stopped_for: Duration, regulation: Duration) -> bool {
+    elapsed >= regulation + stopped_for
+}
+
 /// Time runs while a period is being played, including while play is stopped
-/// for a restart — as it does in a real match. What is missing is the allowance
-/// for time lost, which the referee adds at the end of each period; without it a
-/// half here is exactly its regulation length.
+/// for a restart — as it does in a real match, and the time lost comes back as
+/// added time at the end of the period.
 fn advance_match_clock(
     time: Res<Time>,
     regulations: Res<MatchRegulations>,
@@ -57,13 +66,18 @@ fn advance_match_clock(
             if match_state.set_piece == SetPiece::None {
                 match_state.phase = MatchPhase::FirstHalf;
                 match_state.period_elapsed = Duration::ZERO;
+                match_state.stoppage_elapsed = Duration::ZERO;
                 telemetry.record(MatchFact::PhaseEntered(MatchPhase::FirstHalf));
             }
         }
 
         MatchPhase::FirstHalf => {
             let elapsed = advance_period(&time, &mut match_state);
-            if elapsed >= regulations.half_duration {
+            if period_is_over(
+                elapsed,
+                match_state.stoppage_elapsed,
+                regulations.half_duration,
+            ) {
                 match_state.phase = MatchPhase::HalfTime;
                 match_state.period_elapsed = Duration::ZERO;
                 // Law 8: the teams change ends and the other one kicks off.
@@ -84,13 +98,18 @@ fn advance_match_clock(
             if match_state.set_piece == SetPiece::None {
                 match_state.phase = MatchPhase::SecondHalf;
                 match_state.period_elapsed = Duration::ZERO;
+                match_state.stoppage_elapsed = Duration::ZERO;
                 telemetry.record(MatchFact::PhaseEntered(MatchPhase::SecondHalf));
             }
         }
 
         MatchPhase::SecondHalf => {
             let elapsed = advance_period(&time, &mut match_state);
-            if elapsed >= regulations.half_duration {
+            if period_is_over(
+                elapsed,
+                match_state.stoppage_elapsed,
+                regulations.half_duration,
+            ) {
                 match_state.phase = MatchPhase::FullTime;
                 // Play stops for good: the referee never restarts after this,
                 // so the pending kick-off is one that will never be taken.
@@ -131,6 +150,9 @@ fn still_the_players_at_full_time(
 
 fn advance_period(time: &Time, match_state: &mut MatchState) -> Duration {
     match_state.period_elapsed += time.delta();
+    if match_state.set_piece != SetPiece::None {
+        match_state.stoppage_elapsed += time.delta();
+    }
     match_state.period_elapsed
 }
 
@@ -142,4 +164,35 @@ fn stop_play_for_kick_off(match_state: &mut MatchState, kicking_team: TeamId, de
     match_state.possession_player = None;
     match_state.possession_team = None;
     match_state.pass_target = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Sin paradas, un periodo dura lo que dice el reglamento.
+    #[test]
+    fn a_period_without_stoppages_lasts_exactly_its_regulation() {
+        let regulation = Duration::from_secs(45 * 60);
+
+        assert!(!period_is_over(
+            regulation - Duration::from_millis(10),
+            Duration::ZERO,
+            regulation
+        ));
+        assert!(period_is_over(regulation, Duration::ZERO, regulation));
+    }
+
+    /// Y con ellas dura lo que se jugó, no lo que marcó el reloj.
+    #[test]
+    fn time_lost_comes_back_at_the_end_of_the_period() {
+        let regulation = Duration::from_secs(45 * 60);
+        let stopped_for = Duration::from_secs(4 * 60);
+
+        assert!(
+            !period_is_over(regulation, stopped_for, regulation),
+            "pitó el final con cuatro minutos sin jugar"
+        );
+        assert!(period_is_over(regulation + stopped_for, stopped_for, regulation));
+    }
 }

@@ -117,6 +117,55 @@ fn at_a_kick_off_the_opponents_stay_out_of_the_centre_circle() {
     assert!(checked, "el saque de centro nunca llegó a ejecutarse");
 }
 
+/// Ley 7: lo que se pierde en reanudaciones se añade al final del periodo.
+///
+/// Se afirma contra el tiempo que el partido estuvo parado de verdad, no contra
+/// una cifra escrita a mano: un añadido fijo cumpliría un test con un número y
+/// se despegaría del juego en cuanto cambiara el ritmo de reanudaciones.
+#[test]
+fn a_period_lasts_longer_when_play_was_stopped() {
+    use football_domain::MatchState;
+    use std::time::Duration;
+
+    let scenario = scenarios::interrupted_half();
+    let regulation = scenario.regulations.half_duration;
+    let mut runner = ScenarioRunner::headless(scenario.clone());
+
+    let mut first_half_lasted = Duration::ZERO;
+    let mut stopped_for = None;
+    for _ in 0..scenario.ticks() {
+        runner.advance();
+        let state = runner.world_mut().resource::<MatchState>();
+        match state.phase {
+            MatchPhase::FirstHalf => first_half_lasted = state.period_elapsed,
+            MatchPhase::HalfTime => {
+                stopped_for.get_or_insert(state.stoppage_elapsed);
+            }
+            MatchPhase::PreMatch
+            | MatchPhase::SecondHalf
+            | MatchPhase::FirstExtraTime
+            | MatchPhase::SecondExtraTime
+            | MatchPhase::Penalties
+            | MatchPhase::FullTime => {}
+        }
+    }
+
+    let stopped_for = stopped_for.expect("el partido llegó al descanso");
+    assert!(
+        stopped_for > Duration::ZERO,
+        "no hubo ninguna reanudación: el test no puede decir nada"
+    );
+    // La medida tiene la resolución del tick: lo último que se ve como primera
+    // parte es el tick anterior al pitido.
+    let expected = regulation + stopped_for;
+    let tick = football_domain::scenario::TICK;
+    assert!(
+        first_half_lasted + tick >= expected && first_half_lasted <= expected + tick,
+        "la parte duró {first_half_lasted:?} y se jugaron {regulation:?} \
+         con {stopped_for:?} parado"
+    );
+}
+
 #[test]
 fn a_shot_over_the_goal_line_is_a_goal() {
     ScenarioRunner::headless(scenarios::shot_crossing_the_goal_line()).assert_scenario_holds();
@@ -211,7 +260,7 @@ fn nobody_plays_on_after_the_final_whistle() {
     use bevy::prelude::{Vec3, With};
     use football_domain::{Player, Position, Velocity};
 
-    let scenario = scenarios::short_match();
+    let scenario = scenarios::interrupted_half();
     let ticks = scenario.ticks();
     let mut runner = ScenarioRunner::headless(scenario);
     for _ in 0..ticks {
@@ -260,7 +309,7 @@ fn a_ball_stopping_on_the_line_is_still_in_play() {
 /// The clock must move, and it must stop when the match does.
 #[test]
 fn the_clock_runs_during_play_and_stops_at_full_time() {
-    let scenario = scenarios::short_match();
+    let scenario = scenarios::interrupted_half();
     let half = scenario.regulations.half_duration;
     let outcome = ScenarioRunner::headless(scenario).run();
 
