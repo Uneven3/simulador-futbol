@@ -10,19 +10,13 @@ ventaja, disciplina, tiros libres, penales, dropped ball y tanda (`NORTE.md`).
 
 ## Empezar aquí
 
-1. **La reanudación se ejecuta.** `referee_set_piece_system` recoloca a los dos
-   equipos en formación base —un espejo exacto— y suelta el balón sin dárselo a
-   nadie. El empate lo rompen tres desempates que van todos para el local (los
-   `<=` de `designated_player_overall` y `team_tactics`, y el `<` estricto de
-   `select_ball_challenger`). Por eso `two_identical_teams_finish_level` está
-   roja: 7-0 sobre seis partidos. Se arregla dando el balón a quien saca:
-   portero en saque de puerta, jugador de campo más cercano en el resto; a 0,4 m
-   del balón (`ball_at_feet_distance` es 0,7); rival apartado 9,15 m, 2 m en el
-   saque de banda. Correr la envolvente después: baja el sesgo, no solo el test.
-2. **Portero que ataja.** Los tiros a puerta son el 100 %.
-3. **Faltas, ventaja y disciplina**, como sistema propio en
+1. **Portero que ataja.** Los tiros a puerta son el 100 %.
+2. **Faltas, ventaja y disciplina**, como sistema propio en
    `BallTouchSet::Contest`, que ya existe para esto.
-4. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
+3. **Cambio de mitades** (Ley 8), pendiente desde MVP 1.5.
+4. **El kick-off no es un saque todavía**: quien saca tiene el balón y un apoyo,
+   pero nadie exige que ambos equipos estén en su mitad ni que el balón salga
+   del círculo antes de jugarse.
 
 ## Deuda declarada, no escondida
 
@@ -30,7 +24,9 @@ Ausencias conocidas, no descubrimientos pendientes:
 
 - **Sin cambio de mitades** (Ley 8) ni tiempo añadido (Ley 7). `TeamSide` ya
   existe en el dominio, sin usar, esperando lo primero.
-- **Kick-off es reanudación nominal**, no regla con posiciones y balón en juego.
+- **La simetría solo se afirma sobre la posesión.** Goles y tiros de doce
+  partidos no dan muestra para más que una banda de tres sigma, que atrapa un
+  sesgo grosero y nada fino. Medirla de verdad pide un barrido de cien partidos.
 - **El fuera de juego no se pita nunca**: un anotado no puede disputar el balón
   (`select_ball_challenger` lo salta), así que la regla es un campo de fuerza y
   el silbato de `referee_offside_system` no suena.

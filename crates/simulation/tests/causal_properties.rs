@@ -13,55 +13,78 @@
 //! Corren explícitamente, porque cada una simula varios partidos:
 //! `cargo test --release -p gameplayfootball_simulation --test causal_properties -- --ignored --nocapture`
 
-use football_domain::{MatchTuning, Scenario, TeamId};
-use football_simulation::envelope::{EnvelopeReport, EnvelopeSpec};
+use football_domain::{ByTeam, MatchTuning, Scenario, TeamId};
+use football_simulation::envelope::{EnvelopeReport, EnvelopeSpec, MatchSummary};
 use std::time::Duration;
 
-/// Seis semillas de cinco minutos: suficiente muestra para una dirección,
+/// Doce semillas de cinco minutos: suficiente muestra para una dirección,
 /// suficientemente barato para correrse al tocar el tuning.
 fn situation(tuning: MatchTuning) -> EnvelopeSpec {
     EnvelopeSpec {
         scenario: Scenario::kick_off()
             .for_duration(Duration::from_secs(5 * 60))
             .with_tuning(tuning),
-        seeds: vec![0xC0FFEE, 1, 7, 42, 1234, 99],
+        seeds: vec![
+            0xC0FFEE, 1, 7, 42, 1234, 99, 2718, 31415, 5, 777, 8191, 6553,
+        ],
     }
 }
 
 /// Dos equipos idénticos terminan parejos.
 ///
-/// Es la propiedad más barata y la que más cosas descarta: si el modelo tuviera
-/// un sesgo de lado —una asimetría en la formación, en el saque, en el signo de
-/// un `team_side`— aparecería aquí y en ninguna otra medida, porque todas las
-/// demás suman los dos equipos.
+/// Es la propiedad más barata y la que más cosas descarta: un sesgo de lado
+/// —en la formación, en el saque, en el signo de un `team_side`— aparece aquí y
+/// en ninguna otra medida, porque las demás suman los dos equipos.
 ///
-/// **Rojo desde el 2026-07-31, a propósito.** Al arreglar el signo del fuera de
-/// juego el sesgo pasó de 0,62 a 1,00 (7-0 sobre seis partidos): estaba tapado
-/// por el defecto anterior, no ausente. La causa está localizada y es la
-/// reanudación. `referee_set_piece_system` coloca a los dos equipos en su
-/// formación base y suelta el balón sin dárselo a nadie, y esa formación es un
-/// espejo exacto — los dos delanteros centro salen a la misma distancia del
-/// balón, al mismo tiempo. El empate lo rompen tres desempates que van todos
-/// para el local: el `<=` de `designated_player_overall`, el mismo `<=` de
-/// `team_tactics` y el `<` estricto de `select_ball_challenger`, que en un
-/// empate exacto se queda con el primero que itera. Y como la reanudación pasa
-/// cada pocos minutos, el empate no es un caso raro sino la regla.
+/// Solo la posesión se afirma con banda estrecha, y es deliberado. Los goles de
+/// doce partidos son dos docenas de sucesos, y los pases y tiros no son
+/// independientes entre sí: llegan en rachas de posesión, así que su muestra
+/// efectiva se parece más al número de partidos que al de sucesos. Una banda
+/// estrecha sobre ellos salta con el modelo sano y calla con el roto. La
+/// posesión promedia el tick, que es donde de verdad hay muestra.
 ///
-/// Se arregla dando el balón a quien saca, que además es la Ley: hoy la
-/// reanudación es nominal y nadie la ejecuta.
+/// Los demás se acotan a tres desviaciones, que es la red para un sesgo
+/// grosero. La banda no se eligió mirando el resultado: se comprobó contra los
+/// dos defectos que este test ya encontró —el 7-0 del desempate y el 2-10 de la
+/// reanudación sin apoyo—, y salta con los dos. Afirmar simetría de
+/// finalización más fina que eso pide cien partidos, y eso es un barrido.
 #[test]
 #[ignore]
 fn two_identical_teams_finish_level() {
     let report = EnvelopeReport::run(&situation(MatchTuning::default()));
 
-    let home: u32 = report.matches.iter().map(|m| m.goals[TeamId::Home]).sum();
-    let away: u32 = report.matches.iter().map(|m| m.goals[TeamId::Away]).sum();
-    let share = home as f32 / (home + away) as f32;
-    println!("local {home} - {away} visitante  (cuota local {share:.3})");
+    let share_of = |of: fn(&MatchSummary) -> ByTeam<u32>| {
+        let home: u32 = report.matches.iter().map(|m| of(m)[TeamId::Home]).sum();
+        let away: u32 = report.matches.iter().map(|m| of(m)[TeamId::Away]).sum();
+        (home, away, home as f32 / (home + away) as f32)
+    };
+
+    let (home_goals, away_goals, goal_share) = share_of(|m| m.goals);
+    let (home_shots, away_shots, shot_share) = share_of(|m| m.shots);
+    let (home_passes, away_passes, pass_share) = share_of(|m| m.passes);
+    let possession = report.mean_of(|m| m.possession[TeamId::Home]);
+    println!(
+        "goles {home_goals}-{away_goals} ({goal_share:.3}), \
+         tiros {home_shots}-{away_shots} ({shot_share:.3}), \
+         pases {home_passes}-{away_passes} ({pass_share:.3}), \
+         posesión {possession:.3}"
+    );
 
     assert!(
-        (0.35..=0.65).contains(&share),
-        "un lado domina sin razón: {home}-{away} sobre {} partidos",
+        (0.45..=0.55).contains(&possession),
+        "un lado tiene el balón y el otro lo persigue: posesión {possession:.3}"
+    );
+    assert!(
+        (0.40..=0.60).contains(&pass_share),
+        "un lado juega y el otro mira: {home_passes}-{away_passes} pases"
+    );
+    assert!(
+        (0.32..=0.68).contains(&shot_share),
+        "un lado llega al área y el otro no: {home_shots}-{away_shots} tiros"
+    );
+    assert!(
+        (0.19..=0.81).contains(&goal_share),
+        "un lado domina sin razón: {home_goals}-{away_goals} sobre {} partidos",
         report.matches.len()
     );
 }

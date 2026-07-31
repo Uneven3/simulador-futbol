@@ -5,9 +5,10 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
+use football_domain::math::normalized_or_2d;
 use football_domain::{
     BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, Player,
-    PlayerId, PlayerMatchState, Position, SetPiece, TeamId, Velocity,
+    PlayerId, PlayerMatchState, PlayingPosition, Position, SetPiece, TeamId, Velocity,
 };
 use std::time::Duration;
 
@@ -319,14 +320,105 @@ pub fn judge_offside_positions(
     }
 }
 
+/// A qué distancia del balón se planta quien saca, en metros. Dentro de
+/// `ball_at_feet_distance` (0,7): el balón está en su pie, no a su alcance.
+const TAKER_DISTANCE: f32 = 0.4;
+
+/// Lo que la Ley 13 exige que se aparten los rivales, en metros, salvo en el
+/// saque de banda (Ley 15), donde son dos.
+const OPPONENT_CLEARANCE: f32 = 9.15;
+const THROW_IN_CLEARANCE: f32 = 2.0;
+
+/// Quién saca: el portero en el saque de puerta, y en el resto el jugador de
+/// campo que tenga más cerca el balón.
+///
+/// El equipo lo decide la regla antes que esto; aquí no hay desempate entre
+/// equipos, que es de donde salía el sesgo local: dos formaciones espejo
+/// empatan en todo y los tres desempates iban al mismo lado.
+fn select_restart_taker(
+    bodies: &[(PlayerId, PlayingPosition, Vec2)],
+    taking_team: TeamId,
+    set_piece: SetPiece,
+    restart_pos: Vec2,
+) -> Option<PlayerId> {
+    if set_piece == SetPiece::GoalKick {
+        return bodies
+            .iter()
+            .find(|(id, position, _)| {
+                id.team == taking_team && *position == PlayingPosition::Goalkeeper
+            })
+            .map(|(id, _, _)| *id);
+    }
+
+    bodies
+        .iter()
+        .filter(|(id, position, _)| {
+            id.team == taking_team && *position != PlayingPosition::Goalkeeper
+        })
+        .min_by(|(_, _, left), (_, _, right)| {
+            left.distance_squared(restart_pos)
+                .total_cmp(&right.distance_squared(restart_pos))
+        })
+        .map(|(id, _, _)| *id)
+}
+
+/// A qué distancia se ofrece el compañero de apoyo, en metros.
+///
+/// Sin él, sacar es una desventaja: el que saca queda solo contra un bloque
+/// entero, pierde el balón cerca de su área y el rival contraataca. Como saca
+/// quien encaja, eso se realimenta hasta la goleada. La Ley solo aparta a los
+/// rivales; a los compañeros los deja acercarse, y esto es lo que hacen.
+const SUPPORT_DISTANCE: f32 = 6.0;
+const SUPPORT_WIDTH: f32 = 4.0;
+
+/// Dónde se ofrece el apoyo: por detrás del sacador y abierto hacia su propia
+/// banda, que es de donde ya venía —así el espejo entre equipos se mantiene—.
+fn restart_support_spot(restart_pos: Vec2, attacking_towards_x: f32, support_y: f32) -> Vec2 {
+    let towards_own_half = -attacking_towards_x;
+    let side_of_the_pitch = if support_y >= 0.0 { 1.0 } else { -1.0 };
+    restart_pos
+        + Vec2::new(
+            towards_own_half * SUPPORT_DISTANCE,
+            side_of_the_pitch * SUPPORT_WIDTH,
+        )
+}
+
+/// Dónde se planta quien saca: detrás del balón desde su punto de vista, para
+/// que el primer golpeo salga hacia la portería contraria y no hacia la propia.
+/// El saque de banda se ejecuta desde fuera del campo (Ley 15), así que ahí el
+/// paso atrás es hacia la grada.
+fn restart_taker_spot(restart_pos: Vec2, attacking_towards_x: f32, set_piece: SetPiece) -> Vec2 {
+    if set_piece == SetPiece::ThrowIn {
+        let outward = if restart_pos.y >= 0.0 { 1.0 } else { -1.0 };
+        return restart_pos + Vec2::new(0.0, outward * TAKER_DISTANCE);
+    }
+    restart_pos - Vec2::new(attacking_towards_x * TAKER_DISTANCE, 0.0)
+}
+
+/// Aparta radialmente lo justo: quien ya respeta la distancia no se mueve, y
+/// quien no, sale por donde estaba en vez de teletransportarse a un sitio nuevo.
+///
+/// Quien esté justo encima del balón retrocede hacia su propia portería, que es
+/// lo que hace un defensa y además es simétrico: una dirección fija de reserva
+/// —`Vec2::X`— apartaría a los dos equipos hacia el mismo lado del campo.
+fn cleared_position(
+    position: Vec2,
+    restart_pos: Vec2,
+    clearance: f32,
+    towards_own_goal: Vec2,
+) -> Vec2 {
+    let offset = position - restart_pos;
+    if offset.length() >= clearance {
+        return position;
+    }
+    let direction = normalized_or_2d(offset, towards_own_goal);
+    restart_pos + direction * clearance
+}
+
 /// Reset System:
 /// Ticks down the set piece timer. When it expires, places the ball at the
 /// restart position recorded when play was stopped, teleports players to their
-/// base positions and resets all state (original: `ResetSituation`).
-///
-/// Lo que **no** hace, y es la deuda que abrió el sesgo local de MVP 2: nadie
-/// ejecuta la reanudación. La formación base es un espejo exacto, así que los
-/// dos equipos salen a la vez y el balón se lo lleva quien gane un desempate.
+/// base positions and hands the ball to whoever takes the restart.
 fn referee_set_piece_system(
     mut match_state: ResMut<MatchState>,
     mut records: ResMut<OffsideRecords>,
@@ -389,8 +481,58 @@ fn referee_set_piece_system(
         player_state.last_touch_at = Duration::ZERO;
     }
 
-    // Clear set piece state
     let prev_set_piece = match_state.set_piece;
+
+    // Someone takes the restart. Standing them on the ball is all it takes:
+    // possession is positional, so `ball_contest` hands it over next tick —
+    // awarding it here would make the referee a second owner of possession.
+    if let Some(taking_team) = match_state.set_piece_team {
+        let restart_2d = restart_pos.truncate();
+        let bodies: Vec<(PlayerId, PlayingPosition, Vec2)> = player_query
+            .iter()
+            .map(|(position, _, _, player, _)| {
+                (player.id, player.position, position.on_pitch())
+            })
+            .collect();
+        let taker = select_restart_taker(&bodies, taking_team, prev_set_piece, restart_2d);
+        let support = taker.and_then(|taker| {
+            let others: Vec<(PlayerId, PlayingPosition, Vec2)> = bodies
+                .iter()
+                .filter(|(id, _, _)| *id != taker)
+                .copied()
+                .collect();
+            select_restart_taker(&others, taking_team, SetPiece::None, restart_2d)
+        });
+        let attacking_towards_x = -crate::team_tactics::team_side(taking_team);
+        let clearance = if prev_set_piece == SetPiece::ThrowIn {
+            THROW_IN_CLEARANCE
+        } else {
+            OPPONENT_CLEARANCE
+        };
+
+        for (mut position, mut facing, _, player, _) in player_query.iter_mut() {
+            if Some(player.id) == taker {
+                let spot = restart_taker_spot(restart_2d, attacking_towards_x, prev_set_piece);
+                *position = Position::from_pitch(spot, 0.0);
+                if let Ok(towards_ball) = Dir2::new(restart_2d - spot) {
+                    facing.0 = towards_ball;
+                }
+            } else if Some(player.id) == support {
+                let spot = restart_support_spot(
+                    restart_2d,
+                    attacking_towards_x,
+                    position.on_pitch().y,
+                );
+                *position = Position::from_pitch(spot, 0.0);
+            } else if player.id.team != taking_team {
+                let towards_own_goal = Vec2::new(-attacking_towards_x, 0.0);
+                let cleared =
+                    cleared_position(position.on_pitch(), restart_2d, clearance, towards_own_goal);
+                *position = Position::from_pitch(cleared, 0.0);
+            }
+        }
+    }
+
     match_state.set_piece = SetPiece::None;
     match_state.set_piece_team = None;
     match_state.is_ball_in_goal = false;
@@ -401,12 +543,109 @@ fn referee_set_piece_system(
     records.players.clear();
     records.team = None;
 
-    let _ = prev_set_piece;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mirrored_teams(restart: Vec2) -> Vec<(PlayerId, PlayingPosition, Vec2)> {
+        vec![
+            (
+                PlayerId::new(TeamId::Home, 1),
+                PlayingPosition::Goalkeeper,
+                Vec2::new(-54.0, 0.0),
+            ),
+            (
+                PlayerId::new(TeamId::Home, 9),
+                PlayingPosition::CentreForward,
+                restart + Vec2::new(3.0, 0.0),
+            ),
+            (
+                PlayerId::new(TeamId::Away, 1),
+                PlayingPosition::Goalkeeper,
+                Vec2::new(54.0, 0.0),
+            ),
+            (
+                PlayerId::new(TeamId::Away, 9),
+                PlayingPosition::CentreForward,
+                restart + Vec2::new(-3.0, 0.0),
+            ),
+        ]
+    }
+
+    /// Quien saca sale del equipo al que se le concedió, y de nadie más: es el
+    /// desempate que antes decidía la posesión y siempre caía del mismo lado.
+    #[test]
+    fn the_restart_is_taken_by_the_team_it_was_awarded_to() {
+        let restart = Vec2::new(0.0, 0.0);
+        let bodies = mirrored_teams(restart);
+
+        for team in TeamId::BOTH {
+            let taker = select_restart_taker(&bodies, team, SetPiece::KickOff, restart)
+                .expect("alguien saca");
+            assert_eq!(taker.team, team);
+        }
+    }
+
+    /// El saque de puerta lo saca el portero aunque tenga a un delantero encima
+    /// del balón.
+    #[test]
+    fn the_goalkeeper_takes_the_goal_kick() {
+        let restart = Vec2::new(-50.0, 0.0);
+        let bodies = mirrored_teams(restart);
+
+        let taker = select_restart_taker(&bodies, TeamId::Home, SetPiece::GoalKick, restart)
+            .expect("alguien saca");
+        assert_eq!(taker, PlayerId::new(TeamId::Home, 1));
+
+        let open_play = select_restart_taker(&bodies, TeamId::Home, SetPiece::Corner, restart)
+            .expect("alguien saca");
+        assert_ne!(
+            open_play,
+            PlayerId::new(TeamId::Home, 1),
+            "el portero no saca los córners"
+        );
+    }
+
+    /// Quien saca queda con el balón en el pie —dentro de
+    /// `ball_at_feet_distance`— y por detrás de él, no pasado.
+    #[test]
+    fn the_taker_stands_on_the_ball_and_behind_it() {
+        let restart = Vec2::new(0.0, 0.0);
+        let towards_x = 1.0;
+
+        let spot = restart_taker_spot(restart, towards_x, SetPiece::KickOff);
+        assert!(spot.distance(restart) < 0.7, "el balón no está en su pie");
+        assert!(spot.x < restart.x, "saca de espaldas a la portería rival");
+    }
+
+    /// El saque de banda se ejecuta desde fuera del campo (Ley 15).
+    #[test]
+    fn the_throw_in_is_taken_from_outside_the_pitch() {
+        let restart = Vec2::new(10.0, 36.0);
+        let spot = restart_taker_spot(restart, 1.0, SetPiece::ThrowIn);
+        assert!(spot.y > restart.y, "el sacador pisa el campo");
+        assert!(spot.distance(restart) < 0.7);
+    }
+
+    /// Los rivales se apartan lo que exige la ley, y quien ya estaba lejos no se
+    /// mueve: apartar a todos rehace la formación en vez de despejar el balón.
+    #[test]
+    fn opponents_are_moved_only_as_far_as_the_law_asks() {
+        let restart = Vec2::new(0.0, 0.0);
+
+        let crowding = Vec2::new(1.0, 0.0);
+        let cleared = cleared_position(crowding, restart, OPPONENT_CLEARANCE, Vec2::NEG_X);
+        assert!((cleared.distance(restart) - OPPONENT_CLEARANCE).abs() < 1e-3);
+        assert!(cleared.x > 0.0, "salió por el lado contrario al que estaba");
+
+        let far_away = Vec2::new(30.0, 5.0);
+        assert_eq!(
+            cleared_position(far_away, restart, OPPONENT_CLEARANCE, Vec2::NEG_X),
+            far_away
+        );
+    }
 
     #[test]
     fn test_goal_requires_whole_ball_over_the_line() {
