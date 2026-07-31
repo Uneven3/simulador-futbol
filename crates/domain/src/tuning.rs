@@ -199,6 +199,10 @@ pub struct ContestTuning {
     /// The tackler must be this much closer to the ball than the carrier
     /// (fraction of the carrier's distance) to win the duel.
     pub duel_advantage: f32,
+    /// Por encima de esta velocidad (m/s) el balón ya no se disputa: viaja, y
+    /// cualquier cuerpo en su camino lo desvía —incluido el designado, que en
+    /// una disputa sí se salta el choque—.
+    pub travelling_ball_speed: f32,
     /// The ball is stealable when it is at least this far from the carrier's
     /// feet (m) — poked loose rather than under control.
     pub shielding_release_distance: f32,
@@ -251,6 +255,7 @@ impl Default for ContestTuning {
             foul_contact_distance: 0.75,
             foul_charge: 2.0,
             duel_advantage: 0.8,
+            travelling_ball_speed: 8.0,
             shielding_release_distance: 1.0,
             shielding_release_time: Duration::from_millis(2000),
             steal_cooldown: Duration::from_millis(500),

@@ -6,6 +6,7 @@ use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::math::{XorShift32, normalized_clamp, normalized_or};
+use football_domain::tuning::ContestTuning;
 use football_domain::{
     BALL_RADIUS, Ball, BallTouched, MatchState, Player, PlayerId, Position, PossessionDesignation,
 };
@@ -52,11 +53,25 @@ fn last_touch_bias(now: Duration, touched_at: Duration, window: Duration) -> f32
     }
 }
 
+/// Si un cuerpo puede desviar el balón o está exento por estar disputándolo.
+///
+/// Quien lo disputa —el poseedor y el designado de cada equipo— se salta el
+/// choque, porque sus toques son deliberados y los resuelve el sistema de
+/// golpeo; dos de ellos sobre el mismo balón se lo devolverían sin fin. Pero un
+/// balón que viaja no se está disputando: va a alguna parte, y quien se cruza
+/// lo desvía aunque fuese el designado. Sin esta segunda mitad no había forma
+/// de bloquear un tiro, porque el único que llegaba a estar delante era
+/// justamente el designado.
+pub fn deflects_it(contesting_it: bool, ball_speed: f32, tuning: &ContestTuning) -> bool {
+    !contesting_it || ball_speed > tuning.travelling_ball_speed
+}
+
 // A Bevy system states its dependencies as parameters (see `player_kick_system`).
 #[allow(clippy::too_many_arguments)]
 fn ball_body_collisions(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
+    tuning: Res<football_domain::MatchTuning>,
     mut rng: ResMut<CollisionRng>,
     mut last_collision_at: Local<Duration>,
     time: Res<Time>,
@@ -80,13 +95,16 @@ fn ball_body_collisions(
     let mut bounce_count = 0;
     let mut toucher: Option<(Entity, PlayerId)> = None;
 
+    let ball_speed = ball.momentum.length();
+
     for (entity, position, player, attributes, player_state, velocity) in player_query.iter() {
-        // A designated player's touches are deliberate and belong to the kick
-        // system; without this exclusion two of them over a contested ball
-        // deflect it back and forth forever.
-        if match_state.possession_player == Some(player.id)
-            || designation.designated[player.id.team] == Some(player.id)
-        {
+        let contesting_it = match_state.possession_player == Some(player.id)
+            || designation.designated[player.id.team] == Some(player.id);
+        if !deflects_it(contesting_it, ball_speed, &tuning.contest) {
+            continue;
+        }
+        // quien acaba de golpearlo no se lo bloquea a sí mismo
+        if ball.last_touch_player == Some(player.id) {
             continue;
         }
 
@@ -173,5 +191,37 @@ fn ball_body_collisions(
         }
 
         *last_collision_at = now;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Quien disputa el balón no lo desvía por accidente: sus toques son cosa
+    /// del sistema de golpeo.
+    #[test]
+    fn a_body_contesting_the_ball_does_not_deflect_it() {
+        let tuning = ContestTuning::default();
+        let rolling = tuning.travelling_ball_speed * 0.5;
+
+        assert!(!deflects_it(true, rolling, &tuning));
+        assert!(
+            deflects_it(false, rolling, &tuning),
+            "un cuerpo cualquiera sí"
+        );
+    }
+
+    /// Pero un tiro no se disputa: se bloquea, y lo bloquea el que esté
+    /// delante aunque fuese el designado.
+    #[test]
+    fn a_travelling_ball_is_blocked_by_whoever_is_in_the_way() {
+        let tuning = ContestTuning::default();
+        let struck = tuning.travelling_ball_speed * 2.0;
+
+        assert!(
+            deflects_it(true, struck, &tuning),
+            "el defensor que estaba delante dejó pasar el tiro"
+        );
     }
 }

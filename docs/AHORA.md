@@ -20,10 +20,9 @@ juzga sobre piezas.
 1. **Girarse y salir**: es lo que le falta a proteger el balón. La regla
    —al balón no se llega a través de un cuerpo— ya está; ponerse en medio sin
    salida deja al portador clavado y el partido sin un solo tiro.
-2. **La defensa no se orienta.** Persigue el balón de forma reactiva, y desde
-   que retroceder de espaldas cuesta lo que cuesta, eso la deja fuera: más de
-   la mitad de los tiros acaban en gol. Un defensor real se gira antes y corre
-   de cara hacia su portería.
+2. **El defensor está delante y no hace nada más que estar.** Ahora bloquea el
+   tiro si se cruza, pero no se cruza a propósito: no sale a achicar el ángulo
+   ni mete la pierna. Sigue habiendo cuatro veces los goles reales.
 3. **Nadie se recupera nunca**: la fatiga solo baja dentro del partido, y el
    descanso entre partes no repone nada.
 
@@ -31,10 +30,10 @@ juzga sobre piezas.
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **Más de la mitad de los tiros son gol** (real, uno de cada diez), y de ahí
-  sale un ritmo de gol que sigue cuadruplicando el real: nada de esto puede
-  presentarse como predicción. No es el portero —darle su técnica lateral no
-  movió la proporción—, es que el atacante llega solo: ver el punto 2.
+- **Cuatro de cada diez tiros son gol** (real, uno de cada diez), y de ahí sale
+  un ritmo de gol que sigue triplicando el real: nada de esto puede presentarse
+  como predicción. No es que el atacante llegue solo —el rival más cercano está
+  a 2,2 m y eso no ha cambiado nunca—, es lo que ese rival hace: ver el punto 2.
 - **16 faltas por 90 minutos contra las ~22 reales.** El criterio pasó de
   sobrar a faltar cuando los cuerpos tuvieron inercia, y no se toca hasta que
   haya protección del balón: el número que hoy cuadre volvería a descuadrar.
