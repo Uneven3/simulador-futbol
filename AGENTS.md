@@ -10,13 +10,17 @@ la especificación del producto.
 
 ## Lectura obligatoria
 
-1. `docs/NORTE.md`: producto y MVP incrementales.
+1. `docs/AHORA.md`: único trabajo activo. Empieza aquí.
 2. `docs/ARCHITECTURE.md`: leyes y dependencias permitidas.
-3. `docs/AHORA.md`: único trabajo activo.
-4. `docs/DOMAIN_MODEL.md`: vocabulario canónico.
-5. `docs/LAWS_OF_FOOTBALL.md`: contrato IFAB y cobertura.
-6. `docs/VALIDATION.md`: cómo se demuestra fidelidad.
-7. `docs/DIAGNOSTICS.md`: contrato de logs y observación.
+
+Y el que haga falta para lo que se vaya a tocar, no antes: `NORTE.md`
+(producto y MVP), `DOMAIN_MODEL.md` (vocabulario), `LAWS_OF_FOOTBALL.md`
+(contrato IFAB), `VALIDATION.md` (cómo se demuestra fidelidad),
+`DIAGNOSTICS.md` (contrato de observación).
+
+**Las cifras no viven en la documentación.** Van a `measurements/`; la historia,
+al mensaje de commit (ley 27). Un documento que hay que reeditar cada vez que
+cambia un número está mal puesto.
 
 `docs/REVISION_2026-07-30.md` es la revisión del cierre de MVP 1: qué se
 verificó, qué no y qué se encontró. Las revisiones se fechan y no se editan.
@@ -38,10 +42,9 @@ Leer `docs/TOOLING.md` solo al cambiar herramientas de desarrollo/agentes.
 - `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`:
   diez semillas de diez minutos, reportadas como tasas. **Es la comparación
   válida entre dos builds**; una sola corrida es una trayectoria, no una
-  métrica (`docs/REVISION_2026-07-30-reloj.md`). Base actual (2026-07-31, tras
-  arreglar el signo del fuera de juego): 23,4 goles/90 min (rango 9-36), 34
-  tiros/90 min con el 100 % a puerta, 2269 pases/90 min con el 55 %
-  completados, 14,1 cambios de posesión/min (rango 13,0-15,3).
+  métrica (`docs/REVISION_2026-07-30-reloj.md`). Anexa la corrida a
+  `measurements/envelope.csv` e imprime el delta contra la anterior: **la base
+  está ahí, no en ningún documento** (ley 27).
 - `cargo test --release -p gameplayfootball_simulation goal_distribution -- --ignored --nocapture`:
   veinte partidos completos con el histograma de goles contra la Poisson real.
   Cuesta unos dos minutos por partido: es la medición que decide si MVP 1.75

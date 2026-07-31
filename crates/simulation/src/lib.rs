@@ -9,6 +9,7 @@ pub mod diagnostics;
 pub mod envelope;
 pub mod match_clock;
 pub mod match_setup;
+pub mod measurements;
 pub mod player_decisions;
 pub mod player_movement;
 pub mod referee;
@@ -281,14 +282,29 @@ mod tests {
     /// that differ by a rounding decision produce different matches without
     /// either being worse. What can be compared is the envelope across seeds.
     ///
+    /// Cada corrida se anexa a `measurements/envelope.csv` y el test imprime el
+    /// delta contra la anterior: lo que hay que leer tras un refactor es esa
+    /// tabla, no el informe entero.
+    ///
     /// `cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn seeded_envelope() {
         use crate::envelope::{EnvelopeReport, EnvelopeSpec};
+        use crate::measurements;
 
         let report = EnvelopeReport::run(&EnvelopeSpec::comparing_builds());
         println!("{}", report.render());
+
+        let log = measurements::default_log();
+        match measurements::append(&report, &log) {
+            Ok(id) => println!(
+                "\n{}\nregistrada como {id} en {}",
+                measurements::compare_last_two(&log),
+                log.display()
+            ),
+            Err(e) => println!("\nno se pudo registrar la medición: {e}"),
+        }
     }
 
     /// Goles por partido contra la distribución real, sobre partidos completos.

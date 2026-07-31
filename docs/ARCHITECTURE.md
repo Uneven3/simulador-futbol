@@ -90,6 +90,11 @@ el desacople se consigue con componentes y mensajes, no con interfaces.
     Nunca el *qué*: eso lo dice el código. Las citas al C++ original son
     trazabilidad hacia `references/gameplay_football/`, no nombres del presente
     (ley 16).
+27. **Ningún comentario ni documento registra una medición, una fecha o el
+    relato de una sesión.** Las mediciones van a `measurements/`, la historia al
+    mensaje de commit, y el comentario dice el invariante. Un comentario más
+    largo que el código que explica está contando una historia; un documento que
+    hay que reeditar cada vez que cambia una cifra es una copia de un CSV.
 
 ## Pipeline
 

@@ -86,7 +86,7 @@ reanudaciones básicas deben ser inspeccionables.
 ### MVP 1.75 — Instrumentación y propiedades
 
 Antes de añadir más reglas hay que poder **medir** lo que las que existen
-producen. El modelo marca 51 goles cada 90 minutos contra ~2,7 reales
+producen. El modelo marcaba un orden de magnitud más goles que un partido real
 (`REVISION_2026-07-30-reloj.md`), y no había ningún test que lo notara.
 
 Cuatro pasos, en orden:
@@ -118,14 +118,12 @@ Sustituciones, offside, faltas, ventaja, disciplina, tiros libres, penales,
 dropped ball, tanda y variantes configurables. Cada transición nace de un
 escenario.
 
-Empezó el 2026-07-31 arreglando el fuera de juego, que estaba escrito con el
-signo invertido y anotaba a los jugadores que estaban detrás de la línea. Como
-un jugador anotado no puede disputar el balón, la regla no pitaba nada:
-congelaba a 9,4 de los 11 jugadores en cada tick. Arreglarla bajó el ritmo de
-gol de 51 a 23 por 90 minutos y subió los pases completados del 11 % al 55 %
-**sin girar un parámetro** — es decir, la tabla de atribución de MVP 1.75 había
-adjudicado a MVP 4 (percepción) un desvío que era un error de una línea.
-Detalle en `AHORA.md`.
+Empezó arreglando el fuera de juego, que estaba escrito con el signo invertido:
+un jugador anotado no puede disputar el balón, así que la regla no pitaba nada,
+congelaba a casi todo un equipo. Arreglarla partió por la mitad el ritmo de gol
+**sin girar un parámetro** — la tabla de atribución de MVP 1.75 había adjudicado
+a MVP 4 (percepción) un desvío que era un error de una línea. Las cifras, en
+`measurements/envelope.csv`.
 
 ### MVP 3 — Movimiento plausible
 
