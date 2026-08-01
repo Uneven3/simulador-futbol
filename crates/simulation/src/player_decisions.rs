@@ -31,9 +31,9 @@ use football_domain::math::{
 };
 use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
-    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, MovementIntent, PitchSides,
-    Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece,
-    TeamId, Velocity,
+    Attributes, Ball, Gaze, MatchRng, MatchState, MatchTuning, Mentality, MovementIntent,
+    PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition, Position,
+    PossessionDesignation, SetPiece, TeamId, Velocity,
 };
 
 // ---------------------------------------------------------------------------
@@ -116,6 +116,7 @@ type DecidingPlayer = (
     &'static PlayerMatchState,
     &'static Velocity,
     &'static mut MovementIntent,
+    &'static mut Gaze,
 );
 
 /// Todo lo que hay que saber del partido para decidir, que es lo mismo para los
@@ -146,7 +147,7 @@ pub fn select_player_movement(
     } = world;
     // If a set piece is active (game paused for a restart), freeze everyone.
     if match_state.set_piece != SetPiece::None {
-        for (.., mut intent) in player_query.iter_mut() {
+        for (.., mut intent, _) in player_query.iter_mut() {
             intent.0 = Vec3::ZERO;
         }
         return;
@@ -165,7 +166,7 @@ pub fn select_player_movement(
         }
     });
 
-    for (body, position, player, stats, mentality, player_state, velocity, mut intent) in
+    for (body, position, player, stats, mentality, player_state, velocity, mut intent, mut gaze) in
         player_query.iter_mut()
     {
         // armar un golpeo es plantarse junto al balón: quien sigue corriendo a
@@ -222,6 +223,12 @@ pub fn select_player_movement(
         };
 
         intent.0 = Vec3::new(dir.x, dir.y, 0.0) * velo;
+        // Un futbolista juega mirando el balón, y solo deja de mirarlo cuando
+        // corre en serio: a esa velocidad el cuerpo va donde van los ojos.
+        gaze.0 = (velo < SPRINT_VELOCITY).then(|| {
+            Vec2::new(ball.predictions[0].x, ball.predictions[0].y)
+                + beliefs.ball_error_of(player.id)
+        });
     }
 }
 

@@ -10,6 +10,7 @@ use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use football_domain::scenario::TICK;
 use football_domain::{ObservationMemory, Player, Scenario};
 use football_simulation::MatchKernelPlugin;
+use football_simulation::perception::Beliefs;
 use std::time::Duration;
 
 #[test]
@@ -28,6 +29,17 @@ fn what_does_a_player_know() {
     }
 
     let now = app.world().resource::<Time>().elapsed();
+    let ids: Vec<_> = {
+        let mut bodies = app.world_mut().query::<&Player>();
+        bodies.iter(app.world()).map(|player| player.id).collect()
+    };
+    let ball_errors: Vec<f32> = {
+        let beliefs = app.world().resource::<Beliefs>();
+        ids.iter()
+            .map(|id| beliefs.ball_error_of(*id).length())
+            .collect()
+    };
+
     let mut watchers = app.world_mut().query::<(&ObservationMemory, &Player)>();
     let mut known = 0;
     let mut stale_total = 0.0_f32;
@@ -47,6 +59,11 @@ fn what_does_a_player_know() {
         }
     }
 
+    let worst_ball_error = ball_errors.iter().copied().fold(0.0_f32, f32::max);
+    let mean_ball_error = ball_errors.iter().sum::<f32>() / ball_errors.len() as f32;
+    println!(
+        "el balón: se equivocan {mean_ball_error:.1} m de media, el peor {worst_ball_error:.1} m"
+    );
     println!(
         "tras un minuto, cada jugador conoce a {:.1} de los otros 21, \
          con información de {:.1} s de antigüedad de media; \

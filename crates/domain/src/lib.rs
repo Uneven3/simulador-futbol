@@ -20,11 +20,11 @@ pub use match_state::{
     BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
     PossessionDesignation, PotentialFoul, SetPiece,
 };
-pub use perception::{Observation, ObservationMemory, Vision, can_see};
+pub use perception::{EXTRAPOLATION_HORIZON, Observation, ObservationMemory, Vision, can_see};
 pub use player::{
     Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
     PlayingPosition, TacticalRole,
 };
 pub use scenario::{Scenario, ScenarioOutcome};
-pub use spatial::{Facing, MovementIntent, Position, Velocity};
+pub use spatial::{Facing, Gaze, MovementIntent, Position, Velocity};
 pub use tuning::{MatchTuning, TuningVersion};

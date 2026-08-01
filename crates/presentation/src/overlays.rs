@@ -271,6 +271,13 @@ fn draw_vision(
     let now = time.elapsed();
     for (position, facing, player, attributes, vision, memory) in watchers.iter() {
         let colour = team_colour(player.id.team);
+
+        // dónde cree cada uno que está el balón: cuanto más se separan las
+        // cruces, más desacuerdo hay sobre dónde se está jugando
+        if let Some(believed) = memory.ball.map(|seen| seen.projected_to(now)) {
+            let at = Vec3::new(believed.x, believed.y, 0.1);
+            gizmos.cross(Isometry3d::from_translation(at), 0.4, colour);
+        }
         let [eyes, left, right] = vision_cone(*position, facing.0, vision, attributes.height * 0.9);
         let faded = colour.with_alpha(0.25);
         gizmos.line(eyes, left, faded);

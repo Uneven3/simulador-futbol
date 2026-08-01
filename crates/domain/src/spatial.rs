@@ -32,6 +32,13 @@ impl Default for Facing {
     }
 }
 
+/// El punto que un cuerpo quiere mirar, si quiere mirar alguno.
+///
+/// Lo escribe quien decide y lo obedece el motor dentro de su límite de giro.
+/// `None` es mirar hacia donde se va, que es lo que hace quien esprinta.
+#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
+pub struct Gaze(pub Option<Vec2>);
+
 /// Kinematic velocity in m/s. Players are not physics bodies: this is
 /// integrated into [`Position`] once per fixed tick.
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]

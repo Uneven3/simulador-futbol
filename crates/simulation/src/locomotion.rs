@@ -12,7 +12,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 
 use football_domain::tuning::{StaminaTuning, TurningTuning};
-use football_domain::{Attributes, Facing, FatigueState, MatchTuning, MovementIntent, Velocity};
+use football_domain::{
+    Attributes, Facing, FatigueState, Gaze, MatchTuning, MovementIntent, Position, Velocity,
+};
 
 /// La velocidad que un cuerpo alcanza este tick, dentro de un único presupuesto
 /// de m/s²: girar gasta lo mismo que acelerar, y de ahí salen solas la curva de
@@ -105,6 +107,8 @@ pub fn drive_bodies(
     mut bodies: Query<(
         &MovementIntent,
         &Attributes,
+        &Gaze,
+        &Position,
         &mut FatigueState,
         &mut Facing,
         &mut Velocity,
@@ -112,7 +116,7 @@ pub fn drive_bodies(
 ) {
     let dt = time.delta_secs();
     let (stamina_tuning, turning) = (&tuning.stamina, &tuning.turning);
-    for (intent, body, mut fatigue, mut facing, mut velocity) in bodies.iter_mut() {
+    for (intent, body, gaze, position, mut fatigue, mut facing, mut velocity) in bodies.iter_mut() {
         let running = velocity.0.truncate();
         let speed = running.length();
         fatigue.stamina = drained(fatigue.stamina, speed, body, stamina_tuning, dt);
@@ -126,9 +130,13 @@ pub fn drive_bodies(
         let reached = reachable_velocity(running, asked.clamp_length_max(reachable_pace), &can, dt);
         velocity.0 = Vec3::new(reached.x, reached.y, velocity.0.z);
 
-        // se mira hacia donde se quiere ir, no hacia donde se acabó yendo: un
-        // cuerpo empujado de lado no gira la cabeza por eso
-        if let Ok(towards) = Dir2::new(asked) {
+        // se mira lo que se quiso mirar, y si no se quiso nada, hacia donde se
+        // va: un cuerpo empujado de lado no gira la cabeza por eso
+        let looking_at = gaze
+            .0
+            .map(|spot| spot - position.on_pitch())
+            .unwrap_or(asked);
+        if let Ok(towards) = Dir2::new(looking_at) {
             facing.0 = turned(facing.0, towards, speed, body, turning, dt);
         }
     }

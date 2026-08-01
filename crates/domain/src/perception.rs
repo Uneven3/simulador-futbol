@@ -42,11 +42,16 @@ pub struct Observation {
     pub seen_at: Duration,
 }
 
+/// Hasta dónde se extrapola lo que se dejó de ver. Pasado esto uno sabe que ya
+/// no sabe: seguir tirando de la recta pone un balón visto a veinte metros por
+/// segundo a trescientos metros del campo.
+pub const EXTRAPOLATION_HORIZON: Duration = Duration::from_millis(1000);
+
 impl Observation {
     /// Dónde estaría si hubiera seguido igual. Es lo que hace un futbolista con
     /// lo que dejó de ver: no lo olvida, lo extrapola —y se equivoca—.
     pub fn projected_to(self, now: Duration) -> Vec2 {
-        let stale_for = now.saturating_sub(self.seen_at).as_secs_f32();
+        let stale_for = self.age(now).min(EXTRAPOLATION_HORIZON).as_secs_f32();
         self.spot + self.velocity * stale_for
     }
 

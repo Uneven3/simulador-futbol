@@ -7,6 +7,7 @@
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 
 use crate::SimulationSet;
@@ -37,6 +38,7 @@ impl Plugin for PerceptionPlugin {
 #[derive(Resource, Debug, Default)]
 pub struct Beliefs {
     by_player: Vec<(PlayerId, Vec<PlayerReading>)>,
+    ball_error: Vec<(PlayerId, Vec2)>,
 }
 
 impl Beliefs {
@@ -45,6 +47,25 @@ impl Beliefs {
             .iter()
             .find(|(id, _)| *id == who)
             .map_or(&[], |(_, readings)| readings.as_slice())
+    }
+
+    /// Lo que este jugador se equivoca sobre dónde está el balón, en metros.
+    ///
+    /// Hoy solo gobierna hacia dónde mira y qué se dibuja: sumarlo también a la
+    /// trayectoria que persigue dejó el partido sin un solo tiro, porque un
+    /// error de un metro impide un contacto que se decide en sesenta y cinco.
+    pub fn ball_error_of(&self, who: PlayerId) -> Vec2 {
+        self.ball_error
+            .iter()
+            .find(|(id, _)| *id == who)
+            .map_or(Vec2::ZERO, |(_, error)| *error)
+    }
+
+    fn remember_ball_error(&mut self, who: PlayerId, error: Vec2) {
+        match self.ball_error.iter_mut().find(|(id, _)| *id == who) {
+            Some((_, known)) => *known = error,
+            None => self.ball_error.push((who, error)),
+        }
     }
 
     fn slot_for(&mut self, who: PlayerId) -> &mut Vec<PlayerReading> {
@@ -64,9 +85,11 @@ impl Beliefs {
 pub fn believe_the_pitch(
     time: Res<Time>,
     mut beliefs: ResMut<Beliefs>,
+    ball_query: Query<&Position, (With<Ball>, Without<Player>)>,
     who_is_who: Query<(&Player, &ObservationMemory, &Position, &Velocity)>,
 ) {
     let now = time.elapsed();
+    let ball_now = ball_query.single().ok().map(|position| position.on_pitch());
     // los datos que no se observan porque no cambian: quién es cada dorsal
     let identities: Vec<(PlayerId, &Player)> = who_is_who
         .iter()
@@ -74,6 +97,15 @@ pub fn believe_the_pitch(
         .collect();
 
     for (player, memory, position, velocity) in who_is_who.iter() {
+        // quien no lo ve lo sitúa donde lo dejó, adelantado a ojo
+        let believed_ball = memory.ball.map(|seen| seen.projected_to(now));
+        let error = match (believed_ball, ball_now) {
+            (Some(believed), Some(actual)) => believed - actual,
+            // sin haberlo visto nunca no hay creencia que corregir
+            _ => Vec2::ZERO,
+        };
+        beliefs.remember_ball_error(player.id, error);
+
         let readings = beliefs.slot_for(player.id);
         // uno se conoce a sí mismo sin tener que mirarse
         readings.push(PlayerReading {

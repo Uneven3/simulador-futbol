@@ -15,13 +15,14 @@ alarma—; los tests unitarios de función pura siguen, que cuestan cero.
 
 ## Empezar aquí
 
-1. **El balón es omnisciente.** `Ball.predictions` es la trayectoria futura real
-   y la lee todo el mundo, así que nadie falla al calcular dónde va a estar.
-   `ObservationMemory.ball` ya se llena y no la usa nadie.
-2. **Lo que se ve, se ve exacto.** No hay error de observación ni latencia: el
-   sensor es perfecto dentro del cono y ciego fuera, sin nada en medio.
-3. **El defensor está delante y no hace nada más que estar.** Bloquea el tiro si
-   se cruza, pero no se cruza a propósito: no achica el ángulo ni mete la pierna.
+1. **Nadie barre el campo con la vista.** Solo se ve lo que cae en el cono
+   mientras se mira al balón o adonde se corre, así que la información de los
+   compañeros tiene casi cuatro segundos y se queda congelada al segundo.
+2. **El balón sigue siendo omnisciente donde importa**: la trayectoria que se
+   persigue es la real. Sumarle el error de creencia dejó el partido sin un solo
+   tiro, porque un metro impide un contacto que se decide en sesenta y cinco.
+3. **El defensor está delante y no hace nada más que estar**: bloquea el tiro si
+   se cruza, pero no se cruza a propósito.
 
 ## Deuda declarada, no escondida
 
@@ -34,8 +35,7 @@ Ausencias conocidas, no descubrimientos pendientes:
 - **16 faltas por 90 minutos contra las ~22 reales.** El criterio pasó de
   sobrar a faltar cuando los cuerpos tuvieron inercia, y no se toca hasta que
   haya protección del balón: el número que hoy cuadre volvería a descuadrar.
-- **La simetría solo se afirma sobre la posesión**: goles y tiros de doce
-  partidos no dan para más que tres sigma. Medirla pide cien partidos.
+- **La simetría solo se afirma sobre la posesión**: doce partidos no dan más.
 - **El fuera de juego no se pita nunca**: un anotado no puede disputar el balón,
   así que la regla es un campo de fuerza y el silbato no suena.
 - **Nadie se recupera nunca**: la fatiga solo baja dentro del partido, y el
