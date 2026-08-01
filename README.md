@@ -5,32 +5,23 @@ No es un videojuego ni el port de uno: es una plataforma para reproducir
 situaciones, comparar decisiones alternativas y explicar por qué ocurre lo que
 ocurre en el campo.
 
-Las preguntas que quiere responder:
-
-- ¿Qué espacio debía proteger este jugador?
-- ¿Qué información podía tener?
-- ¿Qué carreras eran físicamente alcanzables?
-- ¿Cómo cambia la respuesta bajo otro rol o modelo táctico?
-- ¿Qué riesgos crea cada alternativa?
-
-El norte completo, con sus ocho principios y los MVP en los que se entrega,
-está en [`docs/NORTE.md`](docs/NORTE.md).
+Qué espacio debía proteger un jugador, qué información podía tener, qué carreras
+eran alcanzables y qué riesgo crea cada alternativa. El norte completo, con sus
+ocho principios y los MVP, está en [`docs/NORTE.md`](docs/NORTE.md).
 
 ![Once contra once con overlays diagnósticos](docs/images/primera-verificacion-visual-2026-07-30.png)
 
 ## Estado actual: no lo uses como predicción
 
-El proyecto está en **MVP 2 — partido reglamentariamente completo**. MVP 0, 1 y
-1.5 están cerrados: hay kernel autoritativo, escenarios reproducibles, reloj con
-sus periodos, diagnóstico tipado y presentación con primitivas.
+Hay kernel autoritativo, escenarios reproducibles, reloj con sus periodos,
+árbitro que pita, cuerpos con motor y fatiga, y jugadores que deciden con lo
+que ven y no con la verdad del mundo.
 
-Lo que todavía no está: **el ritmo de gol es irreal**, un orden de magnitud por
-encima de un partido de verdad (`docs/VALIDATION.md`). Hasta calibrarlo —que es
-un hito posterior, cuando existan los mecanismos que lo producen— ningún
-resultado de este simulador puede presentarse como predicción de nada. El
-trabajo activo y la deuda declarada están en
-[`docs/AHORA.md`](docs/AHORA.md): jugadores sin motor ni percepción, y un
-árbitro que ve las faltas y todavía no las pita.
+Lo que todavía no está: **demasiados tiros acaban en gol**, y de ahí un ritmo
+que no es el de un partido de verdad. Hasta calibrar —un hito posterior, cuando
+existan los mecanismos que lo producen— ningún resultado de aquí puede
+presentarse como predicción de nada. El trabajo activo y la deuda declarada
+están en [`docs/AHORA.md`](docs/AHORA.md).
 
 ## Cómo se ejecuta
 

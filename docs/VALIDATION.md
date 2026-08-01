@@ -5,10 +5,9 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 
 ## Niveles
 
-1. **Dominio:** unidades, estado finito, ownership, reproducibilidad y no-bleed.
-   El no-bleed se sostiene hoy en `tests/layer_boundaries.rs`: la misma
-   situación, headless y con primitivas, produce posiciones idénticas tick a
-   tick, y ningún cuerpo autoritativo carga mesh.
+1. **Dominio:** unidades, estado finito, ownership, reproducibilidad y no-bleed
+   (`tests/layer_boundaries.rs`: headless y con primitivas dan las mismas
+   posiciones tick a tick).
 2. **Reglas:** escenarios IFAB y trace incidente→decisión→transición.
 3. **Física:** pelota, aceleración, frenado, giro, alcance y contactos.
 4. **Percepción:** reacción, visibilidad, distancia, memoria e incertidumbre.
@@ -21,14 +20,21 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 
 Una corrida es una trayectoria, no una métrica. La simulación es determinista
 pero caótica: una perturbación de un milisegundo produce otro partido sin que el
-modelo haya cambiado. El caso que lo demostró: el reloj truncaba milisegundos y
-todos los enfriamientos se comparaban contra ese contador; al arreglarlo, el
-mismo escenario con la misma semilla dio otro marcador y otro ritmo de gol. El
-modelo estaba apoyado en ese ruido y ninguna prueba lo notó.
+modelo haya cambiado. Por eso **nunca se compara una corrida**, se compara la
+envolvente sobre varias semillas (`seeded_envelope`).
 
-Por eso **nunca se compara una corrida**, se compara la envolvente sobre varias
-semillas, y a ser posible una distribución y no una media. `seeded_envelope`
-hace la versión mínima de esto.
+Pero la envolvente **avisa, no diagnostica**. Dice que el ritmo de gol se movió,
+nunca por qué, y de ella han salido dos diagnósticos falsos seguidos. Lo que
+encuentra causas son otras dos cosas:
+
+- **La sonda dirigida al defecto**: un test ignorado que mide exactamente lo
+  que se sospecha —cuántos golpeos mueren sin darse, a qué distancia está el
+  rival más cercano, cuánto tiempo va el balón en el pie—. Se escribe para una
+  pregunta y se queda como registro de la respuesta.
+- **Mirar el partido.** Tres defectos que ninguna métrica delató en días
+  —conducir a velocidad de sprint, orbitar el balón, el sacador que se va con
+  él— se vieron en cinco minutos de ventana. Un ojo humano es un instrumento, y
+  el más barato que hay.
 
 Y por eso las **propiedades causales** son la forma de test que resiste: "el
 equipo fuerte gana más veces que el débil sobre cien partidos" sigue siendo
@@ -36,13 +42,9 @@ cierto tras cualquier refactor que no cambie el modelo. Un marcador exacto, no.
 
 ## Referencias externas mínimas
 
-Antes de cualquier afirmación de plausibilidad:
-
-- **~2,7 goles por partido**, ~1,35 por equipo, distribuidos casi como una
-  Poisson. Es la referencia más barata que existe, y el modelo sigue a un orden
-  de magnitud de ella: lo que mide `seeded_envelope` en cada corrida.
-- Las demás (tiros, posesión, pases completados) salen de los datasets de la
-  sección siguiente.
+**~2,7 goles por partido**, ~1,35 por equipo, casi como una Poisson: la
+referencia más barata que existe. Las demás —tiros, posesión, pases
+completados— salen de los datasets de abajo.
 
 ## Fuentes
 
@@ -56,25 +58,17 @@ Gameplay Football y RoboCup sugieren implementaciones; no son verdad empírica.
 
 ## Escenario
 
-Registra edición/competición, campo, estado inicial, participantes/perfiles,
-plan/responsabilidades, semilla, ventana simulada, hechos esperados, métricas y
-tolerancias. Cámara/overlays son opcionales y no autoritativos.
-
-El mismo archivo alimenta runner headless, primitivas y replay.
-
-Implementado en `crates/domain/src/scenario.rs` (`Scenario`, `Expectations`,
-`ScenarioOutcome::mismatches`) y ejecutado por `ScenarioRunner` con `headless` o
-`with_primitives`. Pendiente: perfiles y responsabilidades por jugador,
-colocación explícita, métricas con tolerancia, y el escenario como archivo —
-hoy el catálogo son datos en Rust (`src/scenarios.rs`).
+Registra edición/competición, campo, estado inicial, participantes, plan,
+semilla, ventana, hechos esperados y tolerancias, y alimenta igual al runner
+headless y al de primitivas. Implementado en `domain::scenario` y ejecutado por
+`ScenarioRunner`. Pendiente: perfiles por jugador, colocación explícita,
+métricas con tolerancia, y el escenario como archivo y no como datos en Rust.
 
 ## Enseñanza contrafactual
 
-1. Fijar situación y observaciones disponibles.
-2. Cambiar una decisión/responsabilidad.
-3. Simular varias semillas si existe incertidumbre.
-4. Comparar espacio, líneas, riesgo, esfuerzo y resultado.
-5. Mostrar intervalo/confianza, no una trayectoria “óptima” aislada.
+Fijar situación y observaciones, cambiar una decisión, simular varias semillas,
+y comparar espacio, líneas, riesgo, esfuerzo y resultado mostrando el intervalo
+y no una trayectoria «óptima» aislada.
 
 ## Disciplina
 

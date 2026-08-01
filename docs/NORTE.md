@@ -3,13 +3,9 @@
 ## Producto
 
 Plataforma abierta para simular fútbol asociación, reproducir situaciones y
-comparar movimientos alternativos. Debe ayudar a responder:
-
-- ¿Qué espacio debía proteger este jugador?
-- ¿Qué información podía tener?
-- ¿Qué carreras eran físicamente alcanzables?
-- ¿Cómo cambia la respuesta bajo otro rol o modelo táctico?
-- ¿Qué riesgos crea cada alternativa?
+comparar movimientos alternativos: qué espacio debía proteger un jugador, qué
+información podía tener, qué carreras eran alcanzables, cómo cambia la respuesta
+bajo otro rol y qué riesgo crea cada alternativa.
 
 Puede llegar a ser jugable, pero el juego será un consumidor. Diversión,
 balance y espectáculo no alteran el modelo sin declararse como configuración.
@@ -32,33 +28,34 @@ balance y espectáculo no alteran el modelo sin declararse como configuración.
 
 ## No es
 
-- un port de Gameplay Football;
-- una fuente de una única decisión táctica universal;
-- una simulación muscular completa cuando un modelo reducido validado basta;
-- complejidad computacional confundida con realismo.
+Un port de Gameplay Football, una fuente de la decisión táctica universal, una
+simulación muscular donde basta un modelo reducido validado, ni complejidad
+computacional confundida con realismo.
 
 ## Presentación
 
-El objetivo visual es low-poly 3D con meshes y materiales simples, y los assets
-son intercambiables. La primera presentación usa primitivas para mostrar cuerpo,
-orientación y velocidad; pelota y futuros físicos; campo visual, observaciones y
-edad de memoria; intención y acción comprometida; responsabilidades tácticas; e
-incidentes y decisiones arbitrales.
+Low-poly 3D con assets intercambiables. Las primitivas de hoy muestran cuerpo,
+orientación y velocidad; pelota y futuros; campo visual, observaciones y edad de
+memoria; intención y acción comprometida; e incidentes arbitrales.
 
 ## Hito I — contrato completo del fútbol
 
-Termina cuando IFAB 2026/27 está inventariado y versionado con estado de
-cobertura por cláusula, las reglas deterministas tienen escenarios ejecutables,
-los juicios subjetivos separan incidente / observación / decisión, las variantes
-de competición son configuración, el kernel corre sin renderer y las primitivas
-permiten depurar escenarios. “Completo” significa que ninguna regla queda
-desconocida; se entrega mediante MVP verticales.
+Termina cuando IFAB 2026/27 está inventariado con cobertura por cláusula, las
+reglas deterministas tienen escenarios ejecutables, los juicios subjetivos
+separan incidente / observación / decisión, las variantes de competición son
+configuración y el kernel corre sin renderer. “Completo” significa que ninguna
+regla queda desconocida; se entrega mediante MVP verticales.
 
 ## MVP
 
 Los `.5` y `.75` son trabajo de consolidación: no añaden capacidades, pagan lo
-que ya está construido. Se numeran así para no invalidar las referencias
-cruzadas a los MVP 2-7.
+que ya está construido.
+
+**Son ejes, no fases.** Se avanzó en espiral y con razón: las reglas de MVP 2
+no significaban nada sobre cápsulas —las faltas pasaron de 168 por 90 a 16 por
+mecanismos del cuerpo, sin tocar al árbitro— y la percepción de MVP 4 solo se
+sostiene sobre cuerpos que miran. Terminar un eje antes de tocar el siguiente
+produce números que se caen cuando el siguiente llega.
 
 ### MVP 0 — Constitución y ontología
 
@@ -67,23 +64,20 @@ El port queda como referencia histórica.
 
 ### MVP 1 — Kernel observable
 
-Separar entidades autoritativas de visuales. Ejecutar la misma situación
-headless y con primitivas. Campo, balón, equipos, reloj, fases, gol/fuera y
-reanudaciones básicas deben ser inspeccionables.
+Entidades autoritativas separadas de las visuales, la misma situación headless
+y con primitivas, y campo, balón, equipos, reloj, fases, gol/fuera y
+reanudaciones inspeccionables.
 
 ### MVP 1.75 — Instrumentación y propiedades
 
-Antes de añadir más reglas hay que poder **medir** lo que producen las que ya
-existen. Cuatro pasos: los parámetros como dato versionado (`MatchTuning`), la
-envolvente como herramienta (N partidos, con distribución y no media), cada
-desvío atribuido a su causa, y propiedades causales que afirman dirección de
-efecto sobre N corridas en vez de valores exactos.
+Parámetros como dato versionado (`MatchTuning`), envolvente sobre semillas y
+propiedades causales que afirman dirección y no valor.
 
-**Lo que deliberadamente NO hace es calibrar.** Girar parámetros hasta que
-salgan 2,7 goles compensaría con números la ausencia de mecanismos: no existe
-el error de golpeo, nadie tiene percepción parcial, y no hay portero ni faltas
-que eviten un gol. Un modelo que acierta la media por dos errores que se
-cancelan es peor que uno que falla de forma legible.
+**No calibra, y eso no ha cambiado.** Girar parámetros hasta que salgan 2,7
+goles compensaría con números la ausencia de mecanismos. Lo que sí cambió es
+para qué sirve cada instrumento: la envolvente avisa de una regresión y no
+diagnostica nada; las causas salen de sondas dirigidas al defecto y de mirar
+(`VALIDATION.md`).
 
 ### MVP 2 — Partido reglamentariamente completo
 
@@ -91,22 +85,31 @@ Sustituciones, offside, faltas, ventaja, disciplina, tiros libres, penales,
 dropped ball, tanda y variantes configurables. Cada transición nace de un
 escenario.
 
-Puestos: fuera de juego, reanudaciones que alguien ejecuta, portero que ataja,
-cambio de mitades y tiempo añadido. La falta y la ventaja están construidas y
-medidas, pero el árbitro no pita: el criterio de hoy no distingue disputar de
-entrar, y eso espera al motor de MVP 3.
+Puestos: fuera de juego, reanudaciones que alguien ejecuta y no puede
+conducir, portero que ataja, cambio de mitades, tiempo añadido, y la falta con
+su ventaja, ya pitada. Faltan sustituciones, disciplina, penales, dropped ball
+y tanda.
 
 ### MVP 3 — Movimiento plausible
 
-Aceleración, frenado, giro, orientación, fatiga, alcance, colisiones y
-compromiso temporal, con los atributos motores que los alimentan. La
-calibración de este modelo hereda el instrumental de MVP 1.75: envolvente
-sobre semillas y propiedades causales, no una corrida de ejemplo.
+Aceleración, frenado, agarre, orientación, fatiga, alcance, colisiones y
+compromiso temporal, con los atributos motores que los alimentan.
+
+Puestos todos menos el alcance. Falta lo que se ve al mirar: **acción defensiva
+individual** —salir a achicar el ángulo, meter la pierna—, que es motor y
+decisión antes que táctica de equipo, y **jugadores que no sean clones**: hoy
+`grip`, `turn_rate` y la visión son idénticos para los veintidós, y ahí es
+donde se separa un futbolista de otro.
 
 ### MVP 4 — Percepción y creencias
 
 Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
+
+Puestos el cono, la memoria que envejece y el detalle que decae con la
+distancia; las decisiones leen creencias. Falta barrer el campo con la vista
+—hoy solo se ve lo que cae en el cono— y el balón, que sigue siendo omnisciente
+en la trayectoria que cada uno persigue.
 
 ### MVP 5 — Responsabilidad táctica
 

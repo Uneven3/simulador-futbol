@@ -29,10 +29,12 @@ pub fn lab_match() -> Scenario {
 
 /// The first minutes of open play. Same situation as [`kick_off`], short enough
 /// to run in a test.
+/// El arranque del partido, y la ventana que corre media suite: ocho tests lo
+/// usan, uno de ellos con dos runners. Cada segundo de aquí son ocho de reloj.
 pub fn opening_minute() -> Scenario {
     Scenario::kick_off()
         .named("opening minute")
-        .for_duration(Duration::from_secs(60))
+        .for_duration(Duration::from_secs(20))
 }
 
 /// Law 10: the whole ball passes over the goal line between the posts and under

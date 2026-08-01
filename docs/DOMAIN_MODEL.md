@@ -19,7 +19,12 @@ se pasó parado. `MatchRegulations` son las duraciones de la competición,
 `PitchConfig` las medidas del campo y `MatchRng` la semilla.
 
 **Cuerpos.** `Position` es la única verdad espacial —metros, Z arriba— y
-`Facing` y `Velocity` la acompañan; un `Transform` nunca es autoritativo.
+`Facing` y `Velocity` la acompañan; un `Transform` nunca es autoritativo. Un
+cuerpo **no es una partícula**: lo que puede hacer depende de hacia dónde,
+porque no lo limita lo mismo. Empujar hacia adelante lo limita la pierna
+(`acceleration`); frenar y cortar los limita el agarre (`grip`), que da dos g
+largos. De ese reparto salen solos el corte en seco, la curva al girar a la
+carrera y la carrera que se pierde al cambiar de dirección.
 `MovementIntent` es la velocidad que se pidió y `Velocity` la que se consiguió:
 entre las dos está el motor, `Attributes` dice cuánto separa a una de la otra y
 `FatigueState` cuánto de eso queda a estas alturas del partido.
