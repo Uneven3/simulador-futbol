@@ -582,6 +582,7 @@ fn referee_set_piece_system(
     }
 
     let prev_set_piece = match_state.set_piece;
+    let mut taker_of_the_restart = None;
 
     // Someone takes the restart. Standing them on the ball is all it takes:
     // possession is positional, so `ball_contest` hands it over next tick —
@@ -593,6 +594,7 @@ fn referee_set_piece_system(
             .map(|(position, _, _, player, _)| (player.id, player.position, position.on_pitch()))
             .collect();
         let taker = select_restart_taker(&bodies, taking_team, prev_set_piece, restart_2d);
+        taker_of_the_restart = taker;
         let support = taker.and_then(|taker| {
             let others: Vec<(PlayerId, PlayingPosition, Vec2)> = bodies
                 .iter()
@@ -630,6 +632,7 @@ fn referee_set_piece_system(
 
     match_state.set_piece = SetPiece::None;
     match_state.set_piece_team = None;
+    match_state.restart_taker = taker_of_the_restart;
     match_state.is_ball_in_goal = false;
     match_state.possession_player = None;
     match_state.possession_team = None;

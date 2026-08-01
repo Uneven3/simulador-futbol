@@ -94,6 +94,10 @@ pub struct MatchState {
     pub restart_pos: Vec3,
     pub possession_player: Option<PlayerId>,
     pub previous_possessor: Option<PlayerId>,
+    /// Quien tiene que poner el balón en juego y todavía no lo ha hecho. No
+    /// puede conducirlo: lo pone en juego pasando o pateando, que es lo que
+    /// dicen las leyes de cada reanudación.
+    pub restart_taker: Option<PlayerId>,
     /// Match time at which possession last changed hands.
     pub possession_since: Duration,
     /// Intended receiver of the ball in flight (set on a pass, cleared on the
@@ -193,6 +197,7 @@ impl Default for MatchState {
             restart_pos: Vec3::new(0.0, 0.0, 0.11),
             possession_player: None,
             previous_possessor: None,
+            restart_taker: None,
             possession_since: Duration::ZERO,
             pass_target: None,
             pass_aim: Vec2::ZERO,

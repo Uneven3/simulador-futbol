@@ -11,27 +11,46 @@ use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
 use std::time::Duration;
 
-/// Qué alcanza a ver un cuerpo, y desde dónde. El campo visual humano útil son
-/// unos 180 grados: la visión nítida es mucho más estrecha, pero para situar un
-/// cuerpo que se mueve basta la periférica.
+/// Qué alcanza a ver un cuerpo, y con qué detalle.
+///
+/// Ver medio campo no es enterarse de medio campo: lo que se sitúa con
+/// precisión es el balón y lo cercano, y lo demás se sabe a grandes rasgos. Por
+/// eso hay dos distancias y no una.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Vision {
-    /// Medio ángulo del campo visual, en radianes: lo que hay a cada lado de
-    /// donde se mira.
+    /// Medio ángulo del campo visual útil, en radianes.
     pub half_angle: f32,
-    /// Hasta dónde se distingue a alguien, en metros. Más allá se sabe que hay
-    /// gente, no quién ni exactamente dónde.
+    /// Hasta dónde se sitúa a alguien con precisión, en metros.
+    pub sharp_range: f32,
+    /// Y hasta dónde se le ve del todo: entre las dos, se sabe que está y no
+    /// exactamente dónde.
     pub range: f32,
 }
 
 impl Default for Vision {
     fn default() -> Self {
         Self {
-            half_angle: std::f32::consts::FRAC_PI_2,
-            range: 40.0,
+            // unos 100 grados de campo útil en total, no los 180 de antes
+            half_angle: std::f32::consts::PI * 0.28,
+            sharp_range: 12.0,
+            range: 30.0,
         }
     }
 }
+
+impl Vision {
+    /// Cuánto se equivoca al situar algo a esta distancia, en metros. Dentro de
+    /// lo cercano, nada; más allá crece hasta el borde de lo que se distingue.
+    pub fn blur_at(&self, distance: f32) -> f32 {
+        let beyond = (distance - self.sharp_range).max(0.0);
+        let reach = (self.range - self.sharp_range).max(0.01);
+        BLUR_AT_THE_EDGE * (beyond / reach).min(1.0)
+    }
+}
+
+/// Lo que se falla al situar a alguien en el límite de lo que se distingue, en
+/// metros. Es un cuerpo y medio: se sabe que está ahí, no en qué pie apoya.
+pub const BLUR_AT_THE_EDGE: f32 = 2.5;
 
 /// Lo último que un jugador supo de otro cuerpo, con cuándo lo supo: una
 /// posición de hace tres segundos no es una posición, es un punto de partida.
@@ -109,4 +128,54 @@ pub fn can_see(from: Vec2, facing: Dir2, target: Vec2, vision: &Vision) -> bool 
         return true;
     };
     facing.angle_to(*direction).abs() <= vision.half_angle
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Lo cercano se sitúa exacto y lo lejano a bulto: ver medio campo no es
+    /// enterarse de medio campo.
+    #[test]
+    fn detail_fades_with_distance() {
+        let vision = Vision::default();
+
+        assert!(vision.blur_at(vision.sharp_range * 0.5) < f32::EPSILON);
+        assert!(vision.blur_at(vision.sharp_range) < f32::EPSILON);
+        assert!(vision.blur_at(vision.range) >= BLUR_AT_THE_EDGE - 0.01);
+        assert!(vision.blur_at(vision.range * 0.5) < vision.blur_at(vision.range));
+    }
+
+    /// A la espalda no se ve nada, por cerca que esté.
+    #[test]
+    fn nothing_behind_you_is_seen() {
+        let vision = Vision::default();
+
+        assert!(can_see(Vec2::ZERO, Dir2::X, Vec2::new(3.0, 0.0), &vision));
+        assert!(!can_see(Vec2::ZERO, Dir2::X, Vec2::new(-1.0, 0.0), &vision));
+        assert!(!can_see(
+            Vec2::ZERO,
+            Dir2::X,
+            Vec2::new(vision.range + 5.0, 0.0),
+            &vision
+        ));
+    }
+
+    /// Y lo que se dejó de ver no se extrapola sin fin: pasado el horizonte, la
+    /// creencia se queda donde estaba.
+    #[test]
+    fn a_stale_observation_stops_running_away() {
+        let seen = Observation {
+            spot: Vec2::ZERO,
+            velocity: Vec2::new(20.0, 0.0),
+            seen_at: Duration::ZERO,
+        };
+
+        let far_future = seen.projected_to(Duration::from_secs(30));
+        assert!(
+            far_future.x <= 20.0 * EXTRAPOLATION_HORIZON.as_secs_f32() + 0.01,
+            "medio minuto después lo situaba a {} m",
+            far_future.x
+        );
+    }
 }

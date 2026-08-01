@@ -30,11 +30,10 @@ disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 **Balón.** `Ball` lleva su momentum y su predicción, que hoy es la trayectoria
 futura real y todo el mundo lee: es la omnisciencia que queda por romper.
 
-**Percepción.** `Vision` es el cono —medio ángulo y alcance—, `Observation` lo
-último que se supo de un cuerpo y cuándo, y `ObservationMemory` eso por cabeza:
-lo que sale del cono no se olvida, envejece. `Beliefs` arma con ello un campo
-por jugador, y es lo que la decisión lee en vez de la verdad. `PlayerReading`
-sigue llamándose igual y ya no lo es.
+**Percepción.** `Vision` es el cono —ángulo, detalle y alcance—, `Observation`
+lo último que se supo de un cuerpo y cuándo, y `ObservationMemory` eso por
+cabeza: lo que sale del cono no se olvida, envejece. `Beliefs` arma con ello un
+campo por jugador, que es lo que la decisión lee en vez de la verdad.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del

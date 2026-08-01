@@ -132,6 +132,16 @@ pub fn believe_the_pitch(
     }
 }
 
+/// Un desplazamiento de `blur` metros que solo depende del sitio: así el mismo
+/// cuerpo se sitúa mal siempre igual mientras no se mueva, en vez de temblar.
+fn blurred_by(spot: Vec2, blur: f32) -> Vec2 {
+    if blur <= 0.0 {
+        return Vec2::ZERO;
+    }
+    let angle = (spot.x * 12.9898 + spot.y * 78.233).sin() * 43758.547;
+    Vec2::from_angle(angle - angle.floor()) * blur
+}
+
 /// Lo que cada jugador ve este tick entra en su memoria; lo que no, se queda
 /// como estaba y envejece solo.
 pub fn observe_the_pitch(
@@ -157,10 +167,13 @@ pub fn observe_the_pitch(
             if !can_see(eyes, facing.0, spot, vision) {
                 continue;
             }
+            // lo lejano se sitúa a bulto: el desenfoque es determinista y sale
+            // de dónde está, o el mismo cuerpo bailaría cada tick
+            let blur = vision.blur_at(eyes.distance(spot));
             memory.remember(
                 other.id,
                 Observation {
-                    spot,
+                    spot: spot + blurred_by(spot, blur),
                     velocity: velocity.0.truncate(),
                     seen_at: now,
                 },

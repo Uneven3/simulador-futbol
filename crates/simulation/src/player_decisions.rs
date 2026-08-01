@@ -253,10 +253,12 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
             .snaps
             .iter()
             .any(|s| s.team() != me.team() && s.pos.distance(me.pos) < 6.0);
+        // conducir no es esprintar: con el balón en el pie se va a paso de
+        // conducción, y con un rival encima a pasos cortos
         let velo = if opp_close {
-            WALK_VELOCITY
+            ctx.tuning.contest.carry_pace_in_traffic
         } else {
-            stats.top_speed * 0.95
+            ctx.tuning.contest.carry_pace
         };
         (dir, velo)
     }

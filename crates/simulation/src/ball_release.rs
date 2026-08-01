@@ -21,7 +21,9 @@ use crate::player_decisions::{self, OnBallAction, PassKind};
 use crate::player_movement::dribble_direction;
 use crate::team_tactics::PlayerReading;
 use football_domain::math::{normalized_clamp, normalized_or_2d};
-use football_domain::tuning::{ClearanceTuning, PassingTuning, ShootingTuning, StrikingTuning};
+use football_domain::tuning::{
+    ClearanceTuning, ContestTuning, PassingTuning, ShootingTuning, StrikingTuning,
+};
 use football_domain::{
     Ball, BallTouched, MatchRng, MatchState, PitchConfig, Player, PlayerId, PlayingPosition,
     Position, PossessionDesignation, SetPiece, TeamId,
@@ -141,19 +143,20 @@ pub fn solve_knock_on(
     running: Vec2,
     direction: Vec2,
     nearest_opponent: f32,
-    top_speed: f32,
-    traffic_distance: f32,
-    dribble_velocity: f32,
+    tuning: &ContestTuning,
 ) -> Kick {
-    let speed = if nearest_opponent < traffic_distance {
-        dribble_velocity
+    let reachable = if nearest_opponent < tuning.knock_on_traffic_distance {
+        tuning.carry_pace_in_traffic
     } else {
-        (running.length().max(2.0) + 1.0).min(top_speed + 1.0)
+        tuning.carry_pace
     };
+    // el balón sale por debajo de la carrera para que el siguiente paso lo
+    // alcance: por encima de ella se va solo y deja de ser conducción
+    let speed = (running.length() * tuning.knock_on_from_run).clamp(1.5, reachable);
     Kick {
         momentum: Vec3::new(direction.x, direction.y, 0.0) * speed,
         spin: Vec3::ZERO,
-        aim: from + direction * 3.0,
+        aim: from + direction * 1.5,
     }
 }
 
@@ -259,6 +262,16 @@ pub fn commit_to_an_action(
         &mut rng,
     );
 
+    // Quien pone el balón en juego no lo conduce: lo pasa o lo patea, que es lo
+    // que dicen las leyes de cada reanudación. Sin esto el que saca se quedaba
+    // el balón y se iba con él.
+    let must_release = match_state.restart_taker == Some(possessor);
+    let action = if must_release && matches!(action, OnBallAction::Dribble) {
+        OnBallAction::PanicClear
+    } else {
+        action
+    };
+
     // el knock-on de la conducción mantiene su propia cadencia, más lenta
     let can_knock_on = since_touch > contest.knock_on_cadence || is_goalkeeper;
     if matches!(action, OnBallAction::Dribble) && !can_knock_on {
@@ -317,7 +330,6 @@ pub fn complete_committed_strike(
         let possessor = player.id;
         let from = player_position.on_pitch();
         let running = Vec2::new(velocity.0.x, velocity.0.y);
-        let top_speed = stats.top_speed;
         let shot_technique = stats.shot_technique;
 
         let contest = &settings.tuning.contest;
@@ -394,15 +406,7 @@ pub fn complete_committed_strike(
                     .map(|s| s.pos.distance(from))
                     .fold(f32::MAX, f32::min);
                 (
-                    solve_knock_on(
-                        from,
-                        running,
-                        direction,
-                        nearest_opponent,
-                        top_speed,
-                        contest.knock_on_traffic_distance,
-                        crate::team_tactics::DRIBBLE_VELOCITY,
-                    ),
+                    solve_knock_on(from, running, direction, nearest_opponent, contest),
                     ReleaseKind::DribbleKnock,
                     true,
                 )
@@ -427,6 +431,10 @@ pub fn complete_committed_strike(
         }
         if !keeps_possession {
             match_state.possession_player = None;
+        }
+        // el balón está en juego: ya no hay nadie obligado a ponerlo
+        if !matches!(commitment.action, OnBallAction::Dribble) {
+            match_state.restart_taker = None;
         }
     }
 }
@@ -595,18 +603,28 @@ mod tests {
         reason = "la receta devuelve estas cifras exactas, y el test las repite"
     )]
     fn a_knock_on_shortens_in_traffic() {
-        let open = solve_knock_on(
-            Vec2::ZERO,
-            Vec2::new(7.0, 0.0),
-            Vec2::X,
-            20.0,
-            8.0,
-            3.0,
-            3.5,
-        );
-        let crowded = solve_knock_on(Vec2::ZERO, Vec2::new(7.0, 0.0), Vec2::X, 1.0, 8.0, 3.0, 3.5);
+        let tuning = ContestTuning::default();
+        let running = Vec2::new(7.0, 0.0);
+        let open = solve_knock_on(Vec2::ZERO, running, Vec2::X, 20.0, &tuning);
+        let crowded = solve_knock_on(Vec2::ZERO, running, Vec2::X, 1.0, &tuning);
 
         assert!(crowded.momentum.length() < open.momentum.length());
-        assert_eq!(crowded.momentum.length(), 3.5);
+        assert_eq!(crowded.momentum.length(), tuning.carry_pace_in_traffic);
+    }
+
+    /// El balón se queda en el pie: un toque nunca sale más rápido que quien lo
+    /// da, o deja de ser conducción y pasa a ser un pase a nadie.
+    #[test]
+    fn a_knock_on_never_outruns_the_carrier() {
+        let tuning = ContestTuning::default();
+
+        for pace in [2.0_f32, 4.0, 6.0, 8.0] {
+            let touch = solve_knock_on(Vec2::ZERO, Vec2::new(pace, 0.0), Vec2::X, 20.0, &tuning);
+            assert!(
+                touch.momentum.length() <= pace.max(1.5),
+                "corriendo a {pace} m/s el toque salió a {}",
+                touch.momentum.length()
+            );
+        }
     }
 }

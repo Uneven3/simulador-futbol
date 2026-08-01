@@ -223,6 +223,14 @@ pub struct ContestTuning {
     pub knock_on_cadence: Duration,
     /// A knock-on with an opponent this close (m) is shortened to dribble pace.
     pub knock_on_traffic_distance: f32,
+    /// A qué velocidad se conduce en espacio abierto (m/s). Conducir no es
+    /// esprintar: a velocidad punta el balón deja de estar en el pie.
+    pub carry_pace: f32,
+    /// ...y con un rival encima, donde se lleva a pasos cortos.
+    pub carry_pace_in_traffic: f32,
+    /// El toque de conducción sale a esta fracción de la carrera. Por encima de
+    /// uno el balón se escapa por delante en vez de esperar al siguiente paso.
+    pub knock_on_from_run: f32,
     /// A controlled first touch sets the ball up at this fraction of the
     /// carrier's speed...
     pub trap_speed_from_run: f32,
@@ -258,6 +266,9 @@ impl Default for ContestTuning {
             decision_cadence: Duration::from_millis(150),
             knock_on_cadence: Duration::from_millis(350),
             knock_on_traffic_distance: 3.0,
+            carry_pace: 5.0,
+            carry_pace_in_traffic: 3.0,
+            knock_on_from_run: 0.85,
             trap_speed_from_run: 0.5,
             trap_speed_range: (2.0, 3.5),
         }

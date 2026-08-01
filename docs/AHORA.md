@@ -15,14 +15,15 @@ alarma—; los tests unitarios de función pura siguen, que cuestan cero.
 
 ## Empezar aquí
 
-1. **Nadie barre el campo con la vista.** Solo se ve lo que cae en el cono
-   mientras se mira al balón o adonde se corre, así que la información de los
-   compañeros tiene casi cuatro segundos y se queda congelada al segundo.
+1. **Nadie barre el campo con la vista**: solo se ve lo que cae en el cono
+   mientras se mira al balón, y eso deja la información de los compañeros en
+   catorce segundos.
 2. **El balón sigue siendo omnisciente donde importa**: la trayectoria que se
    persigue es la real. Sumarle el error de creencia dejó el partido sin un solo
    tiro, porque un metro impide un contacto que se decide en sesenta y cinco.
-3. **El defensor está delante y no hace nada más que estar**: bloquea el tiro si
-   se cruza, pero no se cruza a propósito.
+3. **Cambiar de dirección a la carrera es igual de fácil para todos.** Es lo
+   que separa a un jugador de otro, y hoy `turn_rate` es el mismo para los
+   veintidós.
 
 ## Deuda declarada, no escondida
 
@@ -40,8 +41,8 @@ Ausencias conocidas, no descubrimientos pendientes:
   así que la regla es un campo de fuerza y el silbato no suena.
 - **Nadie se recupera nunca**: la fatiga solo baja dentro del partido, y el
   descanso entre partes no repone nada.
-- **Girarse y salir**, que es lo que le falta a proteger el balón: la regla ya
-  está, pero ponerse en medio sin salida deja al portador clavado.
+- **Girarse y salir**: la regla de proteger está, pero ponerse en medio sin
+  salida deja al portador clavado.
 - `SimulationSet` refleja el orden del original; el pipeline semántico de
   `ARCHITECTURE.md` sigue pendiente.
 - `PLAYER_HEIGHT` es una constante que se copia a `Attributes`, no un dato por
