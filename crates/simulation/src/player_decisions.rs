@@ -239,10 +239,18 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
     let ball_pos = Vec2::new(ctx.ball.predictions[0].x, ctx.ball.predictions[0].y);
     let dist = me.pos.distance(ball_pos);
     if dist > 0.5 {
-        (
-            (ball_pos - me.pos).normalize_or_zero(),
-            stats.top_speed * 0.95,
-        )
+        // Al sitio donde lo va a alcanzar, no a donde está: correr hacia un
+        // balón que rueda es llegar siempre a donde ya no está, y eso es
+        // orbitarlo. La velocidad es la justa para llegar, no la punta.
+        let (intercept, _) = crate::player_movement::find_interception(
+            me.pos,
+            stats.top_speed,
+            &ctx.ball.predictions,
+        );
+        let to_intercept = intercept - me.pos;
+        let closing = (to_intercept.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
+            .clamp(ctx.tuning.contest.carry_pace, stats.top_speed);
+        (to_intercept.normalize_or_zero(), closing)
     } else {
         let all: Vec<(TeamId, Vec2, Vec2)> =
             ctx.snaps.iter().map(|s| (s.team(), s.pos, s.vel)).collect();

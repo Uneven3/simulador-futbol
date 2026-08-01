@@ -19,20 +19,20 @@ alarma—; los tests unitarios de función pura siguen, que cuestan cero.
    mientras se mira al balón, y eso deja la información de los compañeros en
    catorce segundos.
 2. **El balón sigue siendo omnisciente donde importa**: la trayectoria que se
-   persigue es la real. Sumarle el error de creencia dejó el partido sin un solo
-   tiro, porque un metro impide un contacto que se decide en sesenta y cinco.
-3. **Cambiar de dirección a la carrera es igual de fácil para todos.** Es lo
-   que separa a un jugador de otro, y hoy `turn_rate` es el mismo para los
-   veintidós.
+   persigue es la real. Sumarle el error de creencia dejó el partido sin tiros:
+   un metro impide un contacto que se decide en sesenta y cinco.
+3. **La defensa no acompaña al ataque.** Conducir mejor multiplicó los goles:
+   el portador conserva y llega, y enfrente nadie hace nada más que estar.
+   `grip` y `turn_rate` son iguales para los veintidós, y ahí es donde deberían
+   diferenciarse.
 
 ## Deuda declarada, no escondida
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **Cuatro de cada diez tiros son gol** (real, uno de cada diez), y de ahí sale
-  un ritmo de gol que sigue triplicando el real: nada de esto puede presentarse
-  como predicción. No es que el atacante llegue solo —el rival más cercano está
-  a 2,2 m y eso no ha cambiado nunca—, es lo que ese rival hace: ver el punto 2.
+- **Demasiados tiros son gol** (real, uno de cada diez), y de ahí un ritmo de
+  gol que no puede presentarse como predicción. No es que el atacante llegue
+  solo —el rival está a 2,2 m y eso nunca ha cambiado—: es lo que hace.
 - **16 faltas por 90 minutos contra las ~22 reales.** El criterio pasó de
   sobrar a faltar cuando los cuerpos tuvieron inercia, y no se toca hasta que
   haya protección del balón: el número que hoy cuadre volvería a descuadrar.

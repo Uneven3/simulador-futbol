@@ -16,20 +16,36 @@ use football_domain::{
     Attributes, Facing, FatigueState, Gaze, MatchTuning, MovementIntent, Position, Velocity,
 };
 
-/// La velocidad que un cuerpo alcanza este tick, dentro de un único presupuesto
-/// de m/s²: girar gasta lo mismo que acelerar, y de ahí salen solas la curva de
-/// giro y el frenazo para darse la vuelta. Frenar cuesta menos que acelerar.
+/// La velocidad que un cuerpo alcanza este tick.
+///
+/// Un cuerpo no es una partícula: lo que puede hacer depende de hacia dónde,
+/// porque no lo limita lo mismo. Acelerar de frente lo limita la potencia de la
+/// pierna; frenar y cortar los limita el agarre del taco, que da mucho más. Con
+/// un presupuesto único —el modelo anterior— cambiar de dirección salía un arco
+/// amplio, y veintidós jugadores orbitando el balón.
 pub fn reachable_velocity(current: Vec2, desired: Vec2, body: &Attributes, dt: f32) -> Vec2 {
     let change = desired - current;
-    let slowing_down = Dir2::new(current).is_ok_and(|heading| change.dot(*heading) < 0.0);
-    let budget = if slowing_down {
-        body.braking
-    } else {
-        body.acceleration
-    } * dt;
+    let Ok(heading) = Dir2::new(current) else {
+        // parado no hay adelante ni lado: arrancar es arrancar
+        return step_towards(current, change, body.acceleration * dt);
+    };
 
+    let along = change.dot(*heading);
+    let across = change - *heading * along;
+    let forward = along.clamp(-body.braking * dt, body.acceleration * dt);
+    let sideways = across.clamp_length_max(body.grip * dt);
+
+    // El agarre es uno y se reparte: lo que se gasta en cortar no está para
+    // empujar. De ahí sale sola la pérdida de carrera al cambiar de dirección,
+    // sin escribirla —y escribirla aparte los dejó clavados—.
+    let step = (*heading * forward + sideways).clamp_length_max(body.grip * dt);
+    current + step
+}
+
+/// Lo que se avanza hacia `change` sin pasarse del presupuesto.
+fn step_towards(current: Vec2, change: Vec2, budget: f32) -> Vec2 {
     if change.length() <= budget {
-        return desired;
+        return current + change;
     }
     current + change.normalize_or_zero() * budget
 }
@@ -220,19 +236,41 @@ mod tests {
         assert!(velocity.x < -6.0, "no acabó yendo hacia el otro lado");
     }
 
-    /// Y girar sin frenar sale curvo: pedir el mismo módulo noventa grados a un
-    /// lado no lo consigue en un tick, y lo que se consigue es intermedio.
+    /// Cortar es mucho más rápido que acelerar, porque no lo limita la pierna
+    /// sino el agarre. Un futbolista planta el pie y sale; no describe una curva.
     #[test]
-    fn a_turn_at_speed_comes_out_as_a_curve() {
+    fn cutting_is_quicker_than_accelerating() {
         let body = Attributes::default();
         let running = Vec2::new(6.0, 0.0);
-        let sideways = Vec2::new(0.0, 6.0);
 
-        let after_one_tick = reachable_velocity(running, sideways, &body, TICK);
+        let cut = reachable_velocity(running, Vec2::new(0.0, 6.0), &body, TICK);
+        let sprint = reachable_velocity(running, Vec2::new(12.0, 0.0), &body, TICK);
 
-        assert!(after_one_tick.x > 5.0, "perdió toda la carrera de golpe");
-        assert!(after_one_tick.y > 0.0, "no giró nada");
-        assert!(after_one_tick.y < 1.0, "giró demasiado para un tick");
+        assert!(
+            cut.y > (sprint.x - running.x) * 2.0,
+            "cortar dio {} m/s de lado y acelerar {} de frente",
+            cut.y,
+            sprint.x - running.x
+        );
+    }
+
+    /// Y cortar cuesta carrera, sin que nadie lo haya escrito: el agarre es uno
+    /// y lo que se gasta en cambiar de dirección no está para empujar.
+    #[test]
+    fn cutting_costs_pace_by_itself() {
+        let body = Attributes::default();
+        let running = Vec2::new(6.0, 0.0);
+
+        let mut velocity = running;
+        for _ in 0..40 {
+            velocity = reachable_velocity(velocity, Vec2::new(0.0, 6.0), &body, TICK);
+        }
+
+        assert!(
+            velocity.length() < running.length(),
+            "cambió de dirección sin perder un metro por segundo"
+        );
+        assert!(velocity.y > 1.0, "en cuatro décimas no había girado nada");
     }
 
     /// Correr de espaldas es más lento que de cara, y de lado, intermedio.

@@ -124,6 +124,10 @@ pub struct Attributes {
     /// suelo y acelerar es empujarlo. Es también el presupuesto con el que se
     /// cambia de dirección, y por eso girar a la carrera describe una curva.
     pub braking: f32,
+    /// Cuánto agarra el pie contra el suelo (m/s²), que es el techo de todo lo
+    /// que puede hacer un cuerpo a la vez. Dos g largos: por eso se corta en
+    /// seco y no en curva, aunque acelerar de frente sea mucho más lento.
+    pub grip: f32,
     /// A qué velocidad da la vuelta al cuerpo (rad/s). Seis son unos 340 grados
     /// por segundo: media vuelta en medio segundo, parado.
     pub turn_rate: f32,
@@ -145,6 +149,7 @@ impl Default for Attributes {
             top_speed: 8.0,
             acceleration: 6.0,
             braking: 9.0,
+            grip: 18.0,
             turn_rate: 6.0,
             lateral_technique: 0.0,
             height: 1.8,
