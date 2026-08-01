@@ -1,17 +1,7 @@
 # Diagnóstico y logs
 
-Cómo se observa una simulación que no se puede mirar. Implementado en MVP 1.5;
-el diseño está tomado de `breath-of-freedom` (`src/debug/`, `src/perf/`), que ya
-pagó los errores que aquí se evitan.
-
-## Por qué existe
-
-Antes el diagnóstico estaba en tres formas que no se hablaban entre sí:
-`info!` sueltos dentro de los sistemas del kernel, campos de diagnóstico dentro
-del estado autoritativo (incluido un `Vec<String>` en `MatchState`) y un forense
-a mano dentro del test `long_match_stats`, que reimplementaba su propia
-recolección. Ninguna de las tres se podía apagar, correlacionar ni comparar
-entre corridas.
+Cómo se observa una simulación, tanto mirándola como sin ventana. El diseño
+viene de `breath-of-freedom` (`src/debug/`, `src/perf/`).
 
 ## Principios
 
@@ -95,11 +85,21 @@ acumulados; `MatchTelemetry::recorded_on(canal)` filtra el stream.
 - ✅ todos los canales apagados por defecto y encendibles desde un hub;
 - ✅ una corrida headless emite el mismo forense que antes se obtenía a mano.
 
+## Qué se ve
+
+El HUD son siete secciones —marcador, posesión, pase, tiro, disciplina, cuerpos
+y reanudación— y los overlays se encienden desde el hub: velocidades, futuro del
+balón, posesión, fuera de juego, punto de saque, piernas y visión. Una sección
+existe si responde una pregunta que alguien se hace mirando el partido.
+
 ## Pendiente
 
+- El compromiso de golpeo se cuenta en el HUD pero no se ve en el campo:
+  `ActionCommitment` vive en simulation y presentation no la ve. Mover
+  `OnBallAction` a dominio lo resolvería.
 - `Performance` sin productor: falta el coste por tick, que es lo que dirá si
   MVP 6 puede correr muchas variantes de una situación.
 - `Formation` casi sin productor: la forma del bloque (dispersión, altura de
   línea) es un hecho por derecho propio y hoy sólo se ve en el ASCII.
 - El sink de consola escribe cada hecho en cuanto ocurre; falta el modo
-  periódico estrangulado que `breath-of-freedom` usa para series temporales.
+  periódico estrangulado para series temporales.

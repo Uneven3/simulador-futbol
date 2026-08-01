@@ -8,7 +8,8 @@ use crate::diagnostics::ledger::MatchLedger;
 use bevy_ecs::prelude::*;
 use football_domain::diagnostics::{Field, MatchSnapshot, ReleaseKind, SectionId};
 use football_domain::{
-    MatchPhase, MatchRegulations, MatchState, PossessionDesignation, SetPiece, TeamId,
+    ByTeam, FatigueState, MatchPhase, MatchRegulations, MatchState, Player, PossessionDesignation,
+    SetPiece, TeamId,
 };
 use std::time::Duration;
 
@@ -94,6 +95,8 @@ pub(super) fn collect_snapshot(
     regulations: Res<MatchRegulations>,
     designation: Res<PossessionDesignation>,
     ledger: Res<MatchLedger>,
+    bodies: Query<(&FatigueState, &Player)>,
+    striking: Query<&crate::ball_release::ActionCommitment>,
 ) {
     let elapsed = match_state.period_elapsed;
     snapshot.set(
@@ -142,6 +145,41 @@ pub(super) fn collect_snapshot(
         ],
     );
 
+    let shots = ledger.shots[TeamId::Home] + ledger.shots[TeamId::Away];
+    let on_target = ledger.shots_on_target[TeamId::Home] + ledger.shots_on_target[TeamId::Away];
+    let goals = ledger.goals[TeamId::Home] + ledger.goals[TeamId::Away];
+    snapshot.set(
+        SectionId::Shooting,
+        vec![
+            Field::new(
+                "shots",
+                format!(
+                    "{}-{}",
+                    ledger.shots[TeamId::Home],
+                    ledger.shots[TeamId::Away]
+                ),
+            ),
+            Field::new("on_target", format!("{on_target}/{shots}")),
+            // lo que de verdad se está midiendo cuando se mira un partido: si un
+            // tiro vale un gol, no hay defensa ni portero
+            Field::volatile("converted", percentage(goals, on_target)),
+        ],
+    );
+
+    snapshot.set(
+        SectionId::Discipline,
+        vec![
+            Field::new("fouls", ledger.fouls().to_string()),
+            Field::new("whistled", ledger.free_kicks().to_string()),
+            Field::new("advantage", ledger.advantages().to_string()),
+        ],
+    );
+
+    snapshot.set(
+        SectionId::Bodies,
+        body_fields(&bodies, striking.iter().count()),
+    );
+
     match restart_label(match_state.set_piece, match_state.set_piece_team) {
         None => snapshot.clear(SectionId::Restart),
         Some(awarded) => snapshot.set(
@@ -155,6 +193,41 @@ pub(super) fn collect_snapshot(
             ],
         ),
     }
+}
+
+fn percentage(part: u32, whole: u32) -> String {
+    if whole == 0 {
+        return "-".to_string();
+    }
+    format!("{:.0}%", 100.0 * f64::from(part) / f64::from(whole))
+}
+
+/// Cómo están los cuerpos: las piernas que quedan y cuántos están armando un
+/// golpeo ahora mismo, que es el instante en que se les puede quitar el balón.
+fn body_fields(bodies: &Query<(&FatigueState, &Player)>, striking: usize) -> Vec<Field> {
+    let mut legs: ByTeam<(f32, u32)> = ByTeam::default();
+    let mut most_spent = 1.0_f32;
+    for (fatigue, player) in bodies.iter() {
+        let slot = &mut legs[player.id.team];
+        slot.0 += fatigue.stamina;
+        slot.1 += 1;
+        most_spent = most_spent.min(fatigue.stamina);
+    }
+    let mean = |team: TeamId| {
+        let (total, count) = legs[team];
+        if count == 0 {
+            return "-".to_string();
+        }
+        format!("{:.0}%", 100.0 * total / count as f32)
+    };
+    vec![
+        Field::volatile(
+            "legs",
+            format!("{} / {}", mean(TeamId::Home), mean(TeamId::Away)),
+        ),
+        Field::volatile("most_spent", format!("{:.0}%", most_spent * 100.0)),
+        Field::volatile("striking", striking.to_string()),
+    ]
 }
 
 fn designated_name(designated: Option<football_domain::PlayerId>) -> String {

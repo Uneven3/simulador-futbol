@@ -34,6 +34,7 @@ pub enum DebugSwitch {
     OffsideLine,
     RestartSpot,
     Vision,
+    Legs,
     Log(DiagnosticChannel),
 }
 
@@ -48,6 +49,7 @@ impl DebugSwitch {
             DebugSwitch::OffsideLine,
             DebugSwitch::RestartSpot,
             DebugSwitch::Vision,
+            DebugSwitch::Legs,
         ];
         switches.extend(DiagnosticChannel::ALL.map(DebugSwitch::Log));
         switches
@@ -61,6 +63,7 @@ impl DebugSwitch {
             DebugSwitch::OffsideLine => "Overlay: offside line".to_string(),
             DebugSwitch::RestartSpot => "Overlay: restart spot".to_string(),
             DebugSwitch::Vision => "Overlay: vision".to_string(),
+            DebugSwitch::Legs => "Overlay: legs".to_string(),
             DebugSwitch::Log(channel) => format!("Log: {}", channel_name(channel)),
         }
     }
@@ -75,6 +78,7 @@ impl DebugSwitch {
             DebugSwitch::OffsideLine => "the line the referee actually judged",
             DebugSwitch::RestartSpot => "where the ball goes back into play",
             DebugSwitch::Vision => "qué alcanza a ver cada jugador, y a quién recuerda",
+            DebugSwitch::Legs => "lo que le queda a cada uno, y quién está armando un golpeo",
             DebugSwitch::Log(channel) => channel.cost(),
         }
     }
@@ -87,6 +91,7 @@ impl DebugSwitch {
             DebugSwitch::OffsideLine => overlays.offside,
             DebugSwitch::RestartSpot => overlays.restart_spot,
             DebugSwitch::Vision => overlays.vision,
+            DebugSwitch::Legs => overlays.legs,
             DebugSwitch::Log(channel) => channels.is_enabled(channel),
         }
     }
@@ -99,6 +104,7 @@ impl DebugSwitch {
             DebugSwitch::OffsideLine => overlays.offside = !overlays.offside,
             DebugSwitch::RestartSpot => overlays.restart_spot = !overlays.restart_spot,
             DebugSwitch::Vision => overlays.vision = !overlays.vision,
+            DebugSwitch::Legs => overlays.legs = !overlays.legs,
             DebugSwitch::Log(channel) => {
                 channels.toggle(channel);
             }

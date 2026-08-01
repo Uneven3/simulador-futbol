@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 use football_domain::{
-    Attributes, Ball, Facing, MatchState, ObservationMemory, OffsideRecords, PitchConfig, Player,
-    Position, PossessionDesignation, SetPiece, TeamId, Velocity, Vision,
+    Attributes, Ball, Facing, FatigueState, MatchState, ObservationMemory, OffsideRecords,
+    PitchConfig, Player, Position, PossessionDesignation, SetPiece, TeamId, Velocity, Vision,
 };
 
 pub struct DiagnosticOverlaysPlugin;
@@ -32,6 +32,7 @@ impl Plugin for DiagnosticOverlaysPlugin {
                 draw_offside_judgement,
                 draw_restart_spot,
                 draw_vision,
+                draw_legs,
             )
                 .run_if(resource_exists::<GizmoConfigStore>),
         );
@@ -49,6 +50,7 @@ pub struct OverlaySettings {
     pub offside: bool,
     pub restart_spot: bool,
     pub vision: bool,
+    pub legs: bool,
 }
 
 impl Default for OverlaySettings {
@@ -61,6 +63,7 @@ impl Default for OverlaySettings {
             restart_spot: true,
             // apagado: veintidós conos y veintidós telarañas tapan el fútbol
             vision: false,
+            legs: true,
         }
     }
 }
@@ -70,6 +73,9 @@ const AWAY_COLOUR: Srgba = Srgba::new(0.4, 0.6, 1.0, 1.0);
 const BALL_FUTURE_COLOUR: Srgba = Srgba::new(1.0, 0.95, 0.3, 1.0);
 const REFEREE_COLOUR: Srgba = Srgba::new(1.0, 1.0, 1.0, 1.0);
 const OFFSIDE_COLOUR: Srgba = Srgba::new(1.0, 0.5, 0.0, 1.0);
+const LEGS_COLOUR: Srgba = Srgba::new(0.4, 1.0, 0.5, 0.9);
+/// Radio del arco de piernas, por dentro del anillo de designado (0,8 m).
+const LEGS_RING: f32 = 0.55;
 
 fn team_colour(team: TeamId) -> Srgba {
     match team {
@@ -294,6 +300,37 @@ fn draw_vision(
                 colour.with_alpha(0.05 + staleness * 0.35),
             );
         }
+    }
+}
+
+/// Cuánto le queda a este cuerpo, como un arco a sus pies: entero fresco, un
+/// muñón cuando está fundido.
+pub fn legs_arc(stamina: f32) -> f32 {
+    stamina.clamp(0.0, 1.0) * std::f32::consts::TAU
+}
+
+/// Lo que le queda a cada uno, que es lo que explica que alguien deje de llegar
+/// a la media hora. El compromiso de golpeo va en el HUD y no aquí: vive en
+/// simulation, y esta capa no la ve.
+fn draw_legs(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    players: Query<(&Position, &FatigueState), With<Player>>,
+) {
+    if !settings.legs {
+        return;
+    }
+    for (position, fatigue) in players.iter() {
+        // el arco se cierra según se vacía el depósito: un círculo entero es un
+        // jugador fresco
+        gizmos
+            .arc_3d(
+                legs_arc(fatigue.stamina),
+                LEGS_RING,
+                Isometry3d::from_translation(position.0 + Vec3::Z * 0.03),
+                LEGS_COLOUR,
+            )
+            .resolution(24);
     }
 }
 

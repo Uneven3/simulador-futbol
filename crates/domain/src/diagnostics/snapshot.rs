@@ -43,15 +43,21 @@ pub enum SectionId {
     Scoreboard,
     Possession,
     Passing,
+    Shooting,
+    Discipline,
+    Bodies,
     Restart,
 }
 
 impl SectionId {
-    pub const COUNT: usize = 4;
+    pub const COUNT: usize = 7;
     pub const ALL: [SectionId; Self::COUNT] = [
         SectionId::Scoreboard,
         SectionId::Possession,
         SectionId::Passing,
+        SectionId::Shooting,
+        SectionId::Discipline,
+        SectionId::Bodies,
         SectionId::Restart,
     ];
 
@@ -60,6 +66,9 @@ impl SectionId {
             SectionId::Scoreboard => "match",
             SectionId::Possession => "possession",
             SectionId::Passing => "passing",
+            SectionId::Shooting => "shooting",
+            SectionId::Discipline => "discipline",
+            SectionId::Bodies => "bodies",
             SectionId::Restart => "restart",
         }
     }
@@ -69,7 +78,10 @@ impl SectionId {
             SectionId::Scoreboard => 0,
             SectionId::Possession => 1,
             SectionId::Passing => 2,
-            SectionId::Restart => 3,
+            SectionId::Shooting => 3,
+            SectionId::Discipline => 4,
+            SectionId::Bodies => 5,
+            SectionId::Restart => 6,
         }
     }
 }
