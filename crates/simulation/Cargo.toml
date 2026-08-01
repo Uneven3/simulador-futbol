@@ -16,6 +16,13 @@ version = "0.1.0"
 [lib]
 name = "football_simulation"
 
+# Una sola herramienta headless para todas las sondas. Vive en este paquete
+# para que generar mediciones no compile ni enlace presentación o renderer.
+[[bin]]
+name = "probe"
+path = "src/bin/probe/main.rs"
+test = false
+
 [dependencies]
 football_domain = { package = "gameplayfootball_domain", path = "../domain" }
 

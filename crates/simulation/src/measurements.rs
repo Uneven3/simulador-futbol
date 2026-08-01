@@ -76,6 +76,42 @@ pub fn append(report: &EnvelopeReport, path: &Path) -> io::Result<String> {
     Ok(id)
 }
 
+/// Las columnas de las sondas, que no son las de la envolvente.
+///
+/// Formato largo —una fila por métrica— y no una tabla ancha: cada sonda mide
+/// cosas distintas, así que una columna por métrica daría un archivo que es casi
+/// todo huecos y que hay que reescribir entero cada vez que una sonda aprende a
+/// medir algo nuevo.
+const PROBE_HEADER: &str = "corrida,sha,sonda,metrica,valor";
+
+/// Dónde se anexan las sondas: `measurements/probes.csv`.
+pub fn probe_log() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("measurements/probes.csv")
+}
+
+/// Anexa lo que midió una sonda, y devuelve el identificador de la corrida.
+///
+/// Que una sonda imprima sus números está bien para leerlos ahora; que los
+/// anexe aquí es lo que permite comparar con los de la semana pasada.
+pub fn record(probe: &str, metrics: &[(&str, f32)], path: &Path) -> io::Result<String> {
+    let id = timestamp();
+    let sha = head_sha();
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent)?;
+    }
+    let fresh = !path.exists();
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    if fresh {
+        writeln!(file, "{PROBE_HEADER}")?;
+    }
+    for (metric, value) in metrics {
+        writeln!(file, "{id},{sha},{probe},{metric},{value:.3}")?;
+    }
+    Ok(id)
+}
+
 /// Las corridas del CSV, en orden, con sus medias ya calculadas.
 ///
 /// Una fila rota no invalida el archivo: se salta. El registro es un diario, no
@@ -257,5 +293,26 @@ mod tests {
         let missing = std::env::temp_dir().join("gpf-no-such-measurements.csv");
         let _ = std::fs::remove_file(&missing);
         assert_eq!(compare_last_two(&missing), "sin mediciones registradas");
+    }
+
+    #[test]
+    fn probe_measurements_are_appended_without_rewriting_the_log() {
+        let dir = std::env::temp_dir().join(format!(
+            "gpf-probe-measurements-test-{}",
+            std::process::id()
+        ));
+        let _ = create_dir_all(&dir);
+        let path = dir.join("probes.csv");
+        let _ = std::fs::remove_file(&path);
+
+        record("speed", &[("ticks", 6000.0)], &path).expect("se puede crear el CSV");
+        record("speed", &[("veces_tiempo_real", 42.5)], &path).expect("se puede anexar al CSV");
+
+        let text = read_to_string(&path).expect("el CSV quedó escrito");
+        let lines: Vec<_> = text.lines().collect();
+        assert_eq!(lines.len(), 3, "la segunda medición reescribió el archivo");
+        assert_eq!(lines[0], PROBE_HEADER);
+        assert!(lines[1].ends_with(",speed,ticks,6000.000"));
+        assert!(lines[2].ends_with(",speed,veces_tiempo_real,42.500"));
     }
 }

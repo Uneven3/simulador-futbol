@@ -5,45 +5,37 @@
 //! veces un rival está cerca del balón que lleva otro, y en cuántas de ellas
 //! tiene el cuerpo del portador en medio.
 
-use bevy::app::TaskPoolPlugin;
-use bevy::prelude::*;
-use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use football_domain::scenario::TICK;
+use bevy_ecs::prelude::With;
 use football_domain::{Ball, MatchState, Player, Position, Scenario};
-use football_simulation::MatchKernelPlugin;
+use football_simulation::ScenarioRunner;
 use football_simulation::ball_contest::shields_the_ball;
 use std::time::Duration;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn how_often_is_the_ball_actually_shielded() {
+pub fn run() {
     let scenario = Scenario::kick_off().for_duration(Duration::from_secs(5 * 60));
     let ticks = scenario.ticks();
-
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-    app.add_plugins(MatchKernelPlugin::new(scenario));
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+    let mut runner = ScenarioRunner::headless(scenario);
 
     let mut ticks_with_a_carrier = 0_u32;
     let mut opponents_within_two_metres = 0_u32;
     let mut opponents_shielded_off = 0_u32;
 
     for _ in 0..ticks {
-        app.update();
+        runner.advance();
+        let world = runner.world_mut();
 
-        let Some(holder) = app.world().resource::<MatchState>().possession_player else {
+        let Some(holder) = world.resource::<MatchState>().possession_player else {
             continue;
         };
-        let mut balls = app.world_mut().query_filtered::<&Position, With<Ball>>();
-        let Ok(ball) = balls.single(app.world()) else {
+        let mut balls = world.query_filtered::<&Position, With<Ball>>();
+        let Ok(ball) = balls.single(world) else {
             continue;
         };
         let ball_spot = ball.on_pitch();
 
-        let mut bodies = app.world_mut().query::<(&Position, &Player)>();
+        let mut bodies = world.query::<(&Position, &Player)>();
         let carrier = bodies
-            .iter(app.world())
+            .iter(world)
             .find(|(_, player)| player.id == holder)
             .map(|(position, _)| position.on_pitch());
         let Some(carrier) = carrier else {
@@ -51,7 +43,7 @@ fn how_often_is_the_ball_actually_shielded() {
         };
         ticks_with_a_carrier += 1;
 
-        for (position, player) in bodies.iter(app.world()) {
+        for (position, player) in bodies.iter(world) {
             if player.id.team == holder.team {
                 continue;
             }
@@ -70,5 +62,18 @@ fn how_often_is_the_ball_actually_shielded() {
         "{ticks_with_a_carrier} ticks con portador; \
          {opponents_within_two_metres} veces un rival a menos de dos metros del balón, \
          y en {opponents_shielded_off} tenía el cuerpo del portador en medio"
+    );
+
+    crate::record(
+        "shielding",
+        &[
+            ("ticks_con_portador", ticks_with_a_carrier as f32),
+            ("rivales_a_dos_metros", opponents_within_two_metres as f32),
+            ("con_el_cuerpo_en_medio", opponents_shielded_off as f32),
+            (
+                "protegido_pct",
+                100.0 * opponents_shielded_off as f32 / opponents_within_two_metres.max(1) as f32,
+            ),
+        ],
     );
 }

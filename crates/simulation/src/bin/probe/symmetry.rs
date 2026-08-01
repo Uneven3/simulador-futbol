@@ -9,9 +9,7 @@ use football_domain::{MatchTuning, Scenario, SetPiece, TeamId};
 use football_simulation::envelope::{EnvelopeReport, EnvelopeSpec};
 use std::time::Duration;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn how_lopsided_is_it_really() {
+pub fn run() {
     let mut scenario = Scenario::kick_off()
         .for_duration(Duration::from_secs(5 * 60))
         .with_tuning(MatchTuning::default());
@@ -57,5 +55,22 @@ fn how_lopsided_is_it_really() {
         report.matches.len(),
         home as f32 / (home + away) as f32,
         possession
+    );
+
+    crate::record(
+        "symmetry",
+        &[
+            ("partidos", report.matches.len() as f32),
+            ("goles_local", home as f32),
+            ("goles_visitante", away as f32),
+            ("cuota_local", home as f32 / (home + away).max(1) as f32),
+            ("tiros_local", shots_home as f32),
+            ("tiros_visitante", shots_away as f32),
+            ("pases_local", passes_home as f32),
+            ("pases_visitante", passes_away as f32),
+            ("posesion_local", possession),
+            ("victorias_local", wins as f32),
+            ("victorias_visitante", losses as f32),
+        ],
     );
 }

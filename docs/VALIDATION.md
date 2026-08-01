@@ -6,7 +6,7 @@ plausible a cambios controlados. Apariencia o complejidad no son evidencia.
 ## Niveles
 
 1. **Dominio:** unidades, estado finito, ownership, reproducibilidad y no-bleed
-   (`tests/layer_boundaries.rs`: headless y con primitivas dan las mismas
+   (`tests/suite/layer_boundaries.rs`: headless y con primitivas dan las mismas
    posiciones tick a tick).
 2. **Reglas:** escenarios IFAB y trace incidente→decisión→transición.
 3. **Física:** pelota, aceleración, frenado, giro, alcance y contactos.
@@ -27,10 +27,12 @@ Pero la envolvente **avisa, no diagnostica**. Dice que el ritmo de gol se movió
 nunca por qué, y de ella han salido dos diagnósticos falsos seguidos. Lo que
 encuentra causas son otras dos cosas:
 
-- **La sonda dirigida al defecto**: un test ignorado que mide exactamente lo
-  que se sospecha —cuántos golpeos mueren sin darse, a qué distancia está el
-  rival más cercano, cuánto tiempo va el balón en el pie—. Se escribe para una
-  pregunta y se queda como registro de la respuesta.
+- **La sonda dirigida al defecto**: mide exactamente lo que se sospecha
+  —cuántos golpeos mueren sin darse, a qué distancia está el rival más cercano,
+  cuánto tiempo va el balón en el pie—. Se escribe para una pregunta y se queda
+  como registro de la respuesta. No son tests, porque no afirman nada: viven en
+  `cargo run -p gameplayfootball_simulation --bin probe -- <sonda>` (sin
+  argumentos, el índice) y anexan lo medido a `measurements/probes.csv`.
 - **Mirar el partido.** Tres defectos que ninguna métrica delató en días
   —conducir a velocidad de sprint, orbitar el balón, el sacador que se va con
   él— se vieron en cinco minutos de ventana. Un ojo humano es un instrumento, y
@@ -61,8 +63,9 @@ Gameplay Football y RoboCup sugieren implementaciones; no son verdad empírica.
 Registra edición/competición, campo, estado inicial, participantes, plan,
 semilla, ventana, hechos esperados y tolerancias, y alimenta igual al runner
 headless y al de primitivas. Implementado en `domain::scenario` y ejecutado por
-`ScenarioRunner`. Pendiente: perfiles por jugador, colocación explícita,
-métricas con tolerancia, y el escenario como archivo y no como datos en Rust.
+`simulation::scenario_runner`. Pendiente: perfiles por jugador, colocación
+explícita, métricas con tolerancia, y el escenario como archivo y no como datos
+en Rust.
 
 ## Enseñanza contrafactual
 
@@ -86,4 +89,3 @@ y no una trayectoria «óptima» aislada.
 Las primitivas son instrumento científico. Deben alternar verdad/creencia,
 edad/incertidumbre, orientación/campo visual, intención/ejecución, regiones
 tácticas, contactos/incidentes/decisiones e IDs/unidades. Los overlays solo leen.
-

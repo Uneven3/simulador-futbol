@@ -13,12 +13,27 @@ publish = false
 rust-version = "1.97"
 version = "0.1.0"
 
+# Ni `src/lib.rs` ni el binario tienen un solo `#[test]` dentro: lo que se afirma
+# sobre esta capa vive en `tests/`. Sin esto cargo construye, enlaza y ejecuta
+# dos binarios de prueba —1,7 GB cada uno, porque enlazan Bevy entero— para
+# correr cero tests.
+[lib]
+test = false
+
+[[bin]]
+name = "gameplayfootball"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 football_domain = { package = "gameplayfootball_domain", path = "crates/domain" }
 football_presentation = { package = "gameplayfootball_presentation", path = "crates/presentation" }
 football_simulation = { package = "gameplayfootball_simulation", path = "crates/simulation" }
 
 bevy = { version = "0.19", features = ["android-native-activity", "debug", "wav"] }
+
+[features]
+dev = ["bevy/dynamic_linking"]
 
 # Ley 10: lo que puede ser un error de compilación, lo es. No se heredan del
 # workspace porque es compartido con otros proyectos.

@@ -4,50 +4,42 @@
 //! recogen algo antes de enchufarlos: a cuánta gente ve un jugador de golpe, y
 //! cuánto se le queda vieja la información del resto.
 
-use bevy::app::TaskPoolPlugin;
-use bevy::prelude::*;
-use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use football_domain::scenario::TICK;
+use bevy_time::Time;
 use football_domain::{ObservationMemory, Player, Scenario};
-use football_simulation::MatchKernelPlugin;
+use football_simulation::ScenarioRunner;
 use football_simulation::perception::Beliefs;
 use std::time::Duration;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn what_does_a_player_know() {
+pub fn run() {
     let scenario = Scenario::kick_off().for_duration(Duration::from_secs(60));
     let ticks = scenario.ticks();
-
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-    app.add_plugins(MatchKernelPlugin::new(scenario));
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+    let mut runner = ScenarioRunner::headless(scenario);
 
     for _ in 0..ticks {
-        app.update();
+        runner.advance();
     }
 
-    let now = app.world().resource::<Time>().elapsed();
+    let world = runner.world_mut();
+    let now = world.resource::<Time>().elapsed();
     let ids: Vec<_> = {
-        let mut bodies = app.world_mut().query::<&Player>();
-        bodies.iter(app.world()).map(|player| player.id).collect()
+        let mut bodies = world.query::<&Player>();
+        bodies.iter(world).map(|player| player.id).collect()
     };
     let ball_errors: Vec<f32> = {
-        let beliefs = app.world().resource::<Beliefs>();
+        let beliefs = world.resource::<Beliefs>();
         ids.iter()
             .map(|id| beliefs.ball_error_of(*id).length())
             .collect()
     };
 
-    let mut watchers = app.world_mut().query::<(&ObservationMemory, &Player)>();
+    let mut watchers = world.query::<(&ObservationMemory, &Player)>();
     let mut known = 0;
     let mut stale_total = 0.0_f32;
     let mut stale_count = 0;
     let mut ball_seen = 0;
     let mut people = 0;
 
-    for (memory, _) in watchers.iter(app.world()) {
+    for (memory, _) in watchers.iter(world) {
         people += 1;
         known += memory.known_count();
         for (_, seen) in memory.everyone() {
@@ -68,7 +60,21 @@ fn what_does_a_player_know() {
         "tras un minuto, cada jugador conoce a {:.1} de los otros 21, \
          con información de {:.1} s de antigüedad de media; \
          {ball_seen} de {people} tienen el balón en la cabeza",
-        f64::from(known as u32) / f64::from(people as u32),
+        known as f64 / f64::from(people),
         stale_total / stale_count as f32
+    );
+
+    crate::record(
+        "perception",
+        &[
+            ("error_balon_medio_m", mean_ball_error),
+            ("error_balon_peor_m", worst_ball_error),
+            ("companeros_conocidos", known as f32 / people.max(1) as f32),
+            (
+                "antiguedad_media_s",
+                stale_total / stale_count.max(1) as f32,
+            ),
+            ("con_el_balon_en_la_cabeza", ball_seen as f32),
+        ],
     );
 }

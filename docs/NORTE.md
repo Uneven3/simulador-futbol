@@ -73,11 +73,9 @@ reanudaciones inspeccionables.
 Parámetros como dato versionado (`MatchTuning`), envolvente sobre semillas y
 propiedades causales que afirman dirección y no valor.
 
-**No calibra, y eso no ha cambiado.** Girar parámetros hasta que salgan 2,7
-goles compensaría con números la ausencia de mecanismos. Lo que sí cambió es
-para qué sirve cada instrumento: la envolvente avisa de una regresión y no
-diagnostica nada; las causas salen de sondas dirigidas al defecto y de mirar
-(`VALIDATION.md`).
+**No calibra, y eso no ha cambiado.** Girar parámetros hasta que salga el ritmo
+de gol real compensaría con números la ausencia de mecanismos. Para qué sirve
+cada instrumento —quién avisa y quién diagnostica— está en `VALIDATION.md`.
 
 ### MVP 2 — Partido reglamentariamente completo
 
@@ -95,11 +93,9 @@ y tanda.
 Aceleración, frenado, agarre, orientación, fatiga, alcance, colisiones y
 compromiso temporal, con los atributos motores que los alimentan.
 
-Puestos todos menos el alcance. Falta lo que se ve al mirar: **acción defensiva
-individual** —salir a achicar el ángulo, meter la pierna—, que es motor y
-decisión antes que táctica de equipo, y **jugadores que no sean clones**: hoy
-`grip`, `turn_rate` y la visión son idénticos para los veintidós, y ahí es
-donde se separa un futbolista de otro.
+Puestos todos menos el alcance. Falta la **acción defensiva individual** —salir
+a achicar el ángulo, meter la pierna—, que es motor y decisión antes que táctica
+de equipo, y **jugadores que no sean clones** (`AHORA.md`).
 
 ### MVP 4 — Percepción y creencias
 
@@ -107,9 +103,8 @@ Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
 
 Puestos el cono, la memoria que envejece y el detalle que decae con la
-distancia; las decisiones leen creencias. Falta barrer el campo con la vista
-—hoy solo se ve lo que cae en el cono— y el balón, que sigue siendo omnisciente
-en la trayectoria que cada uno persigue.
+distancia; las decisiones leen creencias. Falta barrer el campo con la vista y
+el balón, que sigue siendo omnisciente en la trayectoria que se persigue.
 
 ### MVP 5 — Responsabilidad táctica
 

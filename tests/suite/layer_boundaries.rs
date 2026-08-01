@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use football_domain::{Ball, Player, Position};
 use football_presentation::VisualOf;
-use gameplayfootball::{ScenarioRunner, scenarios};
+use gameplayfootball::{ScenarioRunner, scenarios, with_primitives};
 
 fn body_positions(runner: &mut ScenarioRunner) -> Vec<Vec3> {
     let world = runner.world_mut();
@@ -30,7 +30,7 @@ fn body_positions(runner: &mut ScenarioRunner) -> Vec<Vec3> {
 #[test]
 fn presentation_does_not_change_the_match() {
     let mut headless = ScenarioRunner::headless(scenarios::opening_minute());
-    let mut rendered = ScenarioRunner::with_primitives(scenarios::opening_minute());
+    let mut rendered = with_primitives(scenarios::opening_minute());
 
     for tick in 0..600 {
         headless.advance();
@@ -61,7 +61,7 @@ fn a_rendered_scenario_reaches_the_same_verdict() {
     let expectations = scenario.expectations.clone();
 
     let headless = ScenarioRunner::headless(scenario.clone()).run();
-    let rendered = ScenarioRunner::with_primitives(scenario).run();
+    let rendered = with_primitives(scenario).run();
 
     assert!(
         rendered.mismatches(&expectations).is_empty(),
@@ -76,7 +76,7 @@ fn a_rendered_scenario_reaches_the_same_verdict() {
 /// exactly one disposable representation pointing back at it.
 #[test]
 fn bodies_and_their_visuals_stay_separate() {
-    let mut runner = ScenarioRunner::with_primitives(scenarios::opening_minute());
+    let mut runner = with_primitives(scenarios::opening_minute());
     for _ in 0..10 {
         runner.advance();
     }

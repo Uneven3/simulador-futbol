@@ -17,6 +17,7 @@ pub mod perception;
 pub mod player_decisions;
 pub mod player_movement;
 pub mod referee;
+pub mod scenario_runner;
 pub mod team_tactics;
 
 pub use ball_collisions::BallCollisionPlugin;
@@ -29,6 +30,7 @@ pub use match_setup::MatchSetupPlugin;
 pub use perception::PerceptionPlugin;
 pub use player_movement::PlayerMovementPlugin;
 pub use referee::RefereePlugin;
+pub use scenario_runner::ScenarioRunner;
 
 use football_domain::Scenario;
 
@@ -326,9 +328,18 @@ mod tests {
         let mut min_player_gap = f32::MAX;
         let mut max_ball_x = 0.0f32;
 
-        // simulate 3 in-game minutes: the opening minute is often a slow
-        // two-player midfield duel, the flow assertions need a developed match
-        for tick in 0..18000 {
+        // Lo que se afirma aquí son dos cosas de distinta forma: que algo llegó
+        // a pasar —el saque, la posesión, el balón circulando y progresando— y
+        // que algo no pasó nunca —amontonarse, superponerse—. Lo primero se
+        // cumple y ya está; lo segundo pide ventana. Así que el bucle sale en
+        // cuanto tiene lo primero y ha corrido lo bastante para lo segundo, y
+        // los tres minutos quedan de techo: si el partido se atasca, el test
+        // tarda lo que tardaba y falla igual.
+        const WARMUP: usize = 500;
+        const MINIMUM_WINDOW: usize = 3000;
+        const CEILING: usize = 18000;
+
+        for tick in 0..CEILING {
             app.update();
             let match_state = app.world().resource::<MatchState>();
             if match_state.set_piece == SetPiece::None {
@@ -368,13 +379,13 @@ mod tests {
                     crowders += 1;
                 }
             }
-            if tick > 500 {
+            if tick > WARMUP {
                 max_sprinters = max_sprinters.max(crowders);
             }
 
             // Bodies must not superimpose (positional separation stands in for
             // player-player collision). Skip the first seconds of warmup.
-            if tick > 500 {
+            if tick > WARMUP {
                 let mut position_query = app
                     .world_mut()
                     .query_filtered::<&Position, With<football_domain::Player>>();
@@ -389,6 +400,15 @@ mod tests {
                         min_player_gap = min_player_gap.min(d.length());
                     }
                 }
+            }
+
+            let match_unfolded = kickoff_restarted
+                && possession_seen
+                && kick_seen
+                && distinct_touchers.len() >= 3
+                && max_ball_x > 15.0;
+            if tick >= MINIMUM_WINDOW && match_unfolded {
+                break;
             }
         }
 

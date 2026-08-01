@@ -5,17 +5,12 @@
 //! comprueba en vez de suponerlo: `NO_TURNING_COST=1` quita el peaje y deja
 //! todo lo demás igual.
 
-use bevy::app::TaskPoolPlugin;
-use bevy::prelude::*;
-use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use football_domain::scenario::TICK;
+use bevy_math::Vec2;
 use football_domain::{MatchState, MatchTuning, Player, Position, Scenario};
-use football_simulation::MatchKernelPlugin;
+use football_simulation::ScenarioRunner;
 use std::time::Duration;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn how_alone_does_the_attacker_get() {
+pub fn run() {
     let mut chances = 0_u32;
     let mut total_company = 0.0_f32;
     let mut unmarked = 0_u32;
@@ -47,6 +42,29 @@ fn how_alone_does_the_attacker_get() {
         total_shot_range / shots as f32,
         100.0 * (1.0 - f64::from(goals) / f64::from(on_target))
     );
+
+    crate::record(
+        "defending",
+        &[
+            ("ocasiones", chances as f32),
+            ("compania_media_m", total_company / chances.max(1) as f32),
+            (
+                "sin_marca_pct",
+                100.0 * unmarked as f32 / chances.max(1) as f32,
+            ),
+            ("tiros", shots as f32),
+            (
+                "distancia_media_tiro_m",
+                total_shot_range / shots.max(1) as f32,
+            ),
+            ("a_puerta", on_target as f32),
+            ("goles", goals as f32),
+            (
+                "paradas_pct",
+                100.0 * (1.0 - goals as f32 / on_target.max(1) as f32),
+            ),
+        ],
+    );
 }
 
 type MatchSample = (u32, f32, u32, u32, f32, u32, u32);
@@ -64,11 +82,7 @@ fn one_match(seed: u32) -> MatchSample {
             .with_tuning(tuning)
     };
     let ticks = scenario.ticks();
-
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-    app.add_plugins(MatchKernelPlugin::new(scenario));
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+    let mut runner = ScenarioRunner::headless(scenario);
 
     let mut chances = 0_u32;
     let mut total_company = 0.0_f32;
@@ -79,13 +93,12 @@ fn one_match(seed: u32) -> MatchSample {
     let mut last_holder_spot = None;
 
     for _ in 0..ticks {
-        app.update();
+        runner.advance();
+        let world = runner.world_mut();
 
         // un tiro más en el libro: el disparo salió de donde estaba su dueño el
         // tick anterior, que es lo último que se supo de él
-        let ledger = app
-            .world()
-            .resource::<football_simulation::diagnostics::MatchLedger>();
+        let ledger = world.resource::<football_simulation::diagnostics::MatchLedger>();
         let shot_count = ledger.shots[football_domain::TeamId::Home]
             + ledger.shots[football_domain::TeamId::Away];
         if shot_count > last_shot_count
@@ -96,16 +109,16 @@ fn one_match(seed: u32) -> MatchSample {
         }
         last_shot_count = shot_count;
 
-        let state = app.world().resource::<MatchState>();
+        let state = world.resource::<MatchState>();
         let (Some(holder), sides) = (state.possession_player, state.sides) else {
             last_holder_spot = None;
             continue;
         };
         let attacking_x = sides.attacking_x(holder.team) * 55.0;
 
-        let mut bodies = app.world_mut().query::<(&Position, &Player)>();
+        let mut bodies = world.query::<(&Position, &Player)>();
         let spot = bodies
-            .iter(app.world())
+            .iter(world)
             .find(|(_, player)| player.id == holder)
             .map(|(position, _)| position.on_pitch());
         let Some(spot) = spot else {
@@ -117,14 +130,16 @@ fn one_match(seed: u32) -> MatchSample {
             continue;
         }
 
+        // `reduce` y no `fold(f32::MAX, ..)`: "no había ningún rival" es un caso,
+        // no un valor centinela que luego haya que comparar contra un flotante.
         let nearest = bodies
-            .iter(app.world())
+            .iter(world)
             .filter(|(_, player)| player.id.team != holder.team)
             .map(|(position, _)| position.on_pitch().distance(spot))
-            .fold(f32::MAX, f32::min);
-        if nearest == f32::MAX {
+            .reduce(f32::min);
+        let Some(nearest) = nearest else {
             continue;
-        }
+        };
         chances += 1;
         total_company += nearest;
         if nearest > 5.0 {
@@ -132,8 +147,8 @@ fn one_match(seed: u32) -> MatchSample {
         }
     }
 
-    let ledger = app
-        .world()
+    let ledger = runner
+        .world_mut()
         .resource::<football_simulation::diagnostics::MatchLedger>();
     let on_target = ledger.shots_on_target[football_domain::TeamId::Home]
         + ledger.shots_on_target[football_domain::TeamId::Away];

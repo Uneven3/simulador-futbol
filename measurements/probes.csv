@@ -1,0 +1,7 @@
+corrida,sha,sonda,metrica,valor
+2026-08-01T08:32:58,b7b8606,speed,ticks,6000.000
+2026-08-01T08:32:58,b7b8606,speed,segundos_de_pared,4.831
+2026-08-01T08:32:58,b7b8606,speed,veces_tiempo_real,12.419
+2026-08-01T13:59:25,b7b8606,speed,ticks,6000.000
+2026-08-01T13:59:25,b7b8606,speed,segundos_de_pared,6.989
+2026-08-01T13:59:25,b7b8606,speed,veces_tiempo_real,8.584

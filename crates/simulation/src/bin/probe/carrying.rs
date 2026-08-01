@@ -4,20 +4,16 @@
 //! delata: un portador que gira alrededor del balón en vez de llevarlo, y
 //! pérdidas sin un rival cerca.
 
-use bevy::app::TaskPoolPlugin;
-use bevy::prelude::*;
-use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use football_domain::scenario::TICK;
+use bevy_ecs::prelude::{With, Without};
+use bevy_math::Dir2;
 use football_domain::{Ball, MatchState, Player, Position, Scenario, Velocity};
-use football_simulation::MatchKernelPlugin;
+use football_simulation::ScenarioRunner;
 use std::time::Duration;
 
 /// Un rival a más de esto no está apretando a nadie.
 const NO_PRESSURE: f32 = 5.0;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn how_badly_is_the_ball_carried() {
+pub fn run() {
     let mut carried = 0_u32;
     let mut orbiting = 0_u32;
     let mut at_the_foot = 0_u32;
@@ -30,30 +26,25 @@ fn how_badly_is_the_ball_carried() {
             ..Scenario::kick_off().for_duration(Duration::from_secs(5 * 60))
         };
         let ticks = scenario.ticks();
-
-        let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-        app.add_plugins(MatchKernelPlugin::new(scenario));
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+        let mut runner = ScenarioRunner::headless(scenario);
 
         let mut had: Option<football_domain::PlayerId> = None;
         for _ in 0..ticks {
-            app.update();
+            runner.advance();
+            let world = runner.world_mut();
 
-            let holder = app.world().resource::<MatchState>().possession_player;
-            let mut balls = app
-                .world_mut()
-                .query_filtered::<&Position, (With<Ball>, Without<Player>)>();
-            let Ok(ball) = balls.single(app.world()) else {
+            let holder = world.resource::<MatchState>().possession_player;
+            let mut balls = world.query_filtered::<&Position, (With<Ball>, Without<Player>)>();
+            let Ok(ball) = balls.single(world) else {
                 continue;
             };
             let ball_spot = ball.on_pitch();
 
             if let (Some(lost), None) = (had, holder) {
                 losses += 1;
-                let mut bodies = app.world_mut().query::<(&Position, &Player)>();
+                let mut bodies = world.query::<(&Position, &Player)>();
                 let nearest_rival = bodies
-                    .iter(app.world())
+                    .iter(world)
                     .filter(|(_, player)| player.id.team != lost.team)
                     .map(|(position, _)| position.on_pitch().distance(ball_spot))
                     .fold(f32::MAX, f32::min);
@@ -64,9 +55,9 @@ fn how_badly_is_the_ball_carried() {
             had = holder;
 
             let Some(holder) = holder else { continue };
-            let mut bodies = app.world_mut().query::<(&Position, &Velocity, &Player)>();
+            let mut bodies = world.query::<(&Position, &Velocity, &Player)>();
             let Some((spot, running)) = bodies
-                .iter(app.world())
+                .iter(world)
                 .find(|(_, _, player)| player.id == holder)
                 .map(|(position, velocity, _)| (position.on_pitch(), velocity.0.truncate()))
             else {
@@ -95,5 +86,22 @@ fn how_badly_is_the_ball_carried() {
         100.0 * f64::from(at_the_foot) / f64::from(carried),
         100.0 * f64::from(orbiting) / f64::from(carried),
         100.0 * f64::from(losses_unpressed) / f64::from(losses.max(1))
+    );
+
+    let carried_ticks = carried.max(1) as f32;
+    crate::record(
+        "carrying",
+        &[
+            (
+                "balon_en_el_pie_pct",
+                100.0 * at_the_foot as f32 / carried_ticks,
+            ),
+            ("orbitando_pct", 100.0 * orbiting as f32 / carried_ticks),
+            ("perdidas", losses as f32),
+            (
+                "perdidas_sin_presion_pct",
+                100.0 * losses_unpressed as f32 / losses.max(1) as f32,
+            ),
+        ],
     );
 }

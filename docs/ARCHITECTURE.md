@@ -25,6 +25,14 @@ dependen de subcrates de Bevy (`bevy_ecs`, `bevy_math`, `bevy_time`, `bevy_app`,
 el grafo, una regla no puede expresarse en términos de un mesh. Solo
 presentation y app ven el motor completo.
 
+**La frontera se cobra al enlazar, no solo al compilar.** Un tipo que corre sin
+renderer pero vive junto a la presentación arrastra el motor a todo lo que lo
+nombre, y el kernel acaba enlazando lo que nunca ejecuta. Por eso el runner
+headless vive en simulation y la variante con primitivas es una función de la
+app: quien solo simula no debe pagar el motor. Lo mismo vale para los targets de
+prueba —cada archivo de `tests/` es un ejecutable con su copia de todo lo que
+enlaza—, y por eso la suite es un target con módulos y no un archivo por tema.
+
 ## Las quince leyes
 
 Se dan por sabidas SOLID, las capas de la arquitectura limpia y que un nombre
@@ -155,8 +163,11 @@ de código.
 | `simulation::ball_collisions` | Contacto balón-cuerpo y balón-portería | Emite hechos; no decide reglas |
 | `simulation::referee` | Fuera de juego, fuera de banda, gol y reanudaciones | Único que otorga `SetPiece` y cambia el marcador |
 | `simulation::diagnostics` | `MatchFact`, `MatchTelemetry`, `MatchLedger`, `MatchSnapshot` | Solo lee estado autoritativo; apagado por defecto |
+| `simulation::scenario_runner` | `ScenarioRunner`: correr un escenario hasta el final | No conoce el motor completo, así que nadie lo enlaza por usarlo |
+| `simulation::measurements` | Los CSV de `measurements/` | Anexa, nunca reescribe; toda fila lleva su `sha` |
+| `simulation::bin/probe` | Sondas headless dirigidas a una pregunta | Miden sin afirmar; solo enlazan los subcrates del kernel |
 | `presentation::*` | Visuales, cámara, HUD, overlays, hub de depuración | Solo lee; borrar el crate deja un partido completo |
-| `src/` (app) | Composición, catálogo de escenarios, `ScenarioRunner` | Cablea capas; no decide nada de fútbol |
+| `src/` (app) | Composición, catálogo de escenarios, `with_primitives` | Cablea capas; no decide nada de fútbol |
 
 ## Nomenclatura
 

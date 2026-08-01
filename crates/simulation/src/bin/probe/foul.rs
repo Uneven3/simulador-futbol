@@ -1,15 +1,13 @@
 //! ¿Cuántas faltas ve el árbitro con el criterio de hoy?
 //!
-//! Tres semillas, que para un conteo que iba por 168 basta: lo que se mira es
+//! Tres semillas bastan para mirar el orden de magnitud: lo que se mira es
 //! el orden de magnitud contra las ~22 reales, no la tercera cifra.
 
 use football_domain::{MatchTuning, Scenario};
 use football_simulation::envelope::{EnvelopeReport, EnvelopeSpec};
 use std::time::Duration;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn how_many_fouls_does_the_referee_see() {
+pub fn run() {
     let mut tuning = MatchTuning::default();
     tuning.refereeing.whistles_fouls = std::env::var("WHISTLE").is_ok();
     let spec = EnvelopeSpec {
@@ -35,5 +33,27 @@ fn how_many_fouls_does_the_referee_see() {
         report.mean_of(|m| m.per_90(m.free_kicks as f32)),
         report.mean_of(|m| m.per_90(m.total_shots() as f32)),
         report.mean_of(|m| m.per_90(m.total_goals() as f32)),
+    );
+
+    crate::record(
+        "foul",
+        &[
+            (
+                "faltas_por_90",
+                report.mean_of(|m| m.per_90(m.fouls as f32)),
+            ),
+            (
+                "pitadas_por_90",
+                report.mean_of(|m| m.per_90(m.free_kicks as f32)),
+            ),
+            (
+                "tiros_por_90",
+                report.mean_of(|m| m.per_90(m.total_shots() as f32)),
+            ),
+            (
+                "goles_por_90",
+                report.mean_of(|m| m.per_90(m.total_goals() as f32)),
+            ),
+        ],
     );
 }

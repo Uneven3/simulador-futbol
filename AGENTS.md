@@ -37,9 +37,11 @@ compartido con otros juegos. Correr cargo desde el directorio del proyecto.
   se corre al calibrar, no de rutina.
 - `cargo test --release -p gameplayfootball_simulation --test causal_properties -- --ignored --nocapture`
   — dirección de efecto, no valores. Correr al tocar `MatchTuning` o la IA.
+- `cargo run -p gameplayfootball_simulation --bin probe` — las sondas, que
+  miden sin afirmar nada y anexan a `measurements/probes.csv`. Sin argumentos
+  lista cuál responde a qué.
 
-La herramienta detrás de las tres es `crates/simulation/src/envelope.rs`; los
-tests solo la imprimen.
+La herramienta detrás de las tres primeras es `crates/simulation/src/envelope.rs`.
 
 ## Observar una corrida
 

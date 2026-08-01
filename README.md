@@ -30,18 +30,18 @@ Bevy para tu plataforma.
 
 ```bash
 cargo run                 # el partido con ventana
-cargo test                # la suite completa
+cargo test -p gameplayfootball -p gameplayfootball_{domain,simulation,presentation}
 cargo clippy --all-targets --all-features -- -D warnings
 ```
+
+Los cuatro paquetes se nombran porque dentro del workspace compartido `cargo
+test` a secas sólo alcanza el paquete raíz, y `--workspace` compila los demás
+juegos que viven allí.
 
 Con la ventana abierta, `F1` abre el hub de depuración: overlays y canales de
 log, todos apagados por defecto. Sin ventana, la misma situación corre headless
 con `ScenarioRunner::headless` y se observa por hechos, ledger y campo en ASCII
 ([`docs/DIAGNOSTICS.md`](docs/DIAGNOSTICS.md)).
-
-Las dos formas de correr un escenario montan el mismo kernel: cualquier
-divergencia entre ellas es un bug de presentación, no una diferencia de
-configuración.
 
 ### Medir, no mirar
 
@@ -54,59 +54,46 @@ cargo test --release -p gameplayfootball_simulation seeded_envelope -- --ignored
 ```
 
 Diez semillas de diez minutos, reportadas como tasas. Para mirar una corrida en
-detalle (pérdidas por tipo de suelta, campo en ASCII) está
-`long_match_stats`, con las mismas banderas.
+detalle está `long_match_stats`, con las mismas banderas; y para responder una
+pregunta concreta sobre el juego, `cargo run -p gameplayfootball_simulation
+--bin probe` lista las sondas, que anexan lo que miden a
+`measurements/probes.csv`.
 
 ### Fuera del workspace `uneven`
 
-El proyecto se desarrolla como miembro de un workspace Cargo mayor, que no
-viaja en este repositorio: varios juegos comparten allí un `Cargo.lock` y los
-artefactos de compilación, que en Bevy pesan demasiado para duplicarlos.
+El proyecto se desarrolla como miembro de un workspace Cargo mayor que no viaja
+en este repositorio: varios juegos comparten allí un `Cargo.lock` y los
+artefactos de compilación, que en Bevy pesan demasiado para duplicarlos. Los
+cuatro manifiestos no heredan nada de él, así que un clon compila y arranca tal
+cual (`cargo run`).
 
-Los cuatro manifiestos no heredan nada de ese workspace, así que un clon
-compila y arranca tal cual (`cargo run`). Lo que le falta es ser workspace de
-sí mismo: sin eso `crates/*` no son miembros, `cargo test` sólo alcanza los
-tests del paquete raíz y `cargo test -p gameplayfootball_simulation ...` no
-encuentra el paquete. Se arregla añadiendo esto al final de `Cargo.toml`:
-
-```toml
-[workspace]
-members = ["crates/domain", "crates/presentation", "crates/simulation"]
-
-# Bevy es intratable en debug sin optimizar las dependencias.
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 3
-```
-
-Ese bloque es exclusivo del clon independiente: dentro del workspace `uneven`,
-Cargo rechaza que un miembro sea a la vez raíz de otro workspace. Por eso no
-está commiteado.
+Lo que le falta al clon es ser workspace de sí mismo —sin eso `crates/*` no son
+miembros y `cargo test -p ...` no los encuentra—. Se arregla añadiendo al final
+de `Cargo.toml` un `[workspace]` con `members = ["crates/domain",
+"crates/presentation", "crates/simulation"]`, y un `[profile.dev]` con
+`opt-level = 1` y `3` para `package."*"`: Bevy sin optimizar las dependencias es
+intratable, y sus símbolos de depuración no se depuran nunca, así que ese perfil
+lleva también `debug = false` en las dependencias. No está commiteado porque
+dentro de `uneven` Cargo rechaza que un miembro sea a la vez raíz de otro
+workspace.
 
 ### En Linux con Wayland
 
-El binario se arranca forzando XWayland cuando el compositor da problemas:
-
-```bash
-env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball
-```
+Si el compositor da problemas, `env -u WAYLAND_DISPLAY
+./target/debug/gameplayfootball` fuerza XWayland.
 
 ## Estructura
 
-Cuatro capas, y las fronteras las impone Cargo, no la revisión de código:
+Cuatro capas, y las fronteras las impone Cargo y no la revisión de código:
+`crates/domain` (tipos, unidades, reglas), `crates/simulation` (el kernel
+autoritativo: física, decisión, táctica, arbitraje y telemetría),
+`crates/presentation` (visuales, cámara, UI, overlays; solo lee) y `src/` (la
+app: composición, escenarios y ciclo de vida).
 
-| Crate | Qué es | Qué no puede ver |
-|---|---|---|
-| `crates/domain` | Tipos, unidades, reglas, hechos, intenciones y configuración | Render, ventanas, assets |
-| `crates/simulation` | El kernel autoritativo: física, decisión, táctica, arbitraje y telemetría | `bevy` completo — sólo subcrates de ECS, maths, tiempo y log |
-| `crates/presentation` | Visuales, cámara, UI, overlays | La simulación: consume estado y hechos, nunca sistemas ni reglas |
-| `src/` | La app: composición, escenarios y ciclo de vida | — |
-
-Borrar `crates/presentation` deja un partido completo, jugable por máquina.
-Las leyes y las dependencias permitidas están en
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Las dos de abajo no dependen de `bevy` sino de sus subcrates, así que no pueden
+nombrar un mesh ni enlazar el renderer, y borrar `crates/presentation` deja un
+partido completo jugable por máquina. Las leyes y las dependencias permitidas
+están en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Documentación
 

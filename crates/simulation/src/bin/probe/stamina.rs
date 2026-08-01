@@ -4,41 +4,32 @@
 //! jugadores acaban cansados y no fundidos: veintidós jugadores a cero es otra
 //! forma de partido roto, no un partido con fatiga.
 
-use bevy::app::TaskPoolPlugin;
-use bevy::prelude::*;
-use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use football_domain::scenario::TICK;
+use bevy_ecs::world::World;
 use football_domain::{FatigueState, Player, Scenario};
-use football_simulation::MatchKernelPlugin;
+use football_simulation::ScenarioRunner;
 use std::time::Duration;
 
-#[test]
-#[ignore = "medición, no una afirmación"]
-fn how_much_is_left_in_the_legs() {
+pub fn run() {
     let minutes = 45;
     let scenario = Scenario::kick_off().for_duration(Duration::from_secs(minutes * 60));
     let ticks = scenario.ticks();
-
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-    app.add_plugins(MatchKernelPlugin::new(scenario));
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+    let mut runner = ScenarioRunner::headless(scenario);
 
     for tick in 0..ticks {
-        app.update();
+        runner.advance();
         let elapsed_minutes = tick / (60 * 100);
         if tick % (10 * 60 * 100) != 0 || tick == 0 {
             continue;
         }
-        report(&mut app, elapsed_minutes.into());
+        report(runner.world_mut(), elapsed_minutes.into());
     }
-    report(&mut app, minutes);
+    report(runner.world_mut(), minutes);
 }
 
-fn report(app: &mut App, minute: u64) {
-    let mut bodies = app.world_mut().query::<(&FatigueState, &Player)>();
+fn report(world: &mut World, minute: u64) {
+    let mut bodies = world.query::<(&FatigueState, &Player)>();
     let legs: Vec<f32> = bodies
-        .iter(app.world())
+        .iter(world)
         .map(|(fatigue, _)| fatigue.stamina)
         .collect();
     let mean = legs.iter().sum::<f32>() / legs.len() as f32;
@@ -49,5 +40,16 @@ fn report(app: &mut App, minute: u64) {
         mean * 100.0,
         worst * 100.0,
         legs.len()
+    );
+
+    // El minuto va en el nombre de la métrica: la sonda mide una curva, y en
+    // formato largo una curva son filas con la abscisa dentro.
+    crate::record(
+        "stamina",
+        &[
+            (&format!("min{minute}_piernas_media_pct"), mean * 100.0),
+            (&format!("min{minute}_el_mas_gastado_pct"), worst * 100.0),
+            (&format!("min{minute}_vacios"), spent as f32),
+        ],
     );
 }

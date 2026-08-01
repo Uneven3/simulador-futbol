@@ -1,10 +1,8 @@
 use football_domain::Scenario;
-use gameplayfootball::ScenarioRunner;
+use football_simulation::ScenarioRunner;
 use std::time::{Duration, Instant};
 
-#[test]
-#[ignore = "medición de rendimiento, no una afirmación"]
-fn how_fast_can_a_match_run() {
+pub fn run() {
     let window = Duration::from_secs(60);
     let scenario = Scenario::kick_off().for_duration(window);
     let started = Instant::now();
@@ -17,5 +15,17 @@ fn how_fast_can_a_match_run() {
         window.as_secs_f32(),
         wall.as_secs_f32(),
         window.as_secs_f32() / wall.as_secs_f32()
+    );
+
+    crate::record(
+        "speed",
+        &[
+            ("ticks", outcome.ticks_simulated as f32),
+            ("segundos_de_pared", wall.as_secs_f32()),
+            (
+                "veces_tiempo_real",
+                window.as_secs_f32() / wall.as_secs_f32(),
+            ),
+        ],
     );
 }
