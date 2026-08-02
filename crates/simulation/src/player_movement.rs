@@ -37,6 +37,7 @@ impl Plugin for PlayerMovementPlugin {
                     update_possession_designation,
                     team_tactics::update_team_tactics,
                     player_decisions::select_player_movement,
+                    player_decisions::direct_visual_attention,
                     crate::locomotion::drive_bodies,
                     apply_player_velocity,
                     resolve_player_overlap,

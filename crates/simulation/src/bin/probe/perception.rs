@@ -1,8 +1,7 @@
 //! ¿Qué sabe cada jugador del campo?
 //!
-//! Los sensores están puestos pero todavía no los lee nadie. Esto comprueba que
-//! recogen algo antes de enchufarlos: a cuánta gente ve un jugador de golpe, y
-//! cuánto se le queda vieja la información del resto.
+//! A cuánta gente llega a conocer un jugador, cuánto envejece esa información y
+//! cuánto se aparta su balón creído del real cuando deja de mirarlo.
 
 use bevy_time::Time;
 use football_domain::{ObservationMemory, Player, Scenario};

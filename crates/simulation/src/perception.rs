@@ -38,6 +38,7 @@ impl Plugin for PerceptionPlugin {
 #[derive(Resource, Debug, Default)]
 pub struct Beliefs {
     by_player: Vec<(PlayerId, Vec<PlayerReading>)>,
+    ball_position: Vec<(PlayerId, Vec2)>,
     ball_error: Vec<(PlayerId, Vec2)>,
 }
 
@@ -59,6 +60,22 @@ impl Beliefs {
             .iter()
             .find(|(id, _)| *id == who)
             .map_or(Vec2::ZERO, |(_, error)| *error)
+    }
+
+    /// Dónde sitúa este jugador el balón ahora. No devuelve la verdad como
+    /// respaldo: no haberlo observado significa no saber dónde está (§3).
+    pub fn ball_of(&self, who: PlayerId) -> Option<Vec2> {
+        self.ball_position
+            .iter()
+            .find(|(id, _)| *id == who)
+            .map(|(_, position)| *position)
+    }
+
+    fn remember_ball(&mut self, who: PlayerId, position: Vec2) {
+        match self.ball_position.iter_mut().find(|(id, _)| *id == who) {
+            Some((_, known)) => *known = position,
+            None => self.ball_position.push((who, position)),
+        }
     }
 
     fn remember_ball_error(&mut self, who: PlayerId, error: Vec2) {
@@ -105,6 +122,9 @@ pub fn believe_the_pitch(
             _ => Vec2::ZERO,
         };
         beliefs.remember_ball_error(player.id, error);
+        if let Some(position) = believed_ball {
+            beliefs.remember_ball(player.id, position);
+        }
 
         let readings = beliefs.slot_for(player.id);
         // uno se conoce a sí mismo sin tener que mirarse

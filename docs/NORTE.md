@@ -102,9 +102,11 @@ de equipo, y **jugadores que no sean clones** (`AHORA.md`).
 Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
 
-Puestos el cono, la memoria que envejece y el detalle que decae con la
-distancia; las decisiones leen creencias. Falta barrer el campo con la vista y
-el balón, que sigue siendo omnisciente en la trayectoria que se persigue.
+Puestos el cono, el barrido visual, la memoria que envejece y el error que crece
+con la distancia; las decisiones de movimiento leen campos creídos y la mirada
+lee el balón creído. Faltan atención dependiente del contexto, oclusión,
+latencia e incertidumbre explícita. La trayectoria que se persigue sigue siendo
+la real: separar decisión perceptiva y contacto físico es el próximo corte.
 
 ### MVP 5 — Responsabilidad táctica
 
@@ -128,4 +130,3 @@ propiedades, que es lo que se le pide.
 
 Skinned meshes reemplazan primitivas sin cambiar resultados; se conservan los
 overlays diagnósticos.
-

@@ -21,8 +21,8 @@ impl Position {
 }
 
 /// Hacia dónde mira el cuerpo. La escribe el motor con su propio límite de
-/// giro; lo que sigue sin existir es querer mirar a un sitio y correr a otro,
-/// así que nadie puede tratarla aún como una orientación con vida propia.
+/// giro. `Gaze` pide una dirección distinta de la carrera; mientras no haya una
+/// cabeza separada, apartar la vista también gira el cuerpo.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Facing(pub Dir2);
 

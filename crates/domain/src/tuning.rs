@@ -31,6 +31,7 @@ pub struct MatchTuning {
     pub clearance: ClearanceTuning,
     pub shooting: ShootingTuning,
     pub striking: StrikingTuning,
+    pub perception: PerceptionTuning,
     pub stamina: StaminaTuning,
     pub turning: TurningTuning,
     pub defending: DefendingTuning,
@@ -48,11 +49,37 @@ impl Default for MatchTuning {
             clearance: ClearanceTuning::default(),
             shooting: ShootingTuning::default(),
             striking: StrikingTuning::default(),
+            perception: PerceptionTuning::default(),
             stamina: StaminaTuning::default(),
             turning: TurningTuning::default(),
             defending: DefendingTuning::default(),
             goalkeeping: GoalkeepingTuning::default(),
             refereeing: RefereeTuning::default(),
+        }
+    }
+}
+
+/// Cuándo aparta un jugador la vista del balón para reconocer lo que tiene a
+/// ambos lados. La frecuencia y la duración se miden por separado porque una
+/// dice cuántas oportunidades tiene de actualizarse y la otra cuánto tiempo
+/// juega sin el balón dentro del campo visual.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PerceptionTuning {
+    /// Tiempo entre inicios de barrido.
+    pub scan_interval: Duration,
+    /// Tiempo durante el que se pide mirar fuera del balón.
+    pub scan_duration: Duration,
+}
+
+impl Default for PerceptionTuning {
+    fn default() -> Self {
+        Self {
+            // 0,44 barridos/s en 27 profesionales de Premier League:
+            // doi:10.3389/fpsyg.2020.553813.
+            scan_interval: Duration::from_millis(2270),
+            // 0,3965 s de media en cuatro mediocampistas de élite, 11v11:
+            // doi:10.1371/journal.pone.0244118.
+            scan_duration: Duration::from_millis(400),
         }
     }
 }

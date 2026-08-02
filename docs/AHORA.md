@@ -6,8 +6,8 @@ las cifras en `measurements/`. **Techo: 40 líneas hasta la deuda declarada.**
 ## Objetivo activo
 
 **MVP 4 — Que decidan con lo que ven.** Los cuerpos ya tienen motor, fatiga,
-giro y percepción; lo que falta es que la percepción llegue al balón y que lo
-que se ve se vea con error.
+giro, campo visual y barrido; las posiciones observadas llegan con error. Falta
+que la creencia del balón gobierne la decisión sin gobernar el contacto.
 
 **Cómo se valida ahora:** mirando. La envolvente de diez semillas queda
 suspendida por acuerdo —dos minutos por corrida y no da diagnóstico, solo
@@ -15,12 +15,12 @@ alarma—; los tests unitarios de función pura siguen, que cuestan cero.
 
 ## Empezar aquí
 
-1. **Nadie barre el campo con la vista**: solo se ve lo que cae en el cono
-   mientras se mira al balón, y eso deja la información de los compañeros en
-   catorce segundos.
-2. **El balón sigue siendo omnisciente donde importa**: la trayectoria que se
+1. **El balón sigue siendo omnisciente donde importa**: la trayectoria que se
    persigue es la real. Sumarle el error de creencia dejó el partido sin tiros:
    un metro impide un contacto que se decide en sesenta y cinco.
+2. **La atención todavía es un metrónomo**: todos barren con la misma cadencia
+   y duración, alternando hombros aunque el contexto no lo pida. El siguiente
+   mecanismo es elegir cuándo y qué buscar; después podrá existir un atributo.
 3. **La defensa no acompaña al ataque.** Conducir mejor multiplicó los goles:
    el portador conserva y llega, y enfrente nadie hace nada más que estar.
    `grip` y `turn_rate` son iguales para los veintidós, y ahí es donde deberían
@@ -58,8 +58,8 @@ Ausencias conocidas, no descubrimientos pendientes:
 
 **Un atributo entra cuando tiene mecanismo que lo lee, unidad real y referencia
 que lo calibra.** Los motores están (velocidad, aceleración, frenado, giro,
-técnica lateral, fatiga) y el campo visual también; faltan los perceptivos
-—latencia, atención— y los tácticos de MVP 5.
+técnica lateral, fatiga), y también el campo visual y la atención base; faltan
+latencia, atención diferenciada y los tácticos de MVP 5.
 
 ## Restricciones
 

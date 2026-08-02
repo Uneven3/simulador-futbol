@@ -38,7 +38,9 @@ futura real y todo el mundo lee: es la omnisciencia que queda por romper.
 **Percepción.** `Vision` es el cono —ángulo, detalle y alcance—, `Observation`
 lo último que se supo de un cuerpo y cuándo, y `ObservationMemory` eso por
 cabeza: lo que sale del cono no se olvida, envejece. `Beliefs` arma con ello un
-campo por jugador, que es lo que la decisión lee en vez de la verdad.
+campo y una posición del balón por jugador, que es lo que la decisión lee en
+vez de la verdad. `Gaze` es dónde se quiere mirar; la atención alterna barridos
+fuera del balón con cadencia y duración de `PerceptionTuning`.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del
@@ -58,9 +60,9 @@ todo lo que puede) y `ScenarioOutcome` lo que pasó.
 Nombres que aún no existen, con el MVP que los trae. Están escritos para que el
 día que aparezcan no se inventen dos veces:
 
-- **Percepción (MVP 4):** lo que falta es el balón. `Ball.predictions` sigue
-  siendo la trayectoria futura real; `ObservationMemory.ball` se llena y nadie
-  la usa. Y falta el error: hoy lo que se ve se ve exacto.
+- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria futura
+  real. La posición creída del balón dirige la mirada, pero todavía no la
+  persecución; faltan oclusión, latencia e incertidumbre explícita.
 - **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez
   de un solo instante de contacto. La aceleración, el frenado y la fatiga ya no
   están aquí: existen, con el mecanismo que los lee.
