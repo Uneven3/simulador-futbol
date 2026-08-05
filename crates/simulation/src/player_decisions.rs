@@ -48,6 +48,10 @@ struct DecisionContext<'a> {
     /// Qué mitad defiende cada equipo ahora: toda la geometría cuelga de esto.
     sides: PitchSides,
     ball: &'a Ball,
+    /// Lo que la idea que tiene del balón se aparta del balón. Es lo que hace
+    /// que persiga un sitio y no otro; el balón de `ball` sigue siendo el real
+    /// porque el contacto lo resuelve el cuerpo, no la creencia.
+    ball_error: Vec2,
     tactics: &'a TeamTactics,
     tuning: &'a MatchTuning,
     designation: &'a PossessionDesignation,
@@ -189,6 +193,7 @@ pub fn select_player_movement(
             snaps: beliefs.of(player.id),
             sides: match_state.sides,
             ball,
+            ball_error: beliefs.ball_error_of(player.id),
             tactics: &tactics,
             tuning: &tuning,
             designation: &designation,
@@ -216,7 +221,7 @@ pub fn select_player_movement(
             carry_movement(&ctx, &me, stats)
         } else if is_designated && ball_winnable(&ctx, &me, match_state.possession_player) {
             // the magnet branch of _MovementCommand: go win the ball
-            to_ball_movement(&me, stats, ball)
+            to_ball_movement(&ctx, &me, stats)
         } else {
             // A designated player who cannot win the ball plays off it like
             // anyone else: a permanent containment shadow presses the back line
@@ -243,7 +248,12 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
             stats.top_speed,
             &ctx.ball.predictions,
         );
-        let to_intercept = intercept - me.pos;
+        let to_intercept = chased_spot(
+            intercept,
+            ctx.ball_error,
+            me.pos,
+            ctx.tuning.perception.eyes_on_the_ball,
+        ) - me.pos;
         let closing = (to_intercept.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
             .clamp(ctx.tuning.contest.carry_pace, stats.top_speed);
         (to_intercept.normalize_or_zero(), closing)
@@ -291,12 +301,32 @@ fn ball_winnable(
         || (!opp_has_ball && possession_amount > tuning.winnable_loose)
 }
 
+/// El sitio al que uno corre cuando va a por el balón: no el balón, su idea del
+/// balón.
+///
+/// El corte entre decisión perceptiva y contacto (§3). De lejos se corre hacia
+/// donde uno cree que estará y se equivoca entero; dentro de `eyes_on_the_ball`
+/// no se corre hacia una idea, se mira el balón y se pone el pie, y por eso el
+/// desvío se desvanece en vez de cortarse: si no, todo el mundo llegaría al
+/// último metro apuntando a un sitio y lo resolvería saltando al otro.
+fn chased_spot(spot: Vec2, error: Vec2, from: Vec2, eyes_on_the_ball: f32) -> Vec2 {
+    let close = eyes_on_the_ball.max(0.01);
+    let trusting_the_eyes = ((from.distance(spot) - close) / close).clamp(0.0, 1.0);
+    spot + error * trusting_the_eyes
+}
+
 /// Run to the earliest reachable point on the ball's predicted path
 /// (approximates `AI_GetToBallMovement`).
-fn to_ball_movement(me: &PlayerReading, stats: &Attributes, ball: &Ball) -> (Vec2, f32) {
+fn to_ball_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes) -> (Vec2, f32) {
     let (intercept, _) =
-        crate::player_movement::find_interception(me.pos, stats.top_speed, &ball.predictions);
-    ((intercept - me.pos).normalize_or_zero(), stats.top_speed)
+        crate::player_movement::find_interception(me.pos, stats.top_speed, &ctx.ball.predictions);
+    let target = chased_spot(
+        intercept,
+        ctx.ball_error,
+        me.pos,
+        ctx.tuning.perception.eyes_on_the_ball,
+    );
+    ((target - me.pos).normalize_or_zero(), stats.top_speed)
 }
 
 /// Off-the-ball movement: hunting/defending (from `RequestCommand`'s movement
@@ -1344,4 +1374,31 @@ fn shot_odds(
         ball_velocity_multiplier,
         passing,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Lo que uno persigue de lejos es su idea del balón, y el último metro es
+    /// el balón: sin ese desvanecido, un error de un metro impediría para
+    /// siempre un contacto que se decide en sesenta y cinco centímetros.
+    #[test]
+    fn the_last_metre_is_run_at_the_ball_and_not_at_the_idea() {
+        let error = Vec2::new(1.5, 0.0);
+        let ball = Vec2::new(20.0, 0.0);
+        let close = 3.0;
+
+        let far = chased_spot(ball, error, Vec2::ZERO, close);
+        assert_eq!(far, ball + error, "de lejos se corre a la idea entera");
+
+        let touching = chased_spot(ball, error, ball - Vec2::new(2.0, 0.0), close);
+        assert_eq!(touching, ball, "encima del balón manda el pie");
+
+        let closing = chased_spot(ball, error, ball - Vec2::new(4.5, 0.0), close);
+        assert!(
+            (closing - ball).length() < error.length() && closing != ball,
+            "y en medio se corrige, no se salta de un sitio al otro"
+        );
+    }
 }

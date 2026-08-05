@@ -72,6 +72,11 @@ pub struct PerceptionTuning {
     /// A cuántos metros de duda sobre dónde está el balón se deja de reconocer
     /// el entorno y se pasa a buscarlo.
     pub lost_ball_doubt: f32,
+    /// Cuánto tarda uno en enterarse de lo que ha visto.
+    pub reaction: Duration,
+    /// A qué distancia del balón se deja de correr hacia una idea y se juega el
+    /// balón que se ve. Es el corte entre decisión perceptiva y contacto.
+    pub eyes_on_the_ball: f32,
 }
 
 impl Default for PerceptionTuning {
@@ -87,6 +92,14 @@ impl Default for PerceptionTuning {
             // balón peor que eso ya no permite ir a disputarlo, y ahí la vista
             // deja de servir para reconocer y pasa a servir para encontrarlo.
             lost_ball_doubt: 2.0,
+            // Reacción visual simple: 200-250 ms en población general y algo
+            // por debajo en deportistas de élite. Es lo que tarda la señal, no
+            // lo que tarda la decisión, que se paga aparte.
+            reaction: Duration::from_millis(200),
+            // Sin referencia. A tres metros el balón está en el centro del
+            // campo visual, dentro de lo que se sitúa exacto y sin nadie que
+            // pueda taparlo, y lo que manda ya no es la cabeza sino el pie.
+            eyes_on_the_ball: 3.0,
         }
     }
 }

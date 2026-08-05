@@ -280,7 +280,7 @@ fn draw_vision(
 
         // dónde cree cada uno que está el balón: cuanto más se separan las
         // cruces, más desacuerdo hay sobre dónde se está jugando
-        if let Some(believed) = memory.ball.map(|seen| seen.projected_to(now)) {
+        if let Some(believed) = memory.ball().map(|seen| seen.projected_to(now)) {
             let at = Vec3::new(believed.x, believed.y, 0.1);
             gizmos.cross(Isometry3d::from_translation(at), 0.4, colour);
         }

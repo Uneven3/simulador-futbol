@@ -13,8 +13,8 @@ use bevy_time::prelude::*;
 use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
-    Ball, Facing, Observation, ObservationMemory, Player, PlayerId, Position, TOTAL_LOSS, Velocity,
-    Vision, blocks_the_view, can_see,
+    Ball, Facing, MatchTuning, Observation, ObservationMemory, Player, PlayerId, Position,
+    TOTAL_LOSS, Velocity, Vision, blocks_the_view, can_see,
 };
 
 pub struct PerceptionPlugin;
@@ -136,7 +136,7 @@ pub fn believe_the_pitch(
 
     for (player, memory, position, velocity) in who_is_who.iter() {
         // quien no lo ve lo sitúa donde lo dejó, adelantado a ojo
-        let believed_ball = memory.ball.map(|seen| seen.projected_to(now));
+        let believed_ball = memory.ball().map(|seen| seen.projected_to(now));
         let error = match (believed_ball, ball_now) {
             (Some(believed), Some(actual)) => believed - actual,
             // sin haberlo visto nunca no hay creencia que corregir
@@ -145,7 +145,9 @@ pub fn believe_the_pitch(
         beliefs.remember_ball_error(player.id, error);
         beliefs.remember_ball_uncertainty(
             player.id,
-            memory.ball.map_or(TOTAL_LOSS, |seen| seen.uncertainty(now)),
+            memory
+                .ball()
+                .map_or(TOTAL_LOSS, |seen| seen.uncertainty(now)),
         );
         if let Some(position) = believed_ball {
             beliefs.remember_ball(player.id, position);
@@ -205,6 +207,7 @@ fn hidden_behind_somebody(
 /// como estaba y envejece solo.
 pub fn observe_the_pitch(
     time: Res<Time>,
+    tuning: Res<MatchTuning>,
     ball_query: Query<(&Position, &Ball), Without<Player>>,
     bodies: Query<(&Position, &Player, &Velocity), Without<Ball>>,
     mut watchers: Query<(&Position, &Facing, &Player, &Vision, &mut ObservationMemory)>,
@@ -227,6 +230,8 @@ pub fn observe_the_pitch(
 
     for (position, facing, watcher, vision, mut memory) in watchers.iter_mut() {
         let eyes = position.on_pitch();
+        // primero uno se entera de lo que vio hace un momento, y luego mira
+        memory.settle(now, tuning.perception.reaction);
 
         for (other_position, other, velocity) in bodies.iter() {
             if other.id == watcher.id {
@@ -241,7 +246,7 @@ pub fn observe_the_pitch(
             // lo lejano se sitúa a bulto: el desenfoque es determinista y sale
             // de dónde está, o el mismo cuerpo bailaría cada tick
             let blur = vision.blur_at(eyes.distance(spot));
-            memory.remember(
+            memory.saw(
                 other.id,
                 Observation {
                     spot: spot + blurred_by(spot, blur),
@@ -259,7 +264,7 @@ pub fn observe_the_pitch(
             // El balón se sitúa donde está y se declara con cuánta duda. Meter
             // el desenfoque también en el punto es una fuente de error nueva y
             // va aparte: aquí solo se dice lo que ya se sabía mal.
-            memory.ball = Some(Observation {
+            memory.saw_ball(Observation {
                 spot,
                 velocity: momentum,
                 seen_at: now,

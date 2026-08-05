@@ -81,7 +81,7 @@ pub fn run() {
             stale_total += seen.age(now).as_secs_f32();
             stale_count += 1;
         }
-        if memory.ball.is_some() {
+        if memory.ball().is_some() {
             ball_seen += 1;
         }
     }

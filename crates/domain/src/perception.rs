@@ -104,37 +104,97 @@ impl Observation {
     }
 }
 
+/// Lo visto que todavía no se sabe: entre que la luz entra y la cabeza se
+/// entera pasa un tiempo, y mientras tanto lo que se cree del mundo es lo de
+/// antes.
+#[derive(Debug, Clone, Copy, Default, Reflect)]
+struct Delayed {
+    known: Option<Observation>,
+    on_the_way: Option<Observation>,
+}
+
+impl Delayed {
+    /// Lo que se acaba de ver entra a la cola, y solo si la cola está vacía: lo
+    /// que llega después no adelanta a lo que ya venía. Por eso la creencia se
+    /// refresca a golpes y no de forma continua, que es lo que hace un ojo.
+    fn saw(&mut self, what: Observation) {
+        if self.on_the_way.is_none() {
+            self.on_the_way = Some(what);
+        }
+    }
+
+    /// Enterarse: lo que se vio hace más de `reaction` ya es sabido, con la hora
+    /// a la que se vio y no la de ahora. Así la latencia paga dos veces, que es
+    /// lo justo: la creencia nace vieja y nace dudada.
+    fn settle(&mut self, now: Duration, reaction: Duration) {
+        if let Some(seen) = self.on_the_way
+            && seen.age(now) >= reaction
+        {
+            self.known = Some(seen);
+            self.on_the_way = None;
+        }
+    }
+}
+
 /// Lo que un jugador sabe del resto del campo. Es memoria y no una foto: lo que
 /// no se ve no desaparece, se queda como estaba y envejece. Un `Vec` porque son
 /// veintiuno y se recorre entero cada tick (§12).
 #[derive(Component, Debug, Clone, Default, Reflect)]
 pub struct ObservationMemory {
-    seen: Vec<(PlayerId, Observation)>,
+    seen: Vec<(PlayerId, Delayed)>,
     /// El balón, que es el cuerpo que todo el mundo mira.
-    pub ball: Option<Observation>,
+    ball: Delayed,
 }
 
 impl ObservationMemory {
-    pub fn remember(&mut self, who: PlayerId, what: Observation) {
+    pub fn saw(&mut self, who: PlayerId, what: Observation) {
         match self.seen.iter_mut().find(|(id, _)| *id == who) {
-            Some((_, known)) => *known = what,
-            None => self.seen.push((who, what)),
+            Some((_, slot)) => slot.saw(what),
+            None => {
+                let mut slot = Delayed::default();
+                slot.saw(what);
+                self.seen.push((who, slot));
+            }
         }
+    }
+
+    pub fn saw_ball(&mut self, what: Observation) {
+        self.ball.saw(what);
+    }
+
+    /// Todo lo que estaba de camino y ya ha llegado. Se llama una vez por tick,
+    /// antes de mirar: primero se entera uno de lo de antes y luego ve.
+    pub fn settle(&mut self, now: Duration, reaction: Duration) {
+        for (_, slot) in &mut self.seen {
+            slot.settle(now, reaction);
+        }
+        self.ball.settle(now, reaction);
     }
 
     pub fn of(&self, who: PlayerId) -> Option<Observation> {
         self.seen
             .iter()
             .find(|(id, _)| *id == who)
-            .map(|(_, known)| *known)
+            .and_then(|(_, slot)| slot.known)
+    }
+
+    pub fn ball(&self) -> Option<Observation> {
+        self.ball.known
     }
 
     pub fn everyone(&self) -> impl Iterator<Item = (PlayerId, Observation)> + '_ {
-        self.seen.iter().copied()
+        self.seen
+            .iter()
+            .filter_map(|(id, slot)| slot.known.map(|known| (*id, known)))
     }
 
+    /// A cuánta gente se conoce: haber visto a alguien hace un instante y no
+    /// haberse enterado todavía es no conocerlo.
     pub fn known_count(&self) -> usize {
-        self.seen.len()
+        self.seen
+            .iter()
+            .filter(|(_, slot)| slot.known.is_some())
+            .count()
     }
 }
 
@@ -253,6 +313,59 @@ mod tests {
         assert_eq!(seen.projected_to(horizon), seen.projected_to(later));
         assert!(seen.uncertainty(later) > seen.uncertainty(horizon));
         assert!(seen.uncertainty(Duration::from_secs(300)) <= TOTAL_LOSS);
+    }
+
+    /// Lo que se acaba de ver no se sabe todavía, y cuando se sabe se sabe
+    /// viejo: la creencia nace con la edad que tardó en llegar.
+    #[test]
+    fn what_you_just_saw_is_not_yet_known() {
+        let reaction = Duration::from_millis(200);
+        let mut memory = ObservationMemory::default();
+        let who = PlayerId::home(7);
+        let seen = Observation {
+            spot: Vec2::new(5.0, 0.0),
+            velocity: Vec2::ZERO,
+            seen_at: Duration::ZERO,
+            blur: 0.0,
+        };
+
+        memory.saw(who, seen);
+        memory.settle(Duration::ZERO, reaction);
+        assert!(memory.of(who).is_none(), "verlo no es enterarse");
+        assert_eq!(memory.known_count(), 0);
+
+        memory.settle(reaction, reaction);
+        assert_eq!(memory.of(who).map(|known| known.spot), Some(seen.spot));
+        assert_eq!(
+            memory.of(who).map(|known| known.age(reaction)),
+            Some(reaction),
+            "se sabe con la hora en que se vio, no con la de ahora"
+        );
+    }
+
+    /// Mientras algo viene de camino, lo que se ve después no lo adelanta: la
+    /// creencia se refresca a golpes, y entre golpe y golpe está vieja.
+    #[test]
+    fn a_newer_sight_does_not_overtake_the_one_on_the_way() {
+        let reaction = Duration::from_millis(200);
+        let mut memory = ObservationMemory::default();
+        let first = Observation {
+            spot: Vec2::X,
+            velocity: Vec2::ZERO,
+            seen_at: Duration::ZERO,
+            blur: 0.0,
+        };
+        let later = Observation {
+            spot: Vec2::X * 9.0,
+            seen_at: Duration::from_millis(100),
+            ..first
+        };
+
+        memory.saw_ball(first);
+        memory.saw_ball(later);
+        memory.settle(reaction, reaction);
+
+        assert_eq!(memory.ball().map(|known| known.spot), Some(first.spot));
     }
 
     /// Un cuerpo en medio esconde lo que hay detrás, y solo lo que hay detrás:
