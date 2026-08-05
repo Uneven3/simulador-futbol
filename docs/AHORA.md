@@ -12,17 +12,18 @@ ninguna decisión de movimiento.
 
 **Cómo se valida ahora:** mirando, y con los tests de función pura, que cuestan
 cero. La envolvente sigue suspendida como rutina —alarma, no diagnóstico—, pero
-se corre en las dos puntas de un bloque: así el delta es atribuible en vez de
-sospecha (`measurements/envelope.csv`, `a5d1489` contra `d0a6122`).
+se corre en las dos puntas de un bloque, y así el delta es atribuible: cada sha
+comparable está en `measurements/envelope.csv`.
 
 ## Empezar aquí
 
-1. **Ver mal quitó goles y robos**: 17,1 → 12,6 goles/90, 37 → 14 tiros/90 y 55
-   → 15 robos/90. Quita tiros por las dos puntas —el que ataca falla y el que
-   defiende no llega— y con un número no se sabe cuál pesa.
-2. **Tapar es todo o nada**, y en el campo se ve medio cuerpo por encima de un
-   hombro: debería subir el `blur`, no borrar. Es el candidato que queda para
-   los robos, ahora que el cuello está puesto.
+1. **Los robos que faltan.** Ver mal se llevó dos tercios de ellos (55 → 15 por
+   90) y el cuello devolvió la mitad de eso (38). Lo que queda es el candidato
+   de siempre: **tapar es todo o nada**, y en el campo se ve medio cuerpo por
+   encima de un hombro, que es situar peor y no dejar de ver.
+2. **El ritmo de gol no se movió con nada de esto** (17,1 → 12,6 → 13,5 por 90,
+   real 2,7) mientras los tiros iban de 37 a 14 y volvían a 29. Es la deuda de
+   abajo y sigue esperando a que se pueda calibrar.
 3. **Sensores que el fútbol tiene y esto no**: el oído —el grito es información
    sin línea de visión, justo lo que compensa la oclusión—, la altura (se
    percibe todo en planta), la identidad de lo que se ve, y el propio cuerpo:
