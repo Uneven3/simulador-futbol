@@ -35,14 +35,21 @@ disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 **Balón.** `Ball` lleva su momentum y su predicción, que hoy es la trayectoria
 futura real y todo el mundo lee: es la omnisciencia que queda por romper.
 
-**Percepción.** `Vision` es el cono —ángulo, detalle y alcance—, `Observation`
-lo último que se supo de un cuerpo, cuándo y con cuánta duda: `blur` es lo que
-se falló al verlo y `uncertainty` lo que se escapó desde entonces —el error solo
-se calcula desde fuera, comparando con la verdad; la duda el jugador sí la sabe—.
-`ObservationMemory` es eso por cabeza, y `Beliefs` el campo que arma con ello,
-que es lo que la decisión lee en vez de la verdad. `Gaze` es dónde se quiere
-mirar; la atención barre fuera del balón con la cadencia de `PerceptionTuning`,
-salvo que la duda pase de `lost_ball_doubt`: entonces deja de reconocer y busca.
+**Percepción.** `Vision` es el cono —ángulo, detalle y alcance— y `blocks_the_view`
+la línea: un cuerpo delante esconde lo que hay detrás, y la sombra se ensancha
+con la distancia. `Observation` es lo último que se supo de un cuerpo, cuándo y
+con cuánta duda: `blur` es lo que se falló al verlo y `uncertainty` lo que se
+escapó desde entonces —el error solo se calcula desde fuera, comparando con la
+verdad; la duda el jugador sí la sabe—. Lo visto entra en `ObservationMemory`
+`reaction` después y con la hora en que se vio, no con la de ahora, y `Beliefs`
+arma con todo eso el campo que la decisión lee en vez de la verdad.
+
+`Gaze` es dónde se quiere mirar: la atención barre fuera del balón con la
+cadencia de `PerceptionTuning`, y en el barrido busca al cuerpo peor situado del
+hombro que toca. Si la duda sobre el balón pasa de `lost_ball_doubt`, deja de
+reconocer y va a buscarlo. La duda viaja en `PlayerReading` y ya cambia
+decisiones: un pase a quien no se tiene situado vale menos, y lo que se persigue
+es la idea del balón hasta `eyes_on_the_ball`, donde manda el pie.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del
@@ -63,8 +70,8 @@ Nombres que aún no existen, con el MVP que los trae. Están escritos para que e
 día que aparezcan no se inventen dos veces:
 
 - **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria futura
-  real: la posición creída dirige la mirada, pero todavía no la persecución.
-  Faltan oclusión y latencia, y un lector para la duda de los compañeros.
+  real, y quien la persigue la persigue desviada por lo que cree. Falta que cada
+  uno prediga la suya, y que taparse sea situar peor y no dejar de ver.
 - **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez
   de un solo instante de contacto. La aceleración, el frenado y la fatiga ya no
   están aquí: existen, con el mecanismo que los lee.

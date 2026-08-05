@@ -101,11 +101,12 @@ de equipo, y **jugadores que no sean clones** (`AHORA.md`).
 Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
 
-Puestos el cono, el barrido, la memoria que envejece, el error que crece con la
-distancia y la duda que la creencia declara de sí misma; se decide sobre campos
-creídos y la mirada busca el balón cuando lo pierde. Faltan oclusión, latencia,
-la duda de los compañeros con quien la lea y el resto de la atención por
-contexto. Lo que se persigue sigue siendo la trayectoria real.
+Puestos el cono, la oclusión, el barrido que elige a quién buscar, la memoria
+que envejece, el retardo entre ver y enterarse, el error que crece con la
+distancia y la duda que la creencia declara de sí misma —leída ya por el pase y
+por la mirada—. Y el corte: lo que se persigue es la idea del balón hasta el
+último metro, donde manda el pie. Falta que cada uno prediga su propia
+trayectoria, y que taparse sea situar peor en vez de dejar de ver.
 
 ### MVP 5 — Responsabilidad táctica
 

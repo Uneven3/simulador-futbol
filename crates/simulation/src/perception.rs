@@ -2,8 +2,10 @@
 //!
 //! Es el único que escribe `ObservationMemory` y `Beliefs`, y desde que
 //! `select_player_movement` lee lo segundo, los veintidós deciden sobre campos
-//! distintos. El balón sigue siendo omnisciente: `Ball.predictions` es la
-//! trayectoria futura real y todo el mundo la lee.
+//! distintos. Ver pide ángulo, alcance y línea —un cuerpo delante esconde lo que
+//! hay detrás—, y enterarse de lo visto cuesta `reaction` más. Lo que queda de
+//! omnisciencia es la forma de `Ball.predictions`: la trayectoria futura real,
+//! que cada uno persigue desviada por lo que cree, pero no calcula.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;

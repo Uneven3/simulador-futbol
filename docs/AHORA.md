@@ -5,11 +5,10 @@ las cifras en `measurements/`. **Techo: 40 líneas hasta la deuda declarada.**
 
 ## Objetivo activo
 
-**MVP 4 — Que decidan con lo que ven.** Los cuerpos ya tienen motor, fatiga,
-giro, campo visual y barrido; lo observado llega con error y la creencia del
-balón declara cuánto duda de sí misma. **Orden acordado:** la forma del dato
-—hecha—, luego oclusión y latencia, y el corte decisión/contacto al final, que
-es el único que mueve goles y obliga a re-diagnosticar lo anterior.
+**MVP 4 — Que decidan con lo que ven.** Puestas las cuatro piezas del orden
+acordado: la forma del dato, la oclusión, la latencia y el corte
+decisión/contacto. La verdad del mundo ya no entra en ninguna decisión de
+movimiento; lo que queda es que cada uno prediga su propio balón.
 
 **Cómo se valida ahora:** mirando. La envolvente de diez semillas queda
 suspendida por acuerdo —no da diagnóstico, solo alarma—; los tests unitarios de
@@ -17,13 +16,13 @@ función pura siguen, que cuestan cero.
 
 ## Empezar aquí
 
-1. **El balón sigue siendo omnisciente donde importa**: la trayectoria que se
-   persigue es la real. Sumarle el error de creencia dejó el partido sin tiros:
-   un metro impide un contacto que se decide en sesenta y cinco.
-2. **La atención ya no es solo un metrónomo, pero casi**: perder el balón de
-   vista interrumpe el barrido y manda a buscarlo, y es lo único que depende del
-   contexto. Cadencia, duración y hombro siguen iguales para los veintidós.
-   Falta elegir *qué* buscar —el hueco, la marca, el apoyo—.
+1. **Tapar es todo o nada**, y en el campo se ve medio cuerpo por encima de un
+   hombro. Un tercio de lo que cae en el cono está detrás de alguien, y eso
+   debería situar peor en vez de dejar de ver.
+2. **Nadie predice su balón**: se persigue la trayectoria real desviada por lo
+   que uno cree, que es un apaño con el signo correcto. El siguiente escalón es
+   que cada uno tire de su propia recta y se equivoque en la forma, no solo en
+   el sitio.
 3. **La defensa no acompaña al ataque.** Conducir mejor multiplicó los goles:
    el portador conserva y llega, y enfrente nadie hace nada más que estar.
    `grip` y `turn_rate` son iguales para los veintidós, y ahí es donde deberían
@@ -59,8 +58,9 @@ Ausencias conocidas, no descubrimientos pendientes:
 
 **Un atributo entra cuando tiene mecanismo que lo lee, unidad real y referencia
 que lo calibra.** Los motores están (velocidad, aceleración, frenado, giro,
-técnica lateral, fatiga), y también el campo visual y la atención base; faltan
-latencia, atención diferenciada y los tácticos de MVP 5.
+técnica lateral, fatiga), y también el campo visual, la atención y la reacción,
+que hoy son iguales para los veintidós y ya tienen dónde diferenciarse. Faltan
+los tácticos de MVP 5.
 
 ## Restricciones
 

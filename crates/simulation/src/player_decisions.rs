@@ -11,7 +11,9 @@
 //!
 //! Without an animation layer, the original's `PlayerCommand`s become a per-tick
 //! movement intent and an `OnBallAction`. Player positions come from each
-//! player's beliefs; the ball trajectory is the remaining true-world input.
+//! player's beliefs, and the true ball trajectory is only read displaced by what
+//! he believes about it: the truth is left for the contact, which the body
+//! resolves and not the head.
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
