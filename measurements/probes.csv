@@ -78,3 +78,12 @@ corrida,sha,sonda,metrica,valor
 2026-08-05T09:53:31,982b0fb,perception,companeros_conocidos,15.091
 2026-08-05T09:53:31,982b0fb,perception,antiguedad_media_s,7.809
 2026-08-05T09:53:31,982b0fb,perception,con_el_balon_en_la_cabeza,21.000
+2026-08-05T10:20:23,ef96038,perception,error_balon_medio_m,3.375
+2026-08-05T10:20:23,ef96038,perception,error_balon_peor_m,26.476
+2026-08-05T10:20:23,ef96038,perception,duda_balon_media_m,6.973
+2026-08-05T10:20:23,ef96038,perception,tapados_pct,20.236
+2026-08-05T10:20:23,ef96038,perception,entrevistos_pct,25.909
+2026-08-05T10:20:23,ef96038,perception,balon_tapado_pct,17.160
+2026-08-05T10:20:23,ef96038,perception,companeros_conocidos,16.045
+2026-08-05T10:20:23,ef96038,perception,antiguedad_media_s,8.836
+2026-08-05T10:20:23,ef96038,perception,con_el_balon_en_la_cabeza,21.000

@@ -15,8 +15,8 @@ use bevy_time::prelude::*;
 use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
-    Ball, Looking, MatchTuning, Observation, ObservationMemory, Player, PlayerId, Position,
-    TOTAL_LOSS, Velocity, Vision, blocks_the_view, can_see,
+    Ball, HIDDEN_BLUR, Looking, MatchTuning, Observation, ObservationMemory, Player, PlayerId,
+    Position, TOTAL_LOSS, Velocity, Vision, can_see, hidden_by,
 };
 
 pub struct PerceptionPlugin;
@@ -193,18 +193,23 @@ fn blurred_by(spot: Vec2, blur: f32) -> Vec2 {
     Vec2::from_angle(angle - angle.floor()) * blur
 }
 
-/// Si alguno de los otros cuerpos se interpone. Ni quien mira ni lo mirado
-/// cuentan como estorbo: uno no se tapa a sí mismo.
+/// Cuánto lo esconde el que más lo esconda, de 0 a 1. Ni quien mira ni lo
+/// mirado cuentan como estorbo: uno no se tapa a sí mismo.
+///
+/// El máximo y no la suma: dos cuerpos tapando el mismo trozo no tapan el doble,
+/// y quien asoma por un lado asoma igual haya uno o cinco detrás.
 fn hidden_behind_somebody(
     eyes: Vec2,
     target: Vec2,
     crowd: &[(PlayerId, Vec2)],
     watcher: PlayerId,
     seen: Option<PlayerId>,
-) -> bool {
-    crowd.iter().any(|(id, spot)| {
-        *id != watcher && Some(*id) != seen && blocks_the_view(eyes, target, *spot)
-    })
+) -> f32 {
+    crowd
+        .iter()
+        .filter(|(id, _)| *id != watcher && Some(*id) != seen)
+        .map(|(_, spot)| hidden_by(eyes, target, *spot))
+        .fold(0.0, f32::max)
 }
 
 /// Lo que cada jugador ve este tick entra en su memoria; lo que no, se queda
@@ -249,14 +254,18 @@ pub fn observe_the_pitch(
                 continue;
             }
             let spot = other_position.on_pitch();
-            if !can_see(eyes, looking.0, spot, vision)
-                || hidden_behind_somebody(eyes, spot, &crowd, watcher.id, Some(other.id))
-            {
+            if !can_see(eyes, looking.0, spot, vision) {
+                continue;
+            }
+            // ver medio cuerpo por encima de un hombro es verlo, y es situarlo
+            // peor: solo desaparece quien está tapado del todo
+            let hidden = hidden_behind_somebody(eyes, spot, &crowd, watcher.id, Some(other.id));
+            if hidden >= 1.0 {
                 continue;
             }
             // lo lejano se sitúa a bulto: el desenfoque es determinista y sale
             // de dónde está, o el mismo cuerpo bailaría cada tick
-            let blur = vision.blur_at(eyes.distance(spot));
+            let blur = vision.blur_at(eyes.distance(spot)) + hidden * HIDDEN_BLUR;
             memory.saw(
                 other.id,
                 Observation {
@@ -268,9 +277,12 @@ pub fn observe_the_pitch(
             );
         }
 
+        let ball_hidden = ball.map_or(1.0, |(spot, _)| {
+            hidden_behind_somebody(eyes, spot, &crowd, watcher.id, None)
+        });
         if let Some((spot, momentum)) = ball
             && can_see(eyes, looking.0, spot, vision)
-            && !hidden_behind_somebody(eyes, spot, &crowd, watcher.id, None)
+            && ball_hidden < 1.0
         {
             // El balón se sitúa donde está y se declara con cuánta duda. Meter
             // el desenfoque también en el punto es una fuente de error nueva y
@@ -279,7 +291,7 @@ pub fn observe_the_pitch(
                 spot,
                 velocity: momentum,
                 seen_at: now,
-                blur: vision.blur_at(eyes.distance(spot)),
+                blur: vision.blur_at(eyes.distance(spot)) + ball_hidden * HIDDEN_BLUR,
             });
         }
     }

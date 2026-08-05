@@ -221,30 +221,48 @@ pub fn can_see(from: Vec2, facing: Dir2, target: Vec2, vision: &Vision) -> bool 
 /// para los veintiuno restantes.
 pub const SHADOW_NEEDS_DEPTH: f32 = 1.0;
 
-/// Si el cuerpo plantado en `blocker` esconde `target` de quien mira desde
-/// `eyes`.
+/// Dónde acaba la sombra, en anchos de cuerpo: hasta la mitad no se ve nada, y
+/// desde ahí hasta el borde se ve un trozo. Un cuerpo no es una pared opaca de
+/// contorno exacto —asoma la cabeza, asoma un hombro, y los dos se mueven—, así
+/// que entre tapado y despejado hay penumbra.
+pub const SHADOW_CORE: f32 = 0.5;
+pub const SHADOW_EDGE: f32 = 1.5;
+
+/// Lo que se falla de más al situar a alguien del que solo se ve un trozo, en
+/// metros. Sin referencia: es el ancho de un cuerpo, que es lo que puede haberse
+/// desplazado el que está detrás sin que se le vea hacerlo.
+pub const HIDDEN_BLUR: f32 = 0.7;
+
+/// Cuánto esconde el cuerpo plantado en `blocker` lo que hay en `target`, de 0
+/// —despejado— a 1 —tapado del todo—.
 ///
 /// Es la sombra de un cilindro vista desde un punto, y por eso se ensancha con
 /// la distancia: alguien pegado a uno tapa un sector enorme del campo y el mismo
 /// cuerpo a veinte metros no tapa casi nada. Esconder no es borrar —lo que se
-/// deja de ver se queda en la memoria y envejece—, que es lo que impide que un
-/// cruce delante de los ojos evapore a un compañero.
-pub fn blocks_the_view(eyes: Vec2, target: Vec2, blocker: Vec2) -> bool {
+/// deja de ver se queda en la memoria y envejece—, y taparse a medias tampoco:
+/// eso es verlo peor situado, que es lo que ocurre casi siempre en el campo.
+pub fn hidden_by(eyes: Vec2, target: Vec2, blocker: Vec2) -> f32 {
     let to_target = target - eyes;
     let distance = to_target.length();
     let Ok(direction) = Dir2::new(to_target) else {
-        return false;
+        return 0.0;
     };
     let to_blocker = blocker - eyes;
     let along = to_blocker.dot(*direction);
     // ni a la espalda de quien mira ni junto a lo que taparía
     if along <= 0.0 || along >= distance - SHADOW_NEEDS_DEPTH {
-        return false;
+        return 0.0;
     }
-    let aside = to_blocker.perp_dot(*direction).abs();
     // el `max` es tener a alguien encima: la sombra no se dispara al infinito,
     // se queda en tapar todo lo que hay detrás de él
-    aside <= PLAYER_BODY_RADIUS * distance / along.max(PLAYER_BODY_RADIUS)
+    let shadow = PLAYER_BODY_RADIUS * distance / along.max(PLAYER_BODY_RADIUS);
+    let aside = to_blocker.perp_dot(*direction).abs();
+    let core = shadow * SHADOW_CORE;
+    let edge = shadow * SHADOW_EDGE;
+    if aside <= core {
+        return 1.0;
+    }
+    ((edge - aside) / (edge - core)).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -375,13 +393,34 @@ mod tests {
         let eyes = Vec2::ZERO;
         let target = Vec2::new(20.0, 0.0);
 
-        assert!(blocks_the_view(eyes, target, Vec2::new(10.0, 0.0)));
-        assert!(!blocks_the_view(eyes, target, Vec2::new(10.0, 5.0)));
-        assert!(!blocks_the_view(eyes, target, Vec2::new(-5.0, 0.0)));
-        assert!(
-            !blocks_the_view(eyes, target, Vec2::new(25.0, 0.0)),
+        assert_eq!(hidden_by(eyes, target, Vec2::new(10.0, 0.0)), 1.0);
+        assert_eq!(hidden_by(eyes, target, Vec2::new(10.0, 5.0)), 0.0);
+        assert_eq!(hidden_by(eyes, target, Vec2::new(-5.0, 0.0)), 0.0);
+        assert_eq!(
+            hidden_by(eyes, target, Vec2::new(25.0, 0.0)),
+            0.0,
             "detrás de lo que se mira no se tapa nada"
         );
+    }
+
+    /// Y entre tapado y despejado hay penumbra: por el borde de la sombra se ve
+    /// un trozo, que es lo que pasa casi siempre en un campo con veintidós.
+    #[test]
+    fn the_edge_of_a_shadow_is_seeing_part_of_somebody() {
+        let eyes = Vec2::ZERO;
+        let target = Vec2::new(20.0, 0.0);
+        let shadow = PLAYER_BODY_RADIUS * 2.0; // el bloqueador está a media vía
+
+        let core = hidden_by(eyes, target, Vec2::new(10.0, shadow * SHADOW_CORE * 0.5));
+        let penumbra = hidden_by(eyes, target, Vec2::new(10.0, shadow));
+        let clear = hidden_by(eyes, target, Vec2::new(10.0, shadow * SHADOW_EDGE * 1.1));
+
+        assert_eq!(core, 1.0);
+        assert!(
+            penumbra > 0.0 && penumbra < 1.0,
+            "el borde tapaba {penumbra} en vez de un trozo"
+        );
+        assert_eq!(clear, 0.0);
     }
 
     /// La sombra se ensancha con la distancia: el mismo cuerpo tapa un sector
@@ -392,8 +431,8 @@ mod tests {
         let target = Vec2::new(30.0, 0.0);
         let aside = 1.5;
 
-        assert!(blocks_the_view(eyes, target, Vec2::new(2.0, aside)));
-        assert!(!blocks_the_view(eyes, target, Vec2::new(25.0, aside)));
+        assert_eq!(hidden_by(eyes, target, Vec2::new(2.0, aside)), 1.0);
+        assert_eq!(hidden_by(eyes, target, Vec2::new(25.0, aside)), 0.0);
     }
 
     /// Nadie tapa lo que lleva al lado: el balón que uno conduce se ve junto a
@@ -404,12 +443,15 @@ mod tests {
         let carrier = Vec2::new(15.0, 0.0);
         let ball_at_his_feet = carrier + Vec2::new(0.4, 0.0);
 
-        assert!(!blocks_the_view(eyes, ball_at_his_feet, carrier));
-        assert!(blocks_the_view(
-            eyes,
-            carrier + Vec2::new(SHADOW_NEEDS_DEPTH + 1.0, 0.0),
-            carrier
-        ));
+        assert_eq!(hidden_by(eyes, ball_at_his_feet, carrier), 0.0);
+        assert_eq!(
+            hidden_by(
+                eyes,
+                carrier + Vec2::new(SHADOW_NEEDS_DEPTH + 1.0, 0.0),
+                carrier
+            ),
+            1.0
+        );
     }
 
     /// Lo que se falló al verlo no se olvida, y lo que corre se escapa más
