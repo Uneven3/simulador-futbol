@@ -62,3 +62,11 @@ corrida,sha,sonda,metrica,valor
 2026-08-05T05:47:24,ab3d6a5,carrying,orbitando_pct,14.073
 2026-08-05T05:47:24,ab3d6a5,carrying,perdidas,672.000
 2026-08-05T05:47:24,ab3d6a5,carrying,perdidas_sin_presion_pct,18.750
+2026-08-05T05:59:14,d0a6122,defending,ocasiones,2424.000
+2026-08-05T05:59:14,d0a6122,defending,compania_media_m,2.110
+2026-08-05T05:59:14,d0a6122,defending,sin_marca_pct,3.135
+2026-08-05T05:59:14,d0a6122,defending,tiros,20.000
+2026-08-05T05:59:14,d0a6122,defending,distancia_media_tiro_m,16.625
+2026-08-05T05:59:14,d0a6122,defending,a_puerta,20.000
+2026-08-05T05:59:14,d0a6122,defending,goles,14.000
+2026-08-05T05:59:14,d0a6122,defending,paradas_pct,30.000
