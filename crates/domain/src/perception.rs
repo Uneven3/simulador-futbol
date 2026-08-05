@@ -71,6 +71,21 @@ pub struct Observation {
 /// que corre vale menos que una igual de vieja de algo parado.
 pub const VELOCITY_MISJUDGED: f32 = 0.25;
 
+/// El factor por el que uno multiplica la carrera ajena al juzgarla: la
+/// dirección se acierta y la magnitud no, dentro de `VELOCITY_MISJUDGED`.
+///
+/// Sale de quién mira a quién y no del reloj, porque un juicio no tiembla: uno
+/// le echa siempre el mismo error al mismo cuerpo, y ese sesgo constante es lo
+/// que hace que se le adelante o se le quede corto una y otra vez. `None` es el
+/// balón, que no tiene dorsal.
+pub fn misjudged_pace(watcher: PlayerId, seen: Option<PlayerId>) -> f32 {
+    let tag = |who: PlayerId| who.team.index() * 11 + usize::from(who.shirt);
+    let key = tag(watcher) * 23 + seen.map_or(0, tag);
+    let scattered = (key as f32 * 12.9898).sin() * 43758.547;
+    let unit = (scattered - scattered.floor()) * 2.0 - 1.0;
+    1.0 + VELOCITY_MISJUDGED * unit
+}
+
 /// Dónde deja de importar seguir dudando, en metros. Pasado esto la respuesta ya
 /// es la misma —no se sabe dónde está— y un número más grande no dice más.
 pub const TOTAL_LOSS: f32 = 30.0;
@@ -406,6 +421,24 @@ mod tests {
             hidden_by(eyes, target, Vec2::new(25.0, 0.0)),
             0.0,
             "detrás de lo que se mira no se tapa nada"
+        );
+    }
+
+    /// La carrera ajena se juzga mal, siempre igual de mal, y cada uno a su
+    /// manera: si el sesgo cambiara cada tick sería ruido y no un juicio.
+    #[test]
+    fn everybody_misjudges_a_run_their_own_way() {
+        let watcher = PlayerId::home(4);
+        let seen = PlayerId::away(9);
+
+        let judged = misjudged_pace(watcher, Some(seen));
+        assert_eq!(judged, misjudged_pace(watcher, Some(seen)));
+        assert!((judged - 1.0).abs() <= VELOCITY_MISJUDGED);
+        assert_ne!(judged, misjudged_pace(PlayerId::home(5), Some(seen)));
+        assert_ne!(
+            judged,
+            misjudged_pace(watcher, None),
+            "el balón no se juzga como se juzga un cuerpo"
         );
     }
 

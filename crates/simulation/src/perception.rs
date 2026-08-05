@@ -11,12 +11,13 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::prelude::*;
+use std::time::Duration;
 
 use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
     Ball, HIDDEN_BLUR, Looking, MatchTuning, Observation, ObservationMemory, Player, PlayerId,
-    Position, SHOUTED_BLUR, TOTAL_LOSS, Velocity, Vision, can_see, hidden_by,
+    Position, SHOUTED_BLUR, TOTAL_LOSS, Velocity, Vision, can_see, hidden_by, misjudged_pace,
 };
 
 pub struct PerceptionPlugin;
@@ -130,15 +131,21 @@ impl Beliefs {
 /// Solo se grita lo que mejora: nadie avisa de algo más viejo de lo que el otro
 /// ya tiene, y por eso esto no puede empeorar una creencia.
 pub fn hear_the_others(
+    time: Res<Time>,
     tuning: Res<MatchTuning>,
     mut voices: Query<(&Player, &Position, &mut ObservationMemory)>,
     mut said: Local<Vec<(PlayerId, Vec2, Option<Observation>)>>,
 ) {
     let range = tuning.perception.shout_range;
+    let now = time.elapsed();
     said.clear();
+    // Solo habla el que le toca hablar. Los avisos se reparten en el tiempo con
+    // el dorsal, como los barridos, para que no canten los once a la vez ni
+    // haga falta un RNG para decidirlo (§5).
     said.extend(
         voices
             .iter()
+            .filter(|(player, ..)| speaks_now(now, player.id, tuning.perception.shout_interval))
             .map(|(player, position, memory)| (player.id, position.on_pitch(), memory.ball())),
     );
 
@@ -154,6 +161,23 @@ pub fn hear_the_others(
         }
     }
 }
+
+/// Si a este le toca hablar en este tick. Un tick de cada `interval`, y cada
+/// uno el suyo: repartido por dorsal, reproducible y sin estado que guardar.
+fn speaks_now(now: Duration, who: PlayerId, interval: Duration) -> bool {
+    let interval = interval.as_millis();
+    if interval == 0 {
+        return true;
+    }
+    let slot = (who.team.index() * 11 + usize::from(who.shirt.saturating_sub(1))) % 22;
+    let turn = interval * slot as u128 / 22;
+    (now.as_millis() + turn) % interval < TICK_MILLIS
+}
+
+/// Lo que dura un tick, que es la ventana en la que cae un aviso suelto. Va
+/// atado a `SIMULATION_HZ` por un test: una constante duplicada que nadie
+/// comprueba es una mentira esperando su turno.
+const TICK_MILLIS: u128 = 10;
 
 /// Qué aviso vale la pena: el más fresco de los que dicen algo más nuevo de lo
 /// que uno ya sabe, con el precio de haberlo oído en vez de verlo.
@@ -177,6 +201,7 @@ fn worth_hearing(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use football_domain::scenario::SIMULATION_HZ;
     use std::time::Duration;
 
     fn ball_seen_at(seconds: u64, blur: f32) -> Observation {
@@ -204,6 +229,36 @@ mod tests {
         assert!(
             heard.blur > newer.blur,
             "lo oído tenía que valer menos que lo visto"
+        );
+    }
+
+    /// El tick que se supone que dura un tick.
+    #[test]
+    fn the_tick_window_matches_the_simulation_rate() {
+        assert!((1000.0 / SIMULATION_HZ - 10.0).abs() < f64::EPSILON);
+    }
+
+    /// Se habla por turnos y no a la vez: cada uno tiene su momento dentro del
+    /// intervalo, y en un intervalo entero habla todo el mundo una vez.
+    #[test]
+    fn everybody_gets_their_turn_to_speak_and_only_one_tick() {
+        let interval = Duration::from_millis(1500);
+        let who = PlayerId::home(3);
+
+        let turns = (0..150)
+            .map(|tick| Duration::from_millis(tick * 10))
+            .filter(|now| speaks_now(*now, who, interval))
+            .count();
+
+        assert_eq!(turns, 1, "habló {turns} veces en un intervalo");
+        assert_ne!(
+            (0..150)
+                .map(|tick| Duration::from_millis(tick * 10))
+                .position(|now| speaks_now(now, who, interval)),
+            (0..150)
+                .map(|tick| Duration::from_millis(tick * 10))
+                .position(|now| speaks_now(now, PlayerId::home(4), interval)),
+            "dos compañeros hablaban en el mismo tick"
         );
     }
 
@@ -371,7 +426,9 @@ pub fn observe_the_pitch(
                 other.id,
                 Observation {
                     spot: spot + blurred_by(spot, blur),
-                    velocity: velocity.0.truncate(),
+                    // la dirección de la carrera se acierta y el ritmo no, y
+                    // por eso lo que se cree se adelanta o se queda corto
+                    velocity: velocity.0.truncate() * misjudged_pace(watcher.id, Some(other.id)),
                     seen_at: now,
                     blur,
                 },
@@ -390,7 +447,7 @@ pub fn observe_the_pitch(
             // va aparte: aquí solo se dice lo que ya se sabía mal.
             memory.saw_ball(Observation {
                 spot,
-                velocity: momentum,
+                velocity: momentum * misjudged_pace(watcher.id, None),
                 seen_at: now,
                 blur: vision.blur_at(eyes.distance(spot)) + ball_hidden * HIDDEN_BLUR,
             });

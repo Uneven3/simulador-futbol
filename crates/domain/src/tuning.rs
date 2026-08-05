@@ -79,6 +79,9 @@ pub struct PerceptionTuning {
     pub eyes_on_the_ball: f32,
     /// Hasta dónde llega un grito de un compañero, en metros.
     pub shout_range: f32,
+    /// Cada cuánto avisa uno. Un aviso es un hecho suelto y no un canal
+    /// abierto: quien cantara el balón cien veces por segundo sería telepatía.
+    pub shout_interval: Duration,
 }
 
 impl Default for PerceptionTuning {
@@ -106,6 +109,10 @@ impl Default for PerceptionTuning {
             // por encima de un estadio, y del orden de lo que separa a un
             // jugador de sus vecinos de línea.
             shout_range: 20.0,
+            // Sin referencia: es el orden de lo que se tarda en decir algo y
+            // que el otro lo procese, y deja el aviso como lo que es —de vez en
+            // cuando— en vez de un hilo permanente.
+            shout_interval: Duration::from_millis(1500),
         }
     }
 }

@@ -22,7 +22,7 @@ pub use match_state::{
 };
 pub use perception::{
     EXTRAPOLATION_HORIZON, HIDDEN_BLUR, Observation, ObservationMemory, SHADOW_NEEDS_DEPTH,
-    SHOUTED_BLUR, TOTAL_LOSS, Vision, can_see, hidden_by,
+    SHOUTED_BLUR, TOTAL_LOSS, Vision, can_see, hidden_by, misjudged_pace,
 };
 pub use player::{
     Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
