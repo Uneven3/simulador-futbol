@@ -18,6 +18,9 @@ use std::time::Duration;
 /// décimas: muestrear más espaciado mediría otra cosa.
 const SHADOW_SAMPLE: u32 = 10;
 
+/// A qué altura se mira a un cuerpo, igual que en la simulación: al tronco.
+const TORSO_HEIGHT: f32 = 1.2;
+
 pub fn run() {
     let scenario = Scenario::kick_off().for_duration(Duration::from_secs(60));
     let ticks = scenario.ticks();
@@ -151,7 +154,7 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64,
         ball_query
             .iter(world)
             .next()
-            .map(|position| position.on_pitch())
+            .map(|position| (position.on_pitch(), position.0.z))
     };
     let crowd: Vec<(PlayerId, Vec2)> = {
         let mut bodies = world.query::<(&Position, &Player)>();
@@ -175,17 +178,17 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64,
                 continue;
             }
             in_cone += 1;
-            match is_hidden(eyes, *spot, &crowd, watcher.id, Some(*id)) {
+            match is_hidden(eyes, *spot, TORSO_HEIGHT, &crowd, watcher.id, Some(*id)) {
                 hidden if hidden >= 1.0 => shadowed += 1,
                 hidden if hidden > 0.0 => glimpsed += 1,
                 _ => {}
             }
         }
-        if let Some(spot) = ball
+        if let Some((spot, height)) = ball
             && can_see(eyes, looking.0, spot, vision)
         {
             ball_in_cone += 1;
-            if is_hidden(eyes, spot, &crowd, watcher.id, None) >= 1.0 {
+            if is_hidden(eyes, spot, height, &crowd, watcher.id, None) >= 1.0 {
                 ball_shadowed += 1;
             }
         }
@@ -197,6 +200,7 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64,
 fn is_hidden(
     eyes: Vec2,
     target: Vec2,
+    height: f32,
     crowd: &[(PlayerId, Vec2)],
     watcher: PlayerId,
     seen: Option<PlayerId>,
@@ -204,6 +208,6 @@ fn is_hidden(
     crowd
         .iter()
         .filter(|(id, _)| *id != watcher && Some(*id) != seen)
-        .map(|(_, spot)| hidden_by(eyes, target, *spot))
+        .map(|(_, spot)| hidden_by(eyes, target, height, *spot))
         .fold(0.0, f32::max)
 }

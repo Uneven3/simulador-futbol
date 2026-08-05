@@ -108,6 +108,14 @@ impl Player {
 /// compartir, y lo que uno puede interponer entre un rival y el balón.
 pub const PLAYER_BODY_RADIUS: f32 = 0.35;
 
+/// Lo que mide un cuerpo, en metros, mientras la antropometría no sea un dato
+/// por jugador. Es lo que tapa: por encima de esto la vista pasa.
+pub const PLAYER_HEIGHT: f32 = 1.8;
+
+/// A qué altura están los ojos. Un poco por debajo de la coronilla, que es la
+/// diferencia entre ver por encima del que tienes delante y no verlo.
+pub const EYE_HEIGHT: f32 = PLAYER_HEIGHT * 0.94;
+
 /// What a player is physically capable of: stable for the match.
 ///
 /// Admission rule (`AHORA.md`): an attribute lives here only once a mechanism

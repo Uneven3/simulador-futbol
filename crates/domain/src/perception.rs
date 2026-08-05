@@ -6,7 +6,7 @@
 //! memoria que envejece, y decisiones que leen creencias.
 
 use crate::identity::PlayerId;
-use crate::player::PLAYER_BODY_RADIUS;
+use crate::player::{EYE_HEIGHT, PLAYER_BODY_RADIUS, PLAYER_HEIGHT};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
@@ -279,7 +279,7 @@ pub const HIDDEN_BLUR: f32 = 0.7;
 /// cuerpo a veinte metros no tapa casi nada. Esconder no es borrar —lo que se
 /// deja de ver se queda en la memoria y envejece—, y taparse a medias tampoco:
 /// eso es verlo peor situado, que es lo que ocurre casi siempre en el campo.
-pub fn hidden_by(eyes: Vec2, target: Vec2, blocker: Vec2) -> f32 {
+pub fn hidden_by(eyes: Vec2, target: Vec2, target_height: f32, blocker: Vec2) -> f32 {
     let to_target = target - eyes;
     let distance = to_target.length();
     let Ok(direction) = Dir2::new(to_target) else {
@@ -289,6 +289,12 @@ pub fn hidden_by(eyes: Vec2, target: Vec2, blocker: Vec2) -> f32 {
     let along = to_blocker.dot(*direction);
     // ni a la espalda de quien mira ni junto a lo que taparía
     if along <= 0.0 || along >= distance - SHADOW_NEEDS_DEPTH {
+        return 0.0;
+    }
+    // Un centro no se tapa como un balón raso: la línea de visión sube hacia lo
+    // que vuela, y a la altura del que estorba ya va por encima de su cabeza.
+    let sight_height = EYE_HEIGHT + (target_height - EYE_HEIGHT) * (along / distance);
+    if sight_height > PLAYER_HEIGHT {
         return 0.0;
     }
     // el `max` es tener a alguien encima: la sombra no se dispara al infinito,
@@ -431,13 +437,34 @@ mod tests {
         let eyes = Vec2::ZERO;
         let target = Vec2::new(20.0, 0.0);
 
-        assert_eq!(hidden_by(eyes, target, Vec2::new(10.0, 0.0)), 1.0);
-        assert_eq!(hidden_by(eyes, target, Vec2::new(10.0, 5.0)), 0.0);
-        assert_eq!(hidden_by(eyes, target, Vec2::new(-5.0, 0.0)), 0.0);
+        assert_eq!(hidden_by(eyes, target, 0.0, Vec2::new(10.0, 0.0)), 1.0);
+        assert_eq!(hidden_by(eyes, target, 0.0, Vec2::new(10.0, 5.0)), 0.0);
+        assert_eq!(hidden_by(eyes, target, 0.0, Vec2::new(-5.0, 0.0)), 0.0);
         assert_eq!(
-            hidden_by(eyes, target, Vec2::new(25.0, 0.0)),
+            hidden_by(eyes, target, 0.0, Vec2::new(25.0, 0.0)),
             0.0,
             "detrás de lo que se mira no se tapa nada"
+        );
+    }
+
+    /// Lo que vuela no se tapa: la línea de visión a un centro sube por encima
+    /// de las cabezas que esconderían el mismo balón rodando.
+    #[test]
+    fn a_ball_in_the_air_clears_the_heads_in_the_way() {
+        let eyes = Vec2::ZERO;
+        let target = Vec2::new(20.0, 0.0);
+        let in_the_way = Vec2::new(10.0, 0.0);
+
+        assert_eq!(hidden_by(eyes, target, 0.0, in_the_way), 1.0);
+        assert_eq!(
+            hidden_by(eyes, target, 3.0, in_the_way),
+            0.0,
+            "un balón a tres metros de altura no lo tapa nadie"
+        );
+        assert_eq!(
+            hidden_by(eyes, target, PLAYER_HEIGHT, Vec2::new(17.0, 0.0)),
+            1.0,
+            "y a la altura de una cabeza no se salva a nadie: eso sigue tapado"
         );
     }
 
@@ -491,9 +518,19 @@ mod tests {
         let target = Vec2::new(20.0, 0.0);
         let shadow = PLAYER_BODY_RADIUS * 2.0; // el bloqueador está a media vía
 
-        let core = hidden_by(eyes, target, Vec2::new(10.0, shadow * SHADOW_CORE * 0.5));
-        let penumbra = hidden_by(eyes, target, Vec2::new(10.0, shadow));
-        let clear = hidden_by(eyes, target, Vec2::new(10.0, shadow * SHADOW_EDGE * 1.1));
+        let core = hidden_by(
+            eyes,
+            target,
+            0.0,
+            Vec2::new(10.0, shadow * SHADOW_CORE * 0.5),
+        );
+        let penumbra = hidden_by(eyes, target, 0.0, Vec2::new(10.0, shadow));
+        let clear = hidden_by(
+            eyes,
+            target,
+            0.0,
+            Vec2::new(10.0, shadow * SHADOW_EDGE * 1.1),
+        );
 
         assert_eq!(core, 1.0);
         assert!(
@@ -511,8 +548,8 @@ mod tests {
         let target = Vec2::new(30.0, 0.0);
         let aside = 1.5;
 
-        assert_eq!(hidden_by(eyes, target, Vec2::new(2.0, aside)), 1.0);
-        assert_eq!(hidden_by(eyes, target, Vec2::new(25.0, aside)), 0.0);
+        assert_eq!(hidden_by(eyes, target, 0.0, Vec2::new(2.0, aside)), 1.0);
+        assert_eq!(hidden_by(eyes, target, 0.0, Vec2::new(25.0, aside)), 0.0);
     }
 
     /// Nadie tapa lo que lleva al lado: el balón que uno conduce se ve junto a
@@ -523,11 +560,12 @@ mod tests {
         let carrier = Vec2::new(15.0, 0.0);
         let ball_at_his_feet = carrier + Vec2::new(0.4, 0.0);
 
-        assert_eq!(hidden_by(eyes, ball_at_his_feet, carrier), 0.0);
+        assert_eq!(hidden_by(eyes, ball_at_his_feet, 0.0, carrier), 0.0);
         assert_eq!(
             hidden_by(
                 eyes,
                 carrier + Vec2::new(SHADOW_NEEDS_DEPTH + 1.0, 0.0),
+                0.0,
                 carrier
             ),
             1.0

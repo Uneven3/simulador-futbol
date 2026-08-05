@@ -135,19 +135,31 @@ pub fn hear_the_others(
     tuning: Res<MatchTuning>,
     mut voices: Query<(&Player, &Position, &mut ObservationMemory)>,
     mut said: Local<Vec<(PlayerId, Vec2, Option<Observation>)>>,
+    mut warned: Local<Vec<(PlayerId, Vec2, PlayerId, Observation)>>,
 ) {
     let range = tuning.perception.shout_range;
     let now = time.elapsed();
     said.clear();
+    warned.clear();
     // Solo habla el que le toca hablar. Los avisos se reparten en el tiempo con
     // el dorsal, como los barridos, para que no canten los once a la vez ni
     // haga falta un RNG para decidirlo (§5).
-    said.extend(
-        voices
-            .iter()
-            .filter(|(player, ..)| speaks_now(now, player.id, tuning.perception.shout_interval))
-            .map(|(player, position, memory)| (player.id, position.on_pitch(), memory.ball())),
-    );
+    for (player, position, memory) in voices
+        .iter()
+        .filter(|(player, ..)| speaks_now(now, player.id, tuning.perception.shout_interval))
+    {
+        let mouth = position.on_pitch();
+        said.push((player.id, mouth, memory.ball()));
+        // «¡hombre!»: lo que se canta de un rival es de los rivales que uno ve,
+        // y solo importa a quien lo tiene encima, así que el aviso viaja con el
+        // nombre de a quién le va dirigido, no a voces.
+        warned.extend(
+            memory
+                .everyone()
+                .filter(|(id, _)| id.team != player.id.team)
+                .map(|(id, seen)| (player.id, mouth, id, seen)),
+        );
+    }
 
     for (player, position, mut memory) in voices.iter_mut() {
         let ears = position.on_pitch();
@@ -159,8 +171,37 @@ pub fn hear_the_others(
         if let Some(shouted) = worth_hearing(memory.ball(), within_earshot) {
             memory.saw_ball(shouted);
         }
+
+        // De los rivales solo se avisa del que se le viene encima: cantar los
+        // once sería pasarle el campo entero, y en el campo se grita «¡hombre!»
+        // por el que llega, no por los demás.
+        let closing_in = warned
+            .iter()
+            .filter(|(who, mouth, about, seen)| {
+                *who != player.id
+                    && about.team != player.id.team
+                    && mouth.distance(ears) <= range
+                    && seen.spot.distance(ears) <= WARNING_DISTANCE
+            })
+            .min_by(|left, right| {
+                left.3
+                    .spot
+                    .distance(ears)
+                    .total_cmp(&right.3.spot.distance(ears))
+            })
+            .map(|(_, _, about, seen)| (*about, *seen));
+
+        if let Some((about, seen)) = closing_in
+            && let Some(shouted) = worth_hearing(memory.of(about), [seen].into_iter())
+        {
+            memory.saw(about, shouted);
+        }
     }
 }
+
+/// A qué distancia de uno un rival deja de ser un dato y pasa a ser un aviso.
+/// Por dentro de esto es el que llega, y es del único del que se grita.
+const WARNING_DISTANCE: f32 = 8.0;
 
 /// Si a este le toca hablar en este tick. Un tick de cada `interval`, y cada
 /// uno el suyo: repartido por dorsal, reproducible y sin estado que guardar.
@@ -173,6 +214,10 @@ fn speaks_now(now: Duration, who: PlayerId, interval: Duration) -> bool {
     let turn = interval * slot as u128 / 22;
     (now.as_millis() + turn) % interval < TICK_MILLIS
 }
+
+/// A qué altura se mira a un cuerpo: al tronco, que es lo que se busca para
+/// saber dónde está y hacia dónde va.
+const TORSO_HEIGHT: f32 = 1.2;
 
 /// Lo que dura un tick, que es la ventana en la que cae un aviso suelto. Va
 /// atado a `SIMULATION_HZ` por un test: una constante duplicada que nadie
@@ -357,6 +402,7 @@ fn blurred_by(spot: Vec2, blur: f32) -> Vec2 {
 fn hidden_behind_somebody(
     eyes: Vec2,
     target: Vec2,
+    height: f32,
     crowd: &[(PlayerId, Vec2)],
     watcher: PlayerId,
     seen: Option<PlayerId>,
@@ -364,7 +410,7 @@ fn hidden_behind_somebody(
     crowd
         .iter()
         .filter(|(id, _)| *id != watcher && Some(*id) != seen)
-        .map(|(_, spot)| hidden_by(eyes, target, *spot))
+        .map(|(_, spot)| hidden_by(eyes, target, height, *spot))
         .fold(0.0, f32::max)
 }
 
@@ -388,10 +434,12 @@ pub fn observe_the_pitch(
     mut crowd: Local<Vec<(PlayerId, Vec2)>>,
 ) {
     let now = time.elapsed();
+    // la altura del balón entra en lo que se ve: un centro pasa por encima de
+    // las cabezas que taparían un balón raso
     let ball = ball_query
         .single()
         .ok()
-        .map(|(position, ball)| (position.on_pitch(), ball.momentum.truncate()));
+        .map(|(position, ball)| (position.on_pitch(), position.0.z, ball.momentum.truncate()));
 
     crowd.clear();
     crowd.extend(
@@ -415,7 +463,16 @@ pub fn observe_the_pitch(
             }
             // ver medio cuerpo por encima de un hombro es verlo, y es situarlo
             // peor: solo desaparece quien está tapado del todo
-            let hidden = hidden_behind_somebody(eyes, spot, &crowd, watcher.id, Some(other.id));
+            // un cuerpo se mira al tronco, y a esa altura no hay cabeza que
+            // salvar: lo que vuela es el balón y no la gente
+            let hidden = hidden_behind_somebody(
+                eyes,
+                spot,
+                TORSO_HEIGHT,
+                &crowd,
+                watcher.id,
+                Some(other.id),
+            );
             if hidden >= 1.0 {
                 continue;
             }
@@ -435,10 +492,10 @@ pub fn observe_the_pitch(
             );
         }
 
-        let ball_hidden = ball.map_or(1.0, |(spot, _)| {
-            hidden_behind_somebody(eyes, spot, &crowd, watcher.id, None)
+        let ball_hidden = ball.map_or(1.0, |(spot, height, _)| {
+            hidden_behind_somebody(eyes, spot, height, &crowd, watcher.id, None)
         });
-        if let Some((spot, momentum)) = ball
+        if let Some((spot, _, momentum)) = ball
             && can_see(eyes, looking.0, spot, vision)
             && ball_hidden < 1.0
         {
