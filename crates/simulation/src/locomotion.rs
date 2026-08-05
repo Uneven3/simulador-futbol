@@ -13,7 +13,7 @@ use bevy_time::prelude::*;
 
 use football_domain::tuning::{StaminaTuning, TurningTuning};
 use football_domain::{
-    Attributes, Facing, FatigueState, Gaze, Looking, MatchTuning, MovementIntent, Position,
+    Attributes, Facing, FatigueState, Gaze, Looking, MatchTuning, MovementIntent, Position, Stance,
     Velocity,
 };
 
@@ -150,6 +150,7 @@ type DrivenBody = (
     &'static MovementIntent,
     &'static Attributes,
     &'static Gaze,
+    &'static Stance,
     &'static Position,
     &'static mut FatigueState,
     &'static mut Facing,
@@ -162,8 +163,17 @@ type DrivenBody = (
 pub fn drive_bodies(time: Res<Time>, tuning: Res<MatchTuning>, mut bodies: Query<DrivenBody>) {
     let dt = time.delta_secs();
     let (stamina_tuning, turning) = (&tuning.stamina, &tuning.turning);
-    for (intent, body, gaze, position, mut fatigue, mut facing, mut looking, mut velocity) in
-        bodies.iter_mut()
+    for (
+        intent,
+        body,
+        gaze,
+        stance,
+        position,
+        mut fatigue,
+        mut facing,
+        mut looking,
+        mut velocity,
+    ) in bodies.iter_mut()
     {
         let running = velocity.0.truncate();
         let speed = running.length();
@@ -180,18 +190,18 @@ pub fn drive_bodies(time: Res<Time>, tuning: Res<MatchTuning>, mut bodies: Query
 
         // Se mira lo que se quiso mirar, y si no se quiso nada, hacia donde se
         // va: un cuerpo empujado de lado no gira la cabeza por eso.
-        let wanted = gaze
-            .0
-            .map(|spot| spot - position.on_pitch())
-            .unwrap_or(asked);
-        let wanted = Dir2::new(wanted).unwrap_or(looking.0);
-        // El cuerpo encara la carrera y no la mirada: para eso está el cuello.
-        // Solo se gira cuando lo que se quiere ver no le cabe, y entonces paga
-        // el peaje de correr hacia donde no se mira.
+        let towards = |spot: Vec2| spot - position.on_pitch();
+        let wanted = Dir2::new(gaze.0.map_or(asked, towards)).unwrap_or(looking.0);
+
+        // El cuerpo se planta donde la decisión dijo —el balón, casi siempre— y
+        // ahí sigue pagando el peaje de correr hacia otro lado. Lo que no lo
+        // arrastra es el barrido: para eso está el cuello, y solo cuando la
+        // mirada no le cabe se gira el torso a acompañarla.
+        let planted = Dir2::new(stance.0.map_or(asked, towards)).unwrap_or(facing.0);
         let body_target = if facing.0.angle_to(*wanted).abs() > turning.neck_range {
             wanted
         } else {
-            Dir2::new(asked).unwrap_or(facing.0)
+            planted
         };
         facing.0 = turned(facing.0, body_target, speed, body, turning, dt);
         looking.0 = turned_head(looking.0, wanted, facing.0, turning, dt);

@@ -9,7 +9,8 @@ use crate::perception::Beliefs;
 use crate::team_tactics::{PlayerReading, SPRINT_VELOCITY};
 use football_domain::tuning::PerceptionTuning;
 use football_domain::{
-    Gaze, MatchState, MatchTuning, MovementIntent, Player, PlayerId, Position, Vision, can_see,
+    Gaze, MatchState, MatchTuning, MovementIntent, Player, PlayerId, Position, Stance, Vision,
+    can_see,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,7 +108,17 @@ struct AttentionSituation<'a> {
     vision: &'a Vision,
 }
 
-fn attention_target(situation: AttentionSituation<'_>, tuning: &PerceptionTuning) -> Option<Vec2> {
+/// Hacia dónde se planta el cuerpo. Es la atención sostenida y no la del tick:
+/// el balón mientras no se esprinte, porque un barrido de cuatro décimas no
+/// merece girar el torso —y girarlo es lo que cuesta velocidad—.
+fn stance_target(situation: &AttentionSituation<'_>) -> Option<Vec2> {
+    if situation.desired_velocity.length() >= SPRINT_VELOCITY {
+        return None;
+    }
+    situation.ball
+}
+
+fn attention_target(situation: &AttentionSituation<'_>, tuning: &PerceptionTuning) -> Option<Vec2> {
     let ball = situation.ball?;
     if situation.possesses_ball {
         return Some(ball);
@@ -146,23 +157,29 @@ pub(crate) fn direct_visual_attention(
     match_state: Res<MatchState>,
     tuning: Res<MatchTuning>,
     beliefs: Res<Beliefs>,
-    mut players: Query<(&Position, &Player, &Vision, &MovementIntent, &mut Gaze)>,
+    mut players: Query<(
+        &Position,
+        &Player,
+        &Vision,
+        &MovementIntent,
+        &mut Gaze,
+        &mut Stance,
+    )>,
 ) {
-    for (position, player, vision, intent, mut gaze) in players.iter_mut() {
-        gaze.0 = attention_target(
-            AttentionSituation {
-                now: time.elapsed(),
-                who: player.id,
-                possesses_ball: match_state.possession_player == Some(player.id),
-                desired_velocity: intent.0.truncate(),
-                eyes: position.on_pitch(),
-                ball: beliefs.ball_of(player.id),
-                ball_doubt: beliefs.ball_uncertainty_of(player.id),
-                around: beliefs.of(player.id),
-                vision,
-            },
-            &tuning.perception,
-        );
+    for (position, player, vision, intent, mut gaze, mut stance) in players.iter_mut() {
+        let situation = AttentionSituation {
+            now: time.elapsed(),
+            who: player.id,
+            possesses_ball: match_state.possession_player == Some(player.id),
+            desired_velocity: intent.0.truncate(),
+            eyes: position.on_pitch(),
+            ball: beliefs.ball_of(player.id),
+            ball_doubt: beliefs.ball_uncertainty_of(player.id),
+            around: beliefs.of(player.id),
+            vision,
+        };
+        gaze.0 = attention_target(&situation, &tuning.perception);
+        stance.0 = stance_target(&situation);
     }
 }
 
@@ -277,7 +294,7 @@ mod tests {
 
         assert_eq!(
             attention_target(
-                AttentionSituation {
+                &AttentionSituation {
                     possesses_ball: true,
                     ..scanning_at(0.0)
                 },
@@ -285,15 +302,20 @@ mod tests {
             ),
             Some(ball)
         );
+        let sprinting = AttentionSituation {
+            desired_velocity: Vec2::X * SPRINT_VELOCITY,
+            ..scanning_at(0.0)
+        };
+        assert_eq!(attention_target(&sprinting, &tuning), None);
         assert_eq!(
-            attention_target(
-                AttentionSituation {
-                    desired_velocity: Vec2::X * SPRINT_VELOCITY,
-                    ..scanning_at(0.0)
-                },
-                &tuning,
-            ),
-            None
+            stance_target(&sprinting),
+            None,
+            "quien esprinta se planta hacia donde corre"
+        );
+        assert_eq!(
+            stance_target(&scanning_at(0.0)),
+            Some(ball),
+            "y quien no, hacia el balón, aunque este tick esté barriendo"
         );
     }
 
@@ -304,11 +326,11 @@ mod tests {
         let tuning = PerceptionTuning::default();
         let ball = Vec2::X * 10.0;
 
-        let scanning = attention_target(scanning_at(0.0), &tuning).expect("hay balón que mirar");
+        let scanning = attention_target(&scanning_at(0.0), &tuning).expect("hay balón que mirar");
         assert_ne!(scanning, ball, "con el balón situado, este tick barre");
 
         assert_eq!(
-            attention_target(scanning_at(tuning.lost_ball_doubt), &tuning),
+            attention_target(&scanning_at(tuning.lost_ball_doubt), &tuning),
             Some(ball)
         );
     }

@@ -29,5 +29,5 @@ pub use player::{
     PlayingPosition, TacticalRole,
 };
 pub use scenario::{Scenario, ScenarioOutcome};
-pub use spatial::{Facing, Gaze, Looking, MovementIntent, Position, Velocity};
+pub use spatial::{Facing, Gaze, Looking, MovementIntent, Position, Stance, Velocity};
 pub use tuning::{MatchTuning, TuningVersion};

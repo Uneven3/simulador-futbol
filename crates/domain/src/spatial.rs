@@ -47,6 +47,14 @@ impl Default for Looking {
     }
 }
 
+/// Hacia dónde se planta el cuerpo, que no es a dónde se mira.
+///
+/// El barrido va y vuelve en cuatro décimas y el cuerpo no lo sigue: lo que
+/// encara es lo sostenido —el balón, casi siempre—, y de ahí sale el peaje de
+/// correr hacia otro lado. `None` es plantarse hacia donde se corre.
+#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
+pub struct Stance(pub Option<Vec2>);
+
 /// El punto que un cuerpo quiere mirar, si quiere mirar alguno.
 ///
 /// Lo escribe quien decide y lo obedece el motor: la cabeza si le llega el
