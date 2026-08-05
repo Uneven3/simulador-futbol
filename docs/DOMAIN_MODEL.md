@@ -66,9 +66,12 @@ inicial, semilla, ventana y afirmaciones—, `Expectations` lo que debe pasar y
 Nombres que aún no existen, con el MVP que los trae, para que el día que
 aparezcan no se inventen dos veces:
 
-- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria real, y
-  quien la persigue la persigue desviada por lo que cree. Falta que cada uno
-  prediga la suya, y que taparse sea situar peor y no dejar de ver.
+- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria real y
+  falta que cada uno prediga la suya. `Senses` traerá lo que separa a un jugador
+  de otro —reacción, cuello, barrido, oído— como factores sobre la referencia de
+  `MatchTuning`, que sigue siendo lo versionado; `Judgement`, los sesgos de
+  juicio, absolutos porque su media es cero. Cómo funciona ver no es de nadie y
+  no será atributo.
 - **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez de
   un solo instante de contacto.
 - **Táctica (MVP 5):** `TacticalPlan`, `TacticalResponsibility`,

@@ -17,9 +17,10 @@ comparable está en `measurements/envelope.csv`.
 
 ## Empezar aquí
 
-1. **Los sensores son iguales para los veintidós.** Vista, cuello, reacción,
-   atención y los sesgos de juicio ya tienen mecanismo y unidad: les falta ser
-   un atributo por jugador, que es lo que hará que dejen de ser clones.
+1. **Los sensores son iguales para los veintidós**, con el mapa ya acordado:
+   `Judgement` primero —quita los hashes de sesgo—, `Senses` después, con los
+   valores desde la semilla del escenario y **en espejo por dorsal**, para que
+   los equipos sigan siendo iguales y la simetría aguante como invariante.
 2. **La identidad no se observa**: al ver a alguien se sabe quién es, su rol y
    su casilla, porque salen del registro y no de la observación.
 3. **El ritmo de gol es lo único que no se mueve con la percepción** (9,9 por 90
@@ -50,13 +51,6 @@ Ausencias conocidas, no descubrimientos pendientes:
 - **Allocations por tick** (ley 12): 18 `collect()`/`vec!` entre
   `player_decisions`, `team_tactics` y `player_movement`. Importa para MVP 6.
   Y **lo visual es pobre**: el HUD sin fondo, y no hay meshes de portería.
-
-## Atributos de jugador
-
-**Uno entra cuando tiene mecanismo que lo lee, unidad real y referencia que lo
-calibra.** Están los motores y los perceptivos —campo visual, atención, reacción
-y cuello—, iguales para los veintidós y con dónde diferenciarse; faltan los
-tácticos de MVP 5.
 
 ## Restricciones
 
