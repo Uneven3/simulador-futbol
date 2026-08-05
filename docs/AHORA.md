@@ -5,10 +5,10 @@ las cifras en `measurements/`. **Techo: 40 líneas hasta la deuda declarada.**
 
 ## Objetivo activo
 
-**MVP 4 — Que decidan con lo que ven.** Puestas las cuatro piezas del orden
-acordado —forma del dato, oclusión, latencia y corte decisión/contacto— y el
-cuello, que es lo que las hace no mentir: la verdad del mundo ya no entra en
-ninguna decisión de movimiento.
+**MVP 4 — Que decidan con lo que ven.** Puestos todos los sensores: cono sobre
+cuello, oclusión con penumbra y altura, latencia, oído —balón y «¡hombre!»—,
+error de posición, de velocidad ajena y de uno mismo, y el corte
+decisión/contacto. La verdad del mundo no entra en ninguna decisión.
 
 **Cómo se valida ahora:** mirando, y con los tests de función pura, que cuestan
 cero. La envolvente sigue suspendida como rutina —alarma, no diagnóstico—, pero
@@ -17,11 +17,12 @@ comparable está en `measurements/envelope.csv`.
 
 ## Empezar aquí
 
-1. **Sensores que el fútbol tiene y esto no**: la altura —se percibe todo en
-   planta, y un centro se tapa igual que un balón raso—, la identidad de lo que
-   se ve, la velocidad ajena, que se juzga exacta, y el propio cuerpo: nadie se
-   equivoca al calcular si llega. El oído solo canta el balón; falta el «hombre».
-2. **El ritmo de gol es lo único que no se mueve con la percepción** (9,0 por 90
+1. **Los sensores son iguales para los veintidós.** Vista, cuello, reacción,
+   atención y los sesgos de juicio ya tienen mecanismo y unidad: les falta ser
+   un atributo por jugador, que es lo que hará que dejen de ser clones.
+2. **La identidad no se observa**: al ver a alguien se sabe quién es, su rol y
+   su casilla, porque salen del registro y no de la observación.
+3. **El ritmo de gol es lo único que no se mueve con la percepción** (9,9 por 90
    contra los 2,7 reales, desde 17,1 antes de MVP 4). Es la deuda de abajo y
    espera a que se pueda calibrar, que es un hito propio.
 
@@ -29,9 +30,9 @@ comparable está en `measurements/envelope.csv`.
 
 Ausencias conocidas, no descubrimientos pendientes:
 
-- **Demasiados tiros son gol** (real, uno de cada diez), y de ahí un ritmo de
-  gol que no puede presentarse como predicción. No es que el atacante llegue
-  solo —el rival está a 2,2 m y eso nunca ha cambiado—: es lo que hace.
+- **Demasiados tiros son gol** (real, uno de cada diez), y de ahí un ritmo de gol
+  que no es una predicción. No es que el atacante llegue solo —el rival está a
+  2,2 m y nunca ha cambiado—: es lo que hace.
 - **Las faltas se quedan cortas** contra las ~22 reales, y no se tocan hasta que
   haya protección del balón: el número que hoy cuadre volvería a descuadrar. **La
   simetría** solo se afirma sobre la posesión: doce partidos no dan más.

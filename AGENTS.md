@@ -45,12 +45,13 @@ La herramienta detrás de las tres primeras es `crates/simulation/src/envelope.r
 
 ## Observar una corrida
 
-Con ventana, `F1` abre el hub de depuración (overlays y canales, todo apagado
-por defecto, así que un log vacío no es síntoma de nada). Headless,
-`retaining_facts` + `MatchLedger` + `render_pitch` (`docs/DIAGNOSTICS.md`).
+Con ventana, `F1` abre el hub (overlays y canales, apagados por defecto: un log
+vacío no es síntoma). Headless, `retaining_facts` + `MatchLedger` +
+`render_pitch` (`docs/DIAGNOSTICS.md`).
 
-La ventana se arranca con `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball`
-y se captura sin intervención humana:
+Se arranca con `env -u WAYLAND_DISPLAY ./target/debug/gameplayfootball` y se
+captura sin intervención humana; `GF_OVERLAYS=vision` (o `-legs` para apagar)
+enciende overlays al arrancar, que es la única forma de verlos sin teclado:
 
 ```bash
 DISPLAY=:1 xprop -root _NET_CLIENT_LIST        # → id de la ventana

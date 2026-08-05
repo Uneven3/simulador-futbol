@@ -55,7 +55,12 @@ pub struct OverlaySettings {
 
 impl Default for OverlaySettings {
     fn default() -> Self {
-        Self {
+        // Lo que pida `GF_OVERLAYS`, para poder capturar una corrida sin manos
+        // (`AGENTS.md`): un nombre por overlay, separados por comas, y `-nombre`
+        // para apagar uno de los que vienen puestos. No cambia el arranque
+        // normal —el hub sigue siendo la vía— y nada se enciende por defecto.
+        let asked = std::env::var("GF_OVERLAYS").unwrap_or_default();
+        let mut settings = Self {
             velocities: true,
             ball_future: true,
             possession: true,
@@ -64,7 +69,28 @@ impl Default for OverlaySettings {
             // apagado: veintidós conos y veintidós telarañas tapan el fútbol
             vision: false,
             legs: true,
+        };
+        for name in asked
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
+            let (on, name) = match name.strip_prefix('-') {
+                Some(off) => (false, off),
+                None => (true, name),
+            };
+            match name {
+                "velocities" => settings.velocities = on,
+                "ball_future" => settings.ball_future = on,
+                "possession" => settings.possession = on,
+                "offside" => settings.offside = on,
+                "restart_spot" => settings.restart_spot = on,
+                "vision" => settings.vision = on,
+                "legs" => settings.legs = on,
+                _ => {}
+            }
         }
+        settings
     }
 }
 
