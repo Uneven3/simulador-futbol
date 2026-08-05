@@ -168,6 +168,10 @@ pub struct PlayerReading {
     pub pos: Vec2,
     pub vel: Vec2,
     pub formation_slot: Vec2,
+    /// Cuántos metros puede estar equivocado `pos`, según quien lo cree. Cero es
+    /// «lo estoy viendo» —y es lo que vale para quien lee la verdad del mundo en
+    /// vez de una creencia—, y crece con lo que hace que uno mire.
+    pub doubt: f32,
 }
 
 impl PlayerReading {
@@ -249,6 +253,9 @@ pub fn update_team_tactics(
             pos: position.on_pitch(),
             vel: Vec2::new(v.0.x, v.0.y),
             formation_slot: p.formation_slot,
+            // el bloque de equipo se dibuja sobre el campo real, no sobre lo que
+            // cree nadie: aquí no hay duda que declarar
+            doubt: 0.0,
         })
         .collect();
 

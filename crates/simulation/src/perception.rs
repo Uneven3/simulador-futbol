@@ -162,6 +162,7 @@ pub fn believe_the_pitch(
             pos: position.on_pitch(),
             vel: velocity.0.truncate(),
             formation_slot: player.formation_slot,
+            doubt: 0.0,
         });
         for (seen_id, seen) in memory.everyone() {
             let Some((_, known)) = identities.iter().find(|(id, _)| *id == seen_id) else {
@@ -174,6 +175,7 @@ pub fn believe_the_pitch(
                 pos: seen.projected_to(now),
                 vel: seen.velocity,
                 formation_slot: known.formation_slot,
+                doubt: seen.uncertainty(now),
             });
         }
     }

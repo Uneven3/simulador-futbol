@@ -296,6 +296,8 @@ fn readings_of(touching: &Touching) -> Vec<PlayerReading> {
             pos: position.on_pitch(),
             vel: Vec2::new(v.0.x, v.0.y),
             formation_slot: p.formation_slot,
+            // esto es el mundo resolviendo un contacto, no alguien creyéndoselo
+            doubt: 0.0,
         })
         .collect()
 }

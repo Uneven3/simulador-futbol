@@ -384,6 +384,10 @@ pub struct PassingTuning {
     pub high_pass_min_distance: f32,
     /// Danger added to every high pass: it hangs, and hanging is readable.
     pub high_pass_danger: f32,
+    /// Cuántos metros de duda sobre dónde está un compañero dejan el pase a la
+    /// mitad. El balón va al sitio donde uno cree que está y él está en otro:
+    /// pasar a quien hace rato que no se mira es pasar a un recuerdo.
+    pub doubt_that_halves_odds: f32,
     /// Vertical launch fraction per pass kind (dimensionless, per
     /// `AI_GetAutoPass`), and the pace multiplier that makes the pass ARRIVE
     /// instead of dying at the receiver's feet.
@@ -414,6 +418,9 @@ impl Default for PassingTuning {
             offside_receiver_margin: 0.5,
             high_pass_min_distance: 10.0,
             high_pass_danger: 0.4,
+            // el alcance con el que se atrapa un pase (`receiver_trap_reach`):
+            // dudar eso es que el balón llegue al borde de donde alcanza
+            doubt_that_halves_odds: 1.1,
             short_lift: 0.11,
             short_pace: 1.5,
             long_lift: 0.14,

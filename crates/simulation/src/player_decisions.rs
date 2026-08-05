@@ -207,6 +207,8 @@ pub fn select_player_movement(
             pos: position.on_pitch(),
             vel: Vec2::new(velocity.0.x, velocity.0.y),
             formation_slot: player.formation_slot,
+            // de dónde está uno mismo no se duda: se siente
+            doubt: 0.0,
         };
         let man_marking = player_state.marking;
         let avg_velocity = player_state.recent_speed;
@@ -1279,6 +1281,17 @@ fn free_space(
     1.0 - normalized_clamp(current, 0.0, 2.5)
 }
 
+/// Lo que le queda a un pase por no tener situado al que lo recibe.
+///
+/// El balón va al sitio donde uno cree que está el compañero, y el compañero
+/// está en otro: pasar a quien hace rato que no se mira es pasar a un recuerdo.
+/// Es el primer sitio donde la duda sobre otro cuerpo —y no sobre el balón—
+/// cambia una decisión.
+fn odds_against_doubt(doubt: f32, halving: f32) -> f32 {
+    let halving = halving.max(0.01);
+    halving / (halving + doubt.max(0.0))
+}
+
 /// Port of the player-target `_GetPassingOdds` overload; returns (odds, aim point).
 fn passing_odds_to_player(
     me: &PlayerReading,
@@ -1299,15 +1312,16 @@ fn passing_odds_to_player(
     if kind == PassKind::Long {
         target += Vec2::new(-side * initial_distance * 0.2, 0.0);
     }
+    let odds = passing_odds_to_target(
+        me,
+        target,
+        kind,
+        opponents,
+        ball_velocity_multiplier,
+        passing,
+    );
     (
-        passing_odds_to_target(
-            me,
-            target,
-            kind,
-            opponents,
-            ball_velocity_multiplier,
-            passing,
-        ),
+        odds * odds_against_doubt(mate.doubt, passing.doubt_that_halves_odds),
         target,
     )
 }
@@ -1379,6 +1393,22 @@ fn shot_odds(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use football_domain::TOTAL_LOSS;
+
+    /// Pasar a quien hace rato que no se mira es pasar a un recuerdo: el mismo
+    /// hueco vale menos si el que lo ocupa no está situado.
+    #[test]
+    fn a_pass_to_somebody_you_have_not_placed_is_worth_less() {
+        let halving = 1.1;
+
+        assert!((odds_against_doubt(0.0, halving) - 1.0).abs() < f32::EPSILON);
+        assert!((odds_against_doubt(halving, halving) - 0.5).abs() < 0.001);
+        assert!(odds_against_doubt(10.0, halving) < odds_against_doubt(3.0, halving));
+        assert!(
+            odds_against_doubt(TOTAL_LOSS, halving) > 0.0,
+            "nunca es cero"
+        );
+    }
 
     /// Lo que uno persigue de lejos es su idea del balón, y el último metro es
     /// el balón: sin ese desvanecido, un error de un metro impediría para

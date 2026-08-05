@@ -6,10 +6,10 @@ use bevy_time::prelude::*;
 use std::time::Duration;
 
 use crate::perception::Beliefs;
-use crate::team_tactics::SPRINT_VELOCITY;
+use crate::team_tactics::{PlayerReading, SPRINT_VELOCITY};
 use football_domain::tuning::PerceptionTuning;
 use football_domain::{
-    Gaze, MatchState, MatchTuning, MovementIntent, Player, PlayerId, Position, Vision,
+    Gaze, MatchState, MatchTuning, MovementIntent, Player, PlayerId, Position, Vision, can_see,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +60,39 @@ fn scan_target(eyes: Vec2, ball: Vec2, vision: &Vision, side: ScanSide) -> Optio
     Some(eyes + direction * vision.range)
 }
 
+/// A quién se mira cuando se aparta la vista del balón: al peor situado del
+/// hombro que toca, y no a un punto vacío.
+///
+/// Mirar es ir a buscar lo que falta. Lo que ya se ve mirando el balón no hace
+/// falta buscarlo, y lo lejano importa menos aunque se dude más de él: por eso
+/// la duda se divide por la distancia en vez de mandar sola.
+fn scan_choice(
+    eyes: Vec2,
+    ball: Vec2,
+    vision: &Vision,
+    side: ScanSide,
+    around: &[PlayerReading],
+) -> Option<Vec2> {
+    let towards_ball = Dir2::new(ball - eyes).ok()?;
+    let mut best: Option<(f32, Vec2)> = None;
+    for body in around {
+        let to_body = body.pos - eyes;
+        let Ok(direction) = Dir2::new(to_body) else {
+            continue;
+        };
+        if towards_ball.angle_to(*direction) * side.angle_sign() <= 0.0
+            || can_see(eyes, towards_ball, body.pos, vision)
+        {
+            continue;
+        }
+        let worth = body.doubt / (1.0 + to_body.length() / vision.range);
+        if best.is_none_or(|(known, _)| worth > known) {
+            best = Some((worth, body.pos));
+        }
+    }
+    best.filter(|(worth, _)| *worth > 0.0).map(|(_, spot)| spot)
+}
+
 struct AttentionSituation<'a> {
     now: Duration,
     who: PlayerId,
@@ -69,6 +102,8 @@ struct AttentionSituation<'a> {
     ball: Option<Vec2>,
     /// Cuánto duda de dónde está el balón, en metros.
     ball_doubt: f32,
+    /// El campo tal y como se lo cree, para elegir qué le falta mirar.
+    around: &'a [PlayerReading],
     vision: &'a Vision,
 }
 
@@ -87,7 +122,19 @@ fn attention_target(situation: AttentionSituation<'_>, tuning: &PerceptionTuning
         return Some(ball);
     }
     scan_side_at(situation.now, situation.who, tuning)
-        .and_then(|side| scan_target(situation.eyes, ball, situation.vision, side))
+        .and_then(|side| {
+            // a alguien concreto si hay a quien situar, y si no al hueco: mirar
+            // por mirar sigue valiendo, porque ahí es donde aparece lo que no
+            // se sabe que está
+            scan_choice(
+                situation.eyes,
+                ball,
+                situation.vision,
+                side,
+                situation.around,
+            )
+            .or_else(|| scan_target(situation.eyes, ball, situation.vision, side))
+        })
         .or(Some(ball))
 }
 
@@ -111,6 +158,7 @@ pub(crate) fn direct_visual_attention(
                 eyes: position.on_pitch(),
                 ball: beliefs.ball_of(player.id),
                 ball_doubt: beliefs.ball_uncertainty_of(player.id),
+                around: beliefs.of(player.id),
                 vision,
             },
             &tuning.perception,
@@ -167,8 +215,59 @@ mod tests {
             eyes: Vec2::ZERO,
             ball: Some(Vec2::X * 10.0),
             ball_doubt,
+            around: &[],
             vision: &VISION,
         }
+    }
+
+    fn body_at(shirt: u8, spot: Vec2, doubt: f32) -> PlayerReading {
+        PlayerReading {
+            id: PlayerId::home(shirt),
+            playing_position: football_domain::PlayingPosition::CentreMidfielder,
+            role: football_domain::TacticalRole::Linking,
+            pos: spot,
+            vel: Vec2::ZERO,
+            formation_slot: Vec2::ZERO,
+            doubt,
+        }
+    }
+
+    /// El barrido va a por alguien y no a por un hueco: entre dos que se
+    /// escapan, al peor situado; y lo lejano pesa menos aunque se dude más.
+    #[test]
+    fn a_scan_goes_looking_for_whoever_is_worst_placed() {
+        let eyes = Vec2::ZERO;
+        let ball = Vec2::X * 10.0;
+        let vision = Vision::default();
+        let behind_left = Vec2::new(-6.0, 8.0);
+        let far_behind_left = Vec2::new(-20.0, 26.0);
+
+        let around = [
+            body_at(2, behind_left, 3.0),
+            body_at(3, far_behind_left, 4.0),
+        ];
+        assert_eq!(
+            scan_choice(eyes, ball, &vision, ScanSide::Left, &around),
+            Some(behind_left),
+            "el de al lado con tres metros de duda vale más que el lejano con cuatro"
+        );
+
+        assert_eq!(
+            scan_choice(eyes, ball, &vision, ScanSide::Right, &around),
+            None,
+            "por el otro hombro no hay nadie a quien buscar"
+        );
+        assert_eq!(
+            scan_choice(
+                eyes,
+                ball,
+                &vision,
+                ScanSide::Left,
+                &[body_at(2, behind_left, 0.0)]
+            ),
+            None,
+            "a quien se tiene situado no hace falta buscarlo"
+        );
     }
 
     #[test]
