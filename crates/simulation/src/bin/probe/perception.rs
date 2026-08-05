@@ -3,19 +3,45 @@
 //! A cuánta gente llega a conocer un jugador, cuánto envejece esa información y
 //! cuánto se aparta su balón creído del real cuando deja de mirarlo.
 
+use bevy_ecs::prelude::{With, Without};
+use bevy_math::Vec2;
 use bevy_time::Time;
-use football_domain::{MatchTuning, ObservationMemory, Player, Scenario};
+use football_domain::{
+    Ball, Facing, MatchTuning, ObservationMemory, Player, PlayerId, Position, Scenario, Vision,
+    blocks_the_view, can_see,
+};
 use football_simulation::ScenarioRunner;
 use football_simulation::perception::Beliefs;
 use std::time::Duration;
+
+/// Cada cuántos ticks se pregunta quién estorba a quién. El estorbo dura
+/// décimas: muestrear más espaciado mediría otra cosa.
+const SHADOW_SAMPLE: u32 = 10;
 
 pub fn run() {
     let scenario = Scenario::kick_off().for_duration(Duration::from_secs(60));
     let ticks = scenario.ticks();
     let mut runner = ScenarioRunner::headless(scenario);
 
-    for _ in 0..ticks {
+    // Lo que la corrida no puede decir: cuánto tapa la gente. El error del balón
+    // al final del minuto es una trayectoria, no una medida del mecanismo; esto
+    // se pregunta sobre la geometría de cada instante y no depende de dónde
+    // acabó el partido.
+    let mut in_cone = 0_u64;
+    let mut shadowed = 0_u64;
+    let mut ball_in_cone = 0_u64;
+    let mut ball_shadowed = 0_u64;
+
+    for tick in 0..ticks {
         runner.advance();
+        if tick % SHADOW_SAMPLE != 0 {
+            continue;
+        }
+        let (cone, hidden, ball_cone, ball_hidden) = who_is_in_the_way(runner.world_mut());
+        in_cone += cone;
+        shadowed += hidden;
+        ball_in_cone += ball_cone;
+        ball_shadowed += ball_hidden;
     }
 
     let world = runner.world_mut();
@@ -86,12 +112,21 @@ pub fn run() {
         stale_total / stale_count as f32
     );
 
+    let shadowed_pct = 100.0 * shadowed as f32 / in_cone.max(1) as f32;
+    let ball_shadowed_pct = 100.0 * ball_shadowed as f32 / ball_in_cone.max(1) as f32;
+    println!(
+        "de todo lo que cae dentro del cono, el {shadowed_pct:.0} % está detrás de alguien; \
+         con el balón, el {ball_shadowed_pct:.0} %"
+    );
+
     crate::record(
         "perception",
         &[
             ("error_balon_medio_m", mean_ball_error),
             ("error_balon_peor_m", worst_ball_error),
             ("duda_balon_media_m", mean_ball_doubt),
+            ("tapados_pct", shadowed_pct),
+            ("balon_tapado_pct", ball_shadowed_pct),
             ("companeros_conocidos", known as f32 / people.max(1) as f32),
             (
                 "antiguedad_media_s",
@@ -100,4 +135,64 @@ pub fn run() {
             ("con_el_balon_en_la_cabeza", ball_seen as f32),
         ],
     );
+}
+
+/// Cuántos cuerpos caen dentro de un cono y cuántos de ellos están tapados por
+/// un tercero, sumado sobre los veintidós; y lo mismo con el balón.
+fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64) {
+    let ball = {
+        let mut ball_query = world.query_filtered::<&Position, (With<Ball>, Without<Player>)>();
+        ball_query
+            .iter(world)
+            .next()
+            .map(|position| position.on_pitch())
+    };
+    let crowd: Vec<(PlayerId, Vec2)> = {
+        let mut bodies = world.query::<(&Position, &Player)>();
+        bodies
+            .iter(world)
+            .map(|(position, player)| (player.id, position.on_pitch()))
+            .collect()
+    };
+
+    let mut in_cone = 0;
+    let mut shadowed = 0;
+    let mut ball_in_cone = 0;
+    let mut ball_shadowed = 0;
+
+    let mut watchers = world.query::<(&Position, &Facing, &Player, &Vision)>();
+    for (position, facing, watcher, vision) in watchers.iter(world) {
+        let eyes = position.on_pitch();
+        for (id, spot) in &crowd {
+            if *id == watcher.id || !can_see(eyes, facing.0, *spot, vision) {
+                continue;
+            }
+            in_cone += 1;
+            if is_hidden(eyes, *spot, &crowd, watcher.id, Some(*id)) {
+                shadowed += 1;
+            }
+        }
+        if let Some(spot) = ball
+            && can_see(eyes, facing.0, spot, vision)
+        {
+            ball_in_cone += 1;
+            if is_hidden(eyes, spot, &crowd, watcher.id, None) {
+                ball_shadowed += 1;
+            }
+        }
+    }
+
+    (in_cone, shadowed, ball_in_cone, ball_shadowed)
+}
+
+fn is_hidden(
+    eyes: Vec2,
+    target: Vec2,
+    crowd: &[(PlayerId, Vec2)],
+    watcher: PlayerId,
+    seen: Option<PlayerId>,
+) -> bool {
+    crowd.iter().any(|(id, spot)| {
+        *id != watcher && Some(*id) != seen && blocks_the_view(eyes, target, *spot)
+    })
 }

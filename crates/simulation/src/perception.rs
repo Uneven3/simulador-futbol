@@ -14,7 +14,7 @@ use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
     Ball, Facing, Observation, ObservationMemory, Player, PlayerId, Position, TOTAL_LOSS, Velocity,
-    Vision, can_see,
+    Vision, blocks_the_view, can_see,
 };
 
 pub struct PerceptionPlugin;
@@ -187,6 +187,20 @@ fn blurred_by(spot: Vec2, blur: f32) -> Vec2 {
     Vec2::from_angle(angle - angle.floor()) * blur
 }
 
+/// Si alguno de los otros cuerpos se interpone. Ni quien mira ni lo mirado
+/// cuentan como estorbo: uno no se tapa a sí mismo.
+fn hidden_behind_somebody(
+    eyes: Vec2,
+    target: Vec2,
+    crowd: &[(PlayerId, Vec2)],
+    watcher: PlayerId,
+    seen: Option<PlayerId>,
+) -> bool {
+    crowd.iter().any(|(id, spot)| {
+        *id != watcher && Some(*id) != seen && blocks_the_view(eyes, target, *spot)
+    })
+}
+
 /// Lo que cada jugador ve este tick entra en su memoria; lo que no, se queda
 /// como estaba y envejece solo.
 pub fn observe_the_pitch(
@@ -194,12 +208,22 @@ pub fn observe_the_pitch(
     ball_query: Query<(&Position, &Ball), Without<Player>>,
     bodies: Query<(&Position, &Player, &Velocity), Without<Ball>>,
     mut watchers: Query<(&Position, &Facing, &Player, &Vision, &mut ObservationMemory)>,
+    // quién estorba a quién se pregunta 22 × 21 veces por tick: la plantilla se
+    // recoge una vez en un buffer que se reutiliza, no una por observador (§12)
+    mut crowd: Local<Vec<(PlayerId, Vec2)>>,
 ) {
     let now = time.elapsed();
     let ball = ball_query
         .single()
         .ok()
         .map(|(position, ball)| (position.on_pitch(), ball.momentum.truncate()));
+
+    crowd.clear();
+    crowd.extend(
+        bodies
+            .iter()
+            .map(|(position, player, _)| (player.id, position.on_pitch())),
+    );
 
     for (position, facing, watcher, vision, mut memory) in watchers.iter_mut() {
         let eyes = position.on_pitch();
@@ -209,7 +233,9 @@ pub fn observe_the_pitch(
                 continue;
             }
             let spot = other_position.on_pitch();
-            if !can_see(eyes, facing.0, spot, vision) {
+            if !can_see(eyes, facing.0, spot, vision)
+                || hidden_behind_somebody(eyes, spot, &crowd, watcher.id, Some(other.id))
+            {
                 continue;
             }
             // lo lejano se sitúa a bulto: el desenfoque es determinista y sale
@@ -228,6 +254,7 @@ pub fn observe_the_pitch(
 
         if let Some((spot, momentum)) = ball
             && can_see(eyes, facing.0, spot, vision)
+            && !hidden_behind_somebody(eyes, spot, &crowd, watcher.id, None)
         {
             // El balón se sitúa donde está y se declara con cuánta duda. Meter
             // el desenfoque también en el punto es una fuente de error nueva y

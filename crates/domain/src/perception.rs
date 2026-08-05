@@ -6,6 +6,7 @@
 //! memoria que envejece, y decisiones que leen creencias.
 
 use crate::identity::PlayerId;
+use crate::player::PLAYER_BODY_RADIUS;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
@@ -154,6 +155,38 @@ pub fn can_see(from: Vec2, facing: Dir2, target: Vec2, vision: &Vision) -> bool 
     facing.angle_to(*direction).abs() <= vision.half_angle
 }
 
+/// Cuánta perspectiva hace falta entre dos cuerpos para que uno esconda al otro,
+/// en metros. Nadie tapa lo que lleva al lado: el balón que uno conduce se ve
+/// junto a él, no detrás de él, y sin esto conducir volvería invisible el balón
+/// para los veintiuno restantes.
+pub const SHADOW_NEEDS_DEPTH: f32 = 1.0;
+
+/// Si el cuerpo plantado en `blocker` esconde `target` de quien mira desde
+/// `eyes`.
+///
+/// Es la sombra de un cilindro vista desde un punto, y por eso se ensancha con
+/// la distancia: alguien pegado a uno tapa un sector enorme del campo y el mismo
+/// cuerpo a veinte metros no tapa casi nada. Esconder no es borrar —lo que se
+/// deja de ver se queda en la memoria y envejece—, que es lo que impide que un
+/// cruce delante de los ojos evapore a un compañero.
+pub fn blocks_the_view(eyes: Vec2, target: Vec2, blocker: Vec2) -> bool {
+    let to_target = target - eyes;
+    let distance = to_target.length();
+    let Ok(direction) = Dir2::new(to_target) else {
+        return false;
+    };
+    let to_blocker = blocker - eyes;
+    let along = to_blocker.dot(*direction);
+    // ni a la espalda de quien mira ni junto a lo que taparía
+    if along <= 0.0 || along >= distance - SHADOW_NEEDS_DEPTH {
+        return false;
+    }
+    let aside = to_blocker.perp_dot(*direction).abs();
+    // el `max` es tener a alguien encima: la sombra no se dispara al infinito,
+    // se queda en tapar todo lo que hay detrás de él
+    aside <= PLAYER_BODY_RADIUS * distance / along.max(PLAYER_BODY_RADIUS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,6 +253,50 @@ mod tests {
         assert_eq!(seen.projected_to(horizon), seen.projected_to(later));
         assert!(seen.uncertainty(later) > seen.uncertainty(horizon));
         assert!(seen.uncertainty(Duration::from_secs(300)) <= TOTAL_LOSS);
+    }
+
+    /// Un cuerpo en medio esconde lo que hay detrás, y solo lo que hay detrás:
+    /// ni lo que está a su lado, ni lo que está más cerca que él.
+    #[test]
+    fn a_body_in_the_way_hides_what_is_behind_it() {
+        let eyes = Vec2::ZERO;
+        let target = Vec2::new(20.0, 0.0);
+
+        assert!(blocks_the_view(eyes, target, Vec2::new(10.0, 0.0)));
+        assert!(!blocks_the_view(eyes, target, Vec2::new(10.0, 5.0)));
+        assert!(!blocks_the_view(eyes, target, Vec2::new(-5.0, 0.0)));
+        assert!(
+            !blocks_the_view(eyes, target, Vec2::new(25.0, 0.0)),
+            "detrás de lo que se mira no se tapa nada"
+        );
+    }
+
+    /// La sombra se ensancha con la distancia: el mismo cuerpo tapa un sector
+    /// enorme desde cerca de los ojos y casi nada desde lejos.
+    #[test]
+    fn the_shadow_widens_with_distance() {
+        let eyes = Vec2::ZERO;
+        let target = Vec2::new(30.0, 0.0);
+        let aside = 1.5;
+
+        assert!(blocks_the_view(eyes, target, Vec2::new(2.0, aside)));
+        assert!(!blocks_the_view(eyes, target, Vec2::new(25.0, aside)));
+    }
+
+    /// Nadie tapa lo que lleva al lado: el balón que uno conduce se ve junto a
+    /// él, o conducir dejaría el balón invisible para los otros veintiuno.
+    #[test]
+    fn nobody_hides_what_they_carry() {
+        let eyes = Vec2::ZERO;
+        let carrier = Vec2::new(15.0, 0.0);
+        let ball_at_his_feet = carrier + Vec2::new(0.4, 0.0);
+
+        assert!(!blocks_the_view(eyes, ball_at_his_feet, carrier));
+        assert!(blocks_the_view(
+            eyes,
+            carrier + Vec2::new(SHADOW_NEEDS_DEPTH + 1.0, 0.0),
+            carrier
+        ));
     }
 
     /// Lo que se falló al verlo no se olvida, y lo que corre se escapa más

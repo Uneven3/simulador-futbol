@@ -28,3 +28,17 @@ corrida,sha,sonda,metrica,valor
 2026-08-04T21:53:20,a5d1489,perception,companeros_conocidos,14.727
 2026-08-04T21:53:20,a5d1489,perception,antiguedad_media_s,7.532
 2026-08-04T21:53:20,a5d1489,perception,con_el_balon_en_la_cabeza,20.000
+2026-08-05T05:02:32,578a208,perception,error_balon_medio_m,11.843
+2026-08-05T05:02:32,578a208,perception,error_balon_peor_m,62.903
+2026-08-05T05:02:32,578a208,perception,duda_balon_media_m,8.813
+2026-08-05T05:02:32,578a208,perception,companeros_conocidos,16.364
+2026-08-05T05:02:32,578a208,perception,antiguedad_media_s,13.181
+2026-08-05T05:02:32,578a208,perception,con_el_balon_en_la_cabeza,22.000
+2026-08-05T05:04:49,578a208,perception,error_balon_medio_m,11.843
+2026-08-05T05:04:49,578a208,perception,error_balon_peor_m,62.903
+2026-08-05T05:04:49,578a208,perception,duda_balon_media_m,8.813
+2026-08-05T05:04:49,578a208,perception,tapados_pct,37.117
+2026-08-05T05:04:49,578a208,perception,balon_tapado_pct,33.458
+2026-08-05T05:04:49,578a208,perception,companeros_conocidos,16.364
+2026-08-05T05:04:49,578a208,perception,antiguedad_media_s,13.181
+2026-08-05T05:04:49,578a208,perception,con_el_balon_en_la_cabeza,22.000

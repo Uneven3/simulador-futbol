@@ -21,7 +21,8 @@ pub use match_state::{
     PossessionDesignation, PotentialFoul, SetPiece,
 };
 pub use perception::{
-    EXTRAPOLATION_HORIZON, Observation, ObservationMemory, TOTAL_LOSS, Vision, can_see,
+    EXTRAPOLATION_HORIZON, Observation, ObservationMemory, SHADOW_NEEDS_DEPTH, TOTAL_LOSS, Vision,
+    blocks_the_view, can_see,
 };
 pub use player::{
     Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
