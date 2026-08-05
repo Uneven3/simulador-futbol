@@ -140,6 +140,12 @@ pub struct TurningTuning {
     pub sideways_pace: f32,
     /// Fracción del giro que queda a velocidad punta: girar corriendo cuesta.
     pub turn_at_speed: f32,
+    /// Cuánto puede apartarse la mirada del cuerpo, en radianes. Pasado esto,
+    /// para ver más hay que girarse.
+    pub neck_range: f32,
+    /// Y a qué velocidad gira la cabeza, en radianes por segundo. Que sea mucho
+    /// mayor que `turn_rate` es la mitad del sentido de tener cuello.
+    pub neck_rate: f32,
 }
 
 impl Default for TurningTuning {
@@ -148,6 +154,12 @@ impl Default for TurningTuning {
             backpedal_pace: 0.6,
             sideways_pace: 0.8,
             turn_at_speed: 0.4,
+            // Rotación cervical activa: 80-90° a cada lado en adultos sanos.
+            // Con hombros y tronco se llega más lejos, y eso ya es girarse.
+            neck_range: std::f32::consts::FRAC_PI_2,
+            // Un barrido de cabeza va a cientos de grados por segundo: los 90°
+            // del tope se cubren en poco más de dos décimas.
+            neck_rate: 7.0,
         }
     }
 }

@@ -73,8 +73,8 @@ Parámetros como dato versionado (`MatchTuning`), envolvente sobre semillas y
 propiedades causales que afirman dirección y no valor.
 
 **No calibra, y eso no ha cambiado.** Girar parámetros hasta que salga el ritmo
-de gol real compensaría con números la ausencia de mecanismos. Para qué sirve
-cada instrumento —quién avisa y quién diagnostica— está en `VALIDATION.md`.
+de gol real compensaría con números la ausencia de mecanismos; qué instrumento
+avisa y cuál diagnostica está en `VALIDATION.md`.
 
 ### MVP 2 — Partido reglamentariamente completo
 
@@ -101,12 +101,12 @@ de equipo, y **jugadores que no sean clones** (`AHORA.md`).
 Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
 
-Puestos el cono, la oclusión, el barrido que elige a quién buscar, la memoria
-que envejece, el retardo entre ver y enterarse, el error que crece con la
-distancia y la duda que la creencia declara de sí misma —leída ya por el pase y
-por la mirada—. Y el corte: lo que se persigue es la idea del balón hasta el
-último metro, donde manda el pie. Falta que cada uno prediga su propia
-trayectoria, y que taparse sea situar peor en vez de dejar de ver.
+Puestos el cono sobre un cuello que gira solo, la oclusión, el barrido que elige
+a quién buscar, la memoria que envejece, el retardo entre ver y enterarse, el
+error con la distancia, la duda que la creencia declara de sí misma —leída por
+el pase y la mirada— y el corte: se persigue la idea del balón hasta el último
+metro, donde manda el pie. Falta que cada uno prediga su trayectoria, y que
+taparse sea situar peor en vez de dejar de ver.
 
 ### MVP 5 — Responsabilidad táctica
 
@@ -120,11 +120,10 @@ explicar consecuencias mediante overlays y métricas.
 
 ### Calibración — hito propio, después de MVP 4
 
-Cuando existan portero que ataja, faltas que interrumpen, motor con fatiga y
-percepción parcial, entonces sí: girar `MatchTuning` contra la distribución
-real (~1,35 goles por equipo, casi Poisson) y no contra una media. Antes de
-eso, el instrumental de MVP 1.75 solo sirve para comparar builds y para afirmar
-propiedades, que es lo que se le pide.
+Con portero que ataja, faltas que interrumpen, motor con fatiga y percepción
+parcial —ya todos—, toca girar `MatchTuning` contra la distribución real (~1,35
+goles por equipo, casi Poisson) y no contra una media. Hasta entonces el
+instrumental de MVP 1.75 solo compara builds y afirma propiedades.
 
 ### MVP 7 — Presentación low-poly
 

@@ -20,9 +20,9 @@ impl Position {
     }
 }
 
-/// Hacia dónde mira el cuerpo. La escribe el motor con su propio límite de
-/// giro. `Gaze` pide una dirección distinta de la carrera; mientras no haya una
-/// cabeza separada, apartar la vista también gira el cuerpo.
+/// Hacia dónde apunta el cuerpo, que es lo que decide a qué ritmo se corre. La
+/// escribe el motor con su propio límite de giro, que es lento: un cuerpo
+/// lanzado tarda en encarar otra cosa.
 #[derive(Component, Debug, Clone, Copy, Reflect)]
 pub struct Facing(pub Dir2);
 
@@ -32,10 +32,26 @@ impl Default for Facing {
     }
 }
 
+/// Hacia dónde miran los ojos, que no es hacia dónde apunta el cuerpo: el
+/// cuello da un margen y la cabeza gira dentro de él mucho más rápido. De aquí
+/// cuelga el campo visual, y por eso mirar alrededor ya no cuesta velocidad.
+///
+/// Es a `Gaze` lo que `Velocity` a `MovementIntent`: lo conseguido, no lo
+/// pedido (§3).
+#[derive(Component, Debug, Clone, Copy, Reflect)]
+pub struct Looking(pub Dir2);
+
+impl Default for Looking {
+    fn default() -> Self {
+        Self(Dir2::X)
+    }
+}
+
 /// El punto que un cuerpo quiere mirar, si quiere mirar alguno.
 ///
-/// Lo escribe quien decide y lo obedece el motor dentro de su límite de giro.
-/// `None` es mirar hacia donde se va, que es lo que hace quien esprinta.
+/// Lo escribe quien decide y lo obedece el motor: la cabeza si le llega el
+/// cuello, y el cuerpo entero cuando no. `None` es mirar hacia donde se va, que
+/// es lo que hace quien esprinta.
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]
 pub struct Gaze(pub Option<Vec2>);
 

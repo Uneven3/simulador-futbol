@@ -7,9 +7,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::math::normalized_or_2d;
 use football_domain::{
-    BALL_RADIUS, Ball, BallTouched, Facing, MatchState, OffsideRecords, PitchConfig, PitchSides,
-    Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PotentialFoul, SetPiece, TeamId,
-    Velocity,
+    BALL_RADIUS, Ball, BallTouched, Facing, Looking, MatchState, OffsideRecords, PitchConfig,
+    PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PotentialFoul,
+    SetPiece, TeamId, Velocity,
 };
 use std::time::Duration;
 
@@ -517,21 +517,23 @@ fn cleared_position(
 /// Ticks down the set piece timer. When it expires, places the ball at the
 /// restart position recorded when play was stopped, teleports players to their
 /// base positions and hands the ball to whoever takes the restart.
+/// Un cuerpo al que el árbitro coloca: dónde se le pone, cómo se le orienta
+/// —cuerpo y vista— y lo que hay que dejarle quieto.
+type PlacedBody = (
+    &'static mut Position,
+    &'static mut Facing,
+    &'static mut Looking,
+    &'static mut Velocity,
+    &'static Player,
+    &'static mut PlayerMatchState,
+);
+
 fn referee_set_piece_system(
     mut match_state: ResMut<MatchState>,
     mut records: ResMut<OffsideRecords>,
     time: Res<Time>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
-    mut player_query: Query<
-        (
-            &mut Position,
-            &mut Facing,
-            &mut Velocity,
-            &Player,
-            &mut PlayerMatchState,
-        ),
-        Without<Ball>,
-    >,
+    mut player_query: Query<PlacedBody, Without<Ball>>,
 ) {
     if match_state.set_piece == SetPiece::None {
         return;
@@ -567,7 +569,7 @@ fn referee_set_piece_system(
 
     // Re-form both teams at their base positions, facing the opponent goal
     let sides = match_state.sides;
-    for (mut position, mut facing, mut velocity, player, mut player_state) in
+    for (mut position, mut facing, mut looking, mut velocity, player, mut player_state) in
         player_query.iter_mut()
     {
         let base = base_formation_position(player.id, player.position, sides);
@@ -577,6 +579,9 @@ fn referee_set_piece_system(
         } else {
             Dir2::NEG_X
         };
+        // colocado también va la vista: nadie espera un saque con la cabeza
+        // torcida de la jugada anterior
+        looking.0 = facing.0;
         velocity.0 = Vec3::ZERO;
         player_state.last_touch_at = Duration::ZERO;
     }
@@ -591,7 +596,7 @@ fn referee_set_piece_system(
         let restart_2d = restart_pos.truncate();
         let bodies: Vec<(PlayerId, PlayingPosition, Vec2)> = player_query
             .iter()
-            .map(|(position, _, _, player, _)| (player.id, player.position, position.on_pitch()))
+            .map(|(position, _, _, _, player, _)| (player.id, player.position, position.on_pitch()))
             .collect();
         let taker = select_restart_taker(&bodies, taking_team, prev_set_piece, restart_2d);
         taker_of_the_restart = taker;
@@ -610,12 +615,13 @@ fn referee_set_piece_system(
             OPPONENT_CLEARANCE
         };
 
-        for (mut position, mut facing, _, player, _) in player_query.iter_mut() {
+        for (mut position, mut facing, mut looking, _, player, _) in player_query.iter_mut() {
             if Some(player.id) == taker {
                 let spot = restart_taker_spot(restart_2d, attacking_towards_x, prev_set_piece);
                 *position = Position::from_pitch(spot, 0.0);
                 if let Ok(towards_ball) = Dir2::new(restart_2d - spot) {
                     facing.0 = towards_ball;
+                    looking.0 = towards_ball;
                 }
             } else if Some(player.id) == support {
                 let spot =

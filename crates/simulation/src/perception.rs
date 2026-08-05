@@ -15,7 +15,7 @@ use bevy_time::prelude::*;
 use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
-    Ball, Facing, MatchTuning, Observation, ObservationMemory, Player, PlayerId, Position,
+    Ball, Looking, MatchTuning, Observation, ObservationMemory, Player, PlayerId, Position,
     TOTAL_LOSS, Velocity, Vision, blocks_the_view, can_see,
 };
 
@@ -214,7 +214,14 @@ pub fn observe_the_pitch(
     tuning: Res<MatchTuning>,
     ball_query: Query<(&Position, &Ball), Without<Player>>,
     bodies: Query<(&Position, &Player, &Velocity), Without<Ball>>,
-    mut watchers: Query<(&Position, &Facing, &Player, &Vision, &mut ObservationMemory)>,
+    // el cono cuelga de los ojos y no del pecho: `Looking`, no `Facing`
+    mut watchers: Query<(
+        &Position,
+        &Looking,
+        &Player,
+        &Vision,
+        &mut ObservationMemory,
+    )>,
     // quién estorba a quién se pregunta 22 × 21 veces por tick: la plantilla se
     // recoge una vez en un buffer que se reutiliza, no una por observador (§12)
     mut crowd: Local<Vec<(PlayerId, Vec2)>>,
@@ -232,7 +239,7 @@ pub fn observe_the_pitch(
             .map(|(position, player, _)| (player.id, position.on_pitch())),
     );
 
-    for (position, facing, watcher, vision, mut memory) in watchers.iter_mut() {
+    for (position, looking, watcher, vision, mut memory) in watchers.iter_mut() {
         let eyes = position.on_pitch();
         // primero uno se entera de lo que vio hace un momento, y luego mira
         memory.settle(now, tuning.perception.reaction);
@@ -242,7 +249,7 @@ pub fn observe_the_pitch(
                 continue;
             }
             let spot = other_position.on_pitch();
-            if !can_see(eyes, facing.0, spot, vision)
+            if !can_see(eyes, looking.0, spot, vision)
                 || hidden_behind_somebody(eyes, spot, &crowd, watcher.id, Some(other.id))
             {
                 continue;
@@ -262,7 +269,7 @@ pub fn observe_the_pitch(
         }
 
         if let Some((spot, momentum)) = ball
-            && can_see(eyes, facing.0, spot, vision)
+            && can_see(eyes, looking.0, spot, vision)
             && !hidden_behind_somebody(eyes, spot, &crowd, watcher.id, None)
         {
             // El balón se sitúa donde está y se declara con cuánta duda. Meter

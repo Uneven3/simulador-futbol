@@ -18,13 +18,14 @@ reanudación pendiente (`SetPiece`), posesión, y el tiempo del periodo con lo q
 se pasó parado. `MatchRegulations` son las duraciones de la competición,
 `PitchConfig` las medidas del campo y `MatchRng` la semilla.
 
-**Cuerpos.** `Position` es la única verdad espacial —metros, Z arriba— y
-`Facing` y `Velocity` la acompañan; un `Transform` nunca es autoritativo. Un
-cuerpo **no es una partícula**: lo que puede hacer depende de hacia dónde,
-porque no lo limita lo mismo. Empujar hacia adelante lo limita la pierna
-(`acceleration`); frenar y cortar los limita el agarre (`grip`), que da dos g
-largos. De ese reparto salen solos el corte en seco, la curva al girar a la
-carrera y la carrera que se pierde al cambiar de dirección.
+**Cuerpos.** `Position` es la única verdad espacial —metros, Z arriba— y la
+acompañan `Velocity` y `Facing`, que es el cuerpo y no la vista: de él cuelga a
+qué ritmo se corre. Un `Transform` nunca es autoritativo. Un cuerpo **no es una
+partícula**: lo que puede hacer depende de hacia dónde, porque no lo limita lo
+mismo. Empujar adelante lo limita la pierna (`acceleration`); frenar y cortar
+los limita el agarre (`grip`), que da dos g largos. De ese reparto salen solos
+el corte en seco, la curva al girar a la carrera y la carrera perdida al
+cambiar de dirección.
 `MovementIntent` es la velocidad que se pidió y `Velocity` la que se consiguió:
 entre las dos está el motor, `Attributes` dice cuánto separa a una de la otra y
 `FatigueState` cuánto de eso queda a estas alturas del partido.
@@ -35,46 +36,38 @@ disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 **Balón.** `Ball` lleva su momentum y su predicción, que hoy es la trayectoria
 futura real y todo el mundo lee: es la omnisciencia que queda por romper.
 
-**Percepción.** `Vision` es el cono —ángulo, detalle y alcance— y `blocks_the_view`
-la línea: un cuerpo delante esconde lo que hay detrás, y la sombra se ensancha
-con la distancia. `Observation` es lo último que se supo de un cuerpo, cuándo y
-con cuánta duda: `blur` es lo que se falló al verlo y `uncertainty` lo que se
-escapó desde entonces —el error solo se calcula desde fuera, comparando con la
-verdad; la duda el jugador sí la sabe—. Lo visto entra en `ObservationMemory`
-`reaction` después y con la hora en que se vio, no con la de ahora, y `Beliefs`
-arma con todo eso el campo que la decisión lee en vez de la verdad.
-
-`Gaze` es dónde se quiere mirar: la atención barre fuera del balón con la
-cadencia de `PerceptionTuning`, y en el barrido busca al cuerpo peor situado del
-hombro que toca. Si la duda sobre el balón pasa de `lost_ball_doubt`, deja de
-reconocer y va a buscarlo. La duda viaja en `PlayerReading` y ya cambia
-decisiones: un pase a quien no se tiene situado vale menos, y lo que se persigue
-es la idea del balón hasta `eyes_on_the_ball`, donde manda el pie.
+**Percepción.** `Vision` es el cono, cuelga de `Looking` —los ojos, no el
+pecho— y `blocks_the_view` le pone la línea: un cuerpo delante esconde lo que
+hay detrás. `Observation` es lo último que se supo de otro, cuándo y con cuánta
+duda (`blur` lo que se falló al verlo, `uncertainty` lo escapado desde
+entonces); entra en `ObservationMemory` `reaction` después y con la hora en que
+se vio, y `Beliefs` arma el campo que la decisión lee en vez de la verdad. La
+duda viaja en `PlayerReading` y decide: se barre buscando al peor situado, se va
+a por el balón si se duda más de `lost_ball_doubt`, un pase a quien no se tiene
+situado vale menos, y se persigue la idea del balón hasta `eyes_on_the_ball`.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del
 árbitro. Que un hecho quede sin decisión es la ley 3, no un descuido.
 
 **Parámetros.** `MatchTuning` agrupa lo que fija el resultado, por mecanismo
-(`ContestTuning`, `PassingTuning`, `ShootingTuning`, `GoalkeepingTuning`,
-`RefereeTuning`…), con su `TuningVersion`. Un número que decide algo vive ahí y
-en ningún otro sitio.
+(`ContestTuning`, `PassingTuning`, `GoalkeepingTuning`, `RefereeTuning`…), con
+su `TuningVersion`: un número que decide algo vive ahí y en ningún otro sitio.
 
 **Situaciones.** `Scenario` es una situación reproducible completa —estado
-inicial, semilla, ventana y afirmaciones—, `Expectations` lo que debe pasar (no
-todo lo que puede) y `ScenarioOutcome` lo que pasó.
+inicial, semilla, ventana y afirmaciones—, `Expectations` lo que debe pasar y
+`ScenarioOutcome` lo que pasó.
 
 ## Vocabulario reservado
 
-Nombres que aún no existen, con el MVP que los trae. Están escritos para que el
-día que aparezcan no se inventen dos veces:
+Nombres que aún no existen, con el MVP que los trae, para que el día que
+aparezcan no se inventen dos veces:
 
-- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria futura
-  real, y quien la persigue la persigue desviada por lo que cree. Falta que cada
-  uno prediga la suya, y que taparse sea situar peor y no dejar de ver.
-- **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez
-  de un solo instante de contacto. La aceleración, el frenado y la fatiga ya no
-  están aquí: existen, con el mecanismo que los lee.
+- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria real, y
+  quien la persigue la persigue desviada por lo que cree. Falta que cada uno
+  prediga la suya, y que taparse sea situar peor y no dejar de ver.
+- **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez de
+  un solo instante de contacto.
 - **Táctica (MVP 5):** `TacticalPlan`, `TacticalResponsibility`,
   `PositionFamiliarity`, `RoleFamiliarity`. Un atributo modifica operaciones
   concretas; nunca es un bonus global.
@@ -87,4 +80,4 @@ día que aparezcan no se inventen dos veces:
 
 `VisualOf(Entity)` enlaza una representación con su entidad autoritativa.
 Primitiva, low-poly, repetición y visual remoto son consumidores equivalentes, y
-ningún tipo de dominio contiene rutas de assets.
+ningún tipo de dominio lleva rutas de assets.

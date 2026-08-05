@@ -13,7 +13,8 @@ use bevy_time::prelude::*;
 
 use football_domain::tuning::{StaminaTuning, TurningTuning};
 use football_domain::{
-    Attributes, Facing, FatigueState, Gaze, MatchTuning, MovementIntent, Position, Velocity,
+    Attributes, Facing, FatigueState, Gaze, Looking, MatchTuning, MovementIntent, Position,
+    Velocity,
 };
 
 /// La velocidad que un cuerpo alcanza este tick.
@@ -102,6 +103,33 @@ pub fn turned(
     Dir2::new(Vec2::from_angle(step).rotate(*facing)).unwrap_or(facing)
 }
 
+/// Hasta dónde llega la vista sin girarse: lo que se quiere mirar si el cuello
+/// da para ello, y el tope del cuello si no.
+pub fn within_the_neck(towards: Dir2, facing: Dir2, tuning: &TurningTuning) -> Dir2 {
+    let aside = facing.angle_to(*towards);
+    if aside.abs() <= tuning.neck_range {
+        return towards;
+    }
+    let held = aside.clamp(-tuning.neck_range, tuning.neck_range);
+    Dir2::new(Vec2::from_angle(held).rotate(*facing)).unwrap_or(facing)
+}
+
+/// Adónde llegan los ojos este tick. La cabeza gira sola y deprisa —de ahí que
+/// mirar alrededor no cueste velocidad—, pero el cuello la sujeta: para ver más
+/// allá de su margen hay que girar el cuerpo, y eso sí cuesta.
+pub fn turned_head(
+    looking: Dir2,
+    towards: Dir2,
+    facing: Dir2,
+    tuning: &TurningTuning,
+    dt: f32,
+) -> Dir2 {
+    let reachable = within_the_neck(towards, facing, tuning);
+    let angle = looking.angle_to(*reachable);
+    let step = angle.clamp(-tuning.neck_rate * dt, tuning.neck_rate * dt);
+    Dir2::new(Vec2::from_angle(step).rotate(*looking)).unwrap_or(looking)
+}
+
 /// Qué fracción de su velocidad alcanza quien corre hacia donde no mira: de
 /// frente toda, y de lado o de espaldas lo que da el cuerpo humano. Sin esto un
 /// defensor retrocede tan rápido como corre de cara.
@@ -115,24 +143,28 @@ pub fn pace_towards(facing: Dir2, heading: Dir2, body: &Attributes, tuning: &Tur
     raw + (1.0 - raw) * body.lateral_technique
 }
 
+/// Lo que el motor necesita de un cuerpo: lo que pidió, lo que puede, lo que
+/// quiere mirar y dónde está —y lo que el motor le escribe, que es en qué se
+/// queda todo eso.
+type DrivenBody = (
+    &'static MovementIntent,
+    &'static Attributes,
+    &'static Gaze,
+    &'static Position,
+    &'static mut FatigueState,
+    &'static mut Facing,
+    &'static mut Looking,
+    &'static mut Velocity,
+);
+
 /// Cada cuerpo persigue la velocidad que le pidieron, dentro de lo que puede —y
 /// lo que puede se le va gastando, y depende de hacia dónde esté mirando.
-pub fn drive_bodies(
-    time: Res<Time>,
-    tuning: Res<MatchTuning>,
-    mut bodies: Query<(
-        &MovementIntent,
-        &Attributes,
-        &Gaze,
-        &Position,
-        &mut FatigueState,
-        &mut Facing,
-        &mut Velocity,
-    )>,
-) {
+pub fn drive_bodies(time: Res<Time>, tuning: Res<MatchTuning>, mut bodies: Query<DrivenBody>) {
     let dt = time.delta_secs();
     let (stamina_tuning, turning) = (&tuning.stamina, &tuning.turning);
-    for (intent, body, gaze, position, mut fatigue, mut facing, mut velocity) in bodies.iter_mut() {
+    for (intent, body, gaze, position, mut fatigue, mut facing, mut looking, mut velocity) in
+        bodies.iter_mut()
+    {
         let running = velocity.0.truncate();
         let speed = running.length();
         fatigue.stamina = drained(fatigue.stamina, speed, body, stamina_tuning, dt);
@@ -146,15 +178,23 @@ pub fn drive_bodies(
         let reached = reachable_velocity(running, asked.clamp_length_max(reachable_pace), &can, dt);
         velocity.0 = Vec3::new(reached.x, reached.y, velocity.0.z);
 
-        // se mira lo que se quiso mirar, y si no se quiso nada, hacia donde se
-        // va: un cuerpo empujado de lado no gira la cabeza por eso
-        let looking_at = gaze
+        // Se mira lo que se quiso mirar, y si no se quiso nada, hacia donde se
+        // va: un cuerpo empujado de lado no gira la cabeza por eso.
+        let wanted = gaze
             .0
             .map(|spot| spot - position.on_pitch())
             .unwrap_or(asked);
-        if let Ok(towards) = Dir2::new(looking_at) {
-            facing.0 = turned(facing.0, towards, speed, body, turning, dt);
-        }
+        let wanted = Dir2::new(wanted).unwrap_or(looking.0);
+        // El cuerpo encara la carrera y no la mirada: para eso está el cuello.
+        // Solo se gira cuando lo que se quiere ver no le cabe, y entonces paga
+        // el peaje de correr hacia donde no se mira.
+        let body_target = if facing.0.angle_to(*wanted).abs() > turning.neck_range {
+            wanted
+        } else {
+            Dir2::new(asked).unwrap_or(facing.0)
+        };
+        facing.0 = turned(facing.0, body_target, speed, body, turning, dt);
+        looking.0 = turned_head(looking.0, wanted, facing.0, turning, dt);
     }
 }
 
@@ -380,5 +420,50 @@ mod tests {
         let crawl = Vec2::new(0.01, 0.0);
 
         assert_eq!(reachable_velocity(Vec2::ZERO, crawl, &body, TICK), crawl);
+    }
+
+    /// El cuello llega hasta donde llega: mirar al costado es gratis y mirar a
+    /// la espalda no, porque eso ya es girarse.
+    #[test]
+    fn the_neck_reaches_the_shoulder_and_no_further() {
+        let tuning = TurningTuning::default();
+        let facing = Dir2::X;
+        let aside = Dir2::from_angle(tuning.neck_range * 0.5);
+        let behind = Dir2::NEG_X;
+
+        assert_eq!(within_the_neck(aside, facing, &tuning), aside);
+        let held = within_the_neck(behind, facing, &tuning);
+        assert!(
+            (facing.angle_to(*held).abs() - tuning.neck_range).abs() < 0.001,
+            "el cuello se quedó en {} rad",
+            facing.angle_to(*held).abs()
+        );
+    }
+
+    /// Y la cabeza llega antes que el cuerpo: en el tiempo que un barrido dura,
+    /// los ojos han hecho el recorrido y el cuerpo apenas se ha movido.
+    #[test]
+    fn the_head_gets_there_before_the_body_does() {
+        let tuning = TurningTuning::default();
+        let body = Attributes::default();
+        let scan = std::time::Duration::from_millis(400).as_secs_f32();
+        let towards = Dir2::from_angle(tuning.neck_range);
+
+        let mut looking = Dir2::X;
+        let mut facing = Dir2::X;
+        for _ in 0..(scan / TICK) as u32 {
+            facing = turned(facing, Dir2::X, 0.0, &body, &tuning, TICK);
+            looking = turned_head(looking, towards, facing, &tuning, TICK);
+        }
+
+        assert!(
+            looking.angle_to(*towards).abs() < 0.01,
+            "los ojos se quedaron a {} rad del sitio",
+            looking.angle_to(*towards).abs()
+        );
+        assert!(
+            facing.angle_to(*Dir2::X).abs() < 0.01,
+            "el cuerpo giró para mirar al costado, que es lo que había que evitar"
+        );
     }
 }

@@ -12,7 +12,7 @@
 
 use bevy::prelude::*;
 use football_domain::{
-    Attributes, Ball, Facing, FatigueState, MatchState, ObservationMemory, OffsideRecords,
+    Attributes, Ball, FatigueState, Looking, MatchState, ObservationMemory, OffsideRecords,
     PitchConfig, Player, Position, PossessionDesignation, SetPiece, TeamId, Velocity, Vision,
 };
 
@@ -264,7 +264,7 @@ fn draw_vision(
     time: Res<Time>,
     watchers: Query<(
         &Position,
-        &Facing,
+        &Looking,
         &Player,
         &Attributes,
         &Vision,
@@ -275,7 +275,7 @@ fn draw_vision(
         return;
     }
     let now = time.elapsed();
-    for (position, facing, player, attributes, vision, memory) in watchers.iter() {
+    for (position, looking, player, attributes, vision, memory) in watchers.iter() {
         let colour = team_colour(player.id.team);
 
         // dónde cree cada uno que está el balón: cuanto más se separan las
@@ -284,7 +284,8 @@ fn draw_vision(
             let at = Vec3::new(believed.x, believed.y, 0.1);
             gizmos.cross(Isometry3d::from_translation(at), 0.4, colour);
         }
-        let [eyes, left, right] = vision_cone(*position, facing.0, vision, attributes.height * 0.9);
+        let [eyes, left, right] =
+            vision_cone(*position, looking.0, vision, attributes.height * 0.9);
         let faded = colour.with_alpha(0.25);
         gizmos.line(eyes, left, faded);
         gizmos.line(eyes, right, faded);

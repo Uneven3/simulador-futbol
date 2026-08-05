@@ -7,7 +7,7 @@ use bevy_ecs::prelude::{With, Without};
 use bevy_math::Vec2;
 use bevy_time::Time;
 use football_domain::{
-    Ball, Facing, MatchTuning, ObservationMemory, Player, PlayerId, Position, Scenario, Vision,
+    Ball, Looking, MatchTuning, ObservationMemory, Player, PlayerId, Position, Scenario, Vision,
     blocks_the_view, can_see,
 };
 use football_simulation::ScenarioRunner;
@@ -160,11 +160,11 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64)
     let mut ball_in_cone = 0;
     let mut ball_shadowed = 0;
 
-    let mut watchers = world.query::<(&Position, &Facing, &Player, &Vision)>();
-    for (position, facing, watcher, vision) in watchers.iter(world) {
+    let mut watchers = world.query::<(&Position, &Looking, &Player, &Vision)>();
+    for (position, looking, watcher, vision) in watchers.iter(world) {
         let eyes = position.on_pitch();
         for (id, spot) in &crowd {
-            if *id == watcher.id || !can_see(eyes, facing.0, *spot, vision) {
+            if *id == watcher.id || !can_see(eyes, looking.0, *spot, vision) {
                 continue;
             }
             in_cone += 1;
@@ -173,7 +173,7 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64)
             }
         }
         if let Some(spot) = ball
-            && can_see(eyes, facing.0, spot, vision)
+            && can_see(eyes, looking.0, spot, vision)
         {
             ball_in_cone += 1;
             if is_hidden(eyes, spot, &crowd, watcher.id, None) {
