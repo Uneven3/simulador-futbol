@@ -8,25 +8,31 @@ las cifras en `measurements/`. **Techo: 40 líneas hasta la deuda declarada.**
 **MVP 4 — Que decidan con lo que ven.** Puestas las cuatro piezas del orden
 acordado: la forma del dato, la oclusión, la latencia y el corte
 decisión/contacto. La verdad del mundo ya no entra en ninguna decisión de
-movimiento; lo que queda es que cada uno prediga su propio balón.
+movimiento. **Desarrollo en pausa aquí**; lo de abajo es por dónde se sigue.
 
 **Cómo se valida ahora:** mirando. La envolvente de diez semillas queda
 suspendida por acuerdo —no da diagnóstico, solo alarma—; los tests unitarios de
-función pura siguen, que cuestan cero.
+función pura siguen, que cuestan cero. Se corrió dos veces a propósito, antes y
+después de MVP 4, y por eso hay delta atribuible en vez de sospecha
+(`measurements/envelope.csv`, `a5d1489` contra `d0a6122`).
 
 ## Empezar aquí
 
-1. **Tapar es todo o nada**, y en el campo se ve medio cuerpo por encima de un
+1. **La percepción bajó el ritmo de gol y no lo subió**: 17,1 → 12,6 goles/90 y
+   37 → 14 tiros/90, con los robos cayendo de 55 a 15 por 90. Ver mal quita
+   tiros por las dos puntas y no se sabe cuál pesa: es lo primero que hay que
+   separar mirando, y la sonda `defending` es el sitio.
+2. **Tapar es todo o nada**, y en el campo se ve medio cuerpo por encima de un
    hombro. Un tercio de lo que cae en el cono está detrás de alguien, y eso
-   debería situar peor en vez de dejar de ver.
-2. **Nadie predice su balón**: se persigue la trayectoria real desviada por lo
-   que uno cree, que es un apaño con el signo correcto. El siguiente escalón es
+   debería subir el `blur` en vez de dejar de ver. Es el candidato a explicar la
+   caída de robos.
+3. **Nadie predice su balón**: se persigue la trayectoria real desviada por lo
+   que uno cree, que es un apaño con el signo correcto. El escalón siguiente es
    que cada uno tire de su propia recta y se equivoque en la forma, no solo en
    el sitio.
-3. **La defensa no acompaña al ataque.** Conducir mejor multiplicó los goles:
-   el portador conserva y llega, y enfrente nadie hace nada más que estar.
-   `grip` y `turn_rate` son iguales para los veintidós, y ahí es donde deberían
-   diferenciarse.
+4. **La defensa no acompaña al ataque.** `grip` y `turn_rate` son iguales para
+   los veintidós, y ahí es donde deberían diferenciarse; lo mismo la reacción y
+   la atención, que ya tienen mecanismo y siguen siendo una constante.
 
 ## Deuda declarada, no escondida
 
