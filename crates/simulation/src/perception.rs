@@ -16,7 +16,7 @@ use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
     Ball, HIDDEN_BLUR, Looking, MatchTuning, Observation, ObservationMemory, Player, PlayerId,
-    Position, TOTAL_LOSS, Velocity, Vision, can_see, hidden_by,
+    Position, SHOUTED_BLUR, TOTAL_LOSS, Velocity, Vision, can_see, hidden_by,
 };
 
 pub struct PerceptionPlugin;
@@ -26,7 +26,7 @@ impl Plugin for PerceptionPlugin {
         // Se mira, se hace uno una idea, y después se decide (§3).
         app.init_resource::<Beliefs>().add_systems(
             FixedUpdate,
-            (observe_the_pitch, believe_the_pitch)
+            (observe_the_pitch, hear_the_others, believe_the_pitch)
                 .chain()
                 .in_set(SimulationSet::Players)
                 .before(crate::player_decisions::select_player_movement),
@@ -116,6 +116,107 @@ impl Beliefs {
         }
         self.by_player.push((who, Vec::with_capacity(22)));
         &mut self.by_player.last_mut().expect("acaba de insertarse").1
+    }
+}
+
+/// El grito: lo que un compañero de al lado sabe del balón y uno no.
+///
+/// Es el sensor que no necesita cono ni línea, y por eso es el que compensa la
+/// oclusión: al que se le pierde el balón detrás de un cuerpo se lo cantan. No
+/// es telepatía —llega con `SHOUTED_BLUR` encima, porque un aviso dice por
+/// dónde y no dónde—, ni es gratis: entra por la misma cola que lo visto, así
+/// que el que oye paga su reacción sobre la del que ya la pagó.
+///
+/// Solo se grita lo que mejora: nadie avisa de algo más viejo de lo que el otro
+/// ya tiene, y por eso esto no puede empeorar una creencia.
+pub fn hear_the_others(
+    tuning: Res<MatchTuning>,
+    mut voices: Query<(&Player, &Position, &mut ObservationMemory)>,
+    mut said: Local<Vec<(PlayerId, Vec2, Option<Observation>)>>,
+) {
+    let range = tuning.perception.shout_range;
+    said.clear();
+    said.extend(
+        voices
+            .iter()
+            .map(|(player, position, memory)| (player.id, position.on_pitch(), memory.ball())),
+    );
+
+    for (player, position, mut memory) in voices.iter_mut() {
+        let ears = position.on_pitch();
+        let within_earshot = said
+            .iter()
+            .filter(|(who, spot, _)| *who != player.id && spot.distance(ears) <= range)
+            .filter_map(|(_, _, ball)| *ball);
+
+        if let Some(shouted) = worth_hearing(memory.ball(), within_earshot) {
+            memory.saw_ball(shouted);
+        }
+    }
+}
+
+/// Qué aviso vale la pena: el más fresco de los que dicen algo más nuevo de lo
+/// que uno ya sabe, con el precio de haberlo oído en vez de verlo.
+///
+/// Nadie grita lo viejo, así que esto no puede empeorar una creencia: o llega
+/// algo más reciente, o no llega nada.
+fn worth_hearing(
+    known: Option<Observation>,
+    around: impl Iterator<Item = Observation>,
+) -> Option<Observation> {
+    let mine = known.map(|known| known.seen_at);
+    around
+        .filter(|shouted| mine.is_none_or(|when| shouted.seen_at > when))
+        .max_by_key(|shouted| shouted.seen_at)
+        .map(|shouted| Observation {
+            blur: shouted.blur + SHOUTED_BLUR,
+            ..shouted
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn ball_seen_at(seconds: u64, blur: f32) -> Observation {
+        Observation {
+            spot: Vec2::X * seconds as f32,
+            velocity: Vec2::ZERO,
+            seen_at: Duration::from_secs(seconds),
+            blur,
+        }
+    }
+
+    /// Se oye lo que se sabe más nuevo, y se oye peor de lo que se ve: nadie
+    /// grita a cuántos metros está el balón.
+    #[test]
+    fn a_shout_is_worth_hearing_only_when_it_is_newer() {
+        let mine = ball_seen_at(5, 0.5);
+        let older = ball_seen_at(2, 0.0);
+        let newer = ball_seen_at(9, 0.0);
+
+        assert!(worth_hearing(Some(mine), [older].into_iter()).is_none());
+        assert!(worth_hearing(Some(mine), [].into_iter()).is_none());
+
+        let heard = worth_hearing(Some(mine), [older, newer].into_iter()).expect("alguien lo vio");
+        assert_eq!(heard.seen_at, newer.seen_at);
+        assert!(
+            heard.blur > newer.blur,
+            "lo oído tenía que valer menos que lo visto"
+        );
+    }
+
+    /// Y al que no lo ha visto nunca se lo cantan igual: es lo que compensa
+    /// haberlo perdido detrás de un cuerpo.
+    #[test]
+    fn somebody_who_never_saw_it_gets_told() {
+        let told = worth_hearing(None, [ball_seen_at(3, 0.0)].into_iter());
+
+        assert_eq!(
+            told.map(|heard| heard.seen_at),
+            Some(Duration::from_secs(3))
+        );
     }
 }
 

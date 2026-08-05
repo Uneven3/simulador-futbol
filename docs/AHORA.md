@@ -17,17 +17,13 @@ comparable está en `measurements/envelope.csv`.
 
 ## Empezar aquí
 
-1. **Los robos que faltan.** Ver mal se llevó dos tercios de ellos (55 → 15 por
-   90) y el cuello devolvió la mitad de eso (38). Lo que queda es el candidato
-   de siempre: **tapar es todo o nada**, y en el campo se ve medio cuerpo por
-   encima de un hombro, que es situar peor y no dejar de ver.
-2. **El ritmo de gol no se movió con nada de esto** (17,1 → 12,6 → 13,5 por 90,
-   real 2,7) mientras los tiros iban de 37 a 14 y volvían a 29. Es la deuda de
-   abajo y sigue esperando a que se pueda calibrar.
-3. **Sensores que el fútbol tiene y esto no**: el oído —el grito es información
-   sin línea de visión, justo lo que compensa la oclusión—, la altura (se
-   percibe todo en planta), la identidad de lo que se ve, y el propio cuerpo:
-   nadie se equivoca al calcular si llega.
+1. **Sensores que el fútbol tiene y esto no**: la altura —se percibe todo en
+   planta, y un centro se tapa igual que un balón raso—, la identidad de lo que
+   se ve, la velocidad ajena, que se juzga exacta, y el propio cuerpo: nadie se
+   equivoca al calcular si llega. El oído solo canta el balón; falta el «hombre».
+2. **El ritmo de gol es lo único que no se mueve con la percepción** (9,0 por 90
+   contra los 2,7 reales, desde 17,1 antes de MVP 4). Es la deuda de abajo y
+   espera a que se pueda calibrar, que es un hito propio.
 
 ## Deuda declarada, no escondida
 

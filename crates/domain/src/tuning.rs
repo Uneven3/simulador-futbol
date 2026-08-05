@@ -77,6 +77,8 @@ pub struct PerceptionTuning {
     /// A qué distancia del balón se deja de correr hacia una idea y se juega el
     /// balón que se ve. Es el corte entre decisión perceptiva y contacto.
     pub eyes_on_the_ball: f32,
+    /// Hasta dónde llega un grito de un compañero, en metros.
+    pub shout_range: f32,
 }
 
 impl Default for PerceptionTuning {
@@ -100,6 +102,10 @@ impl Default for PerceptionTuning {
             // campo visual, dentro de lo que se sitúa exacto y sin nadie que
             // pueda taparlo, y lo que manda ya no es la cabeza sino el pie.
             eyes_on_the_ball: 3.0,
+            // Sin referencia medida: es lo que se le oye a alguien que grita
+            // por encima de un estadio, y del orden de lo que separa a un
+            // jugador de sus vecinos de línea.
+            shout_range: 20.0,
         }
     }
 }

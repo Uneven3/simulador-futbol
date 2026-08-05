@@ -215,6 +215,12 @@ pub fn can_see(from: Vec2, facing: Dir2, target: Vec2, vision: &Vision) -> bool 
     facing.angle_to(*direction).abs() <= vision.half_angle
 }
 
+/// Lo que se falla al situar algo que a uno le han gritado, en metros. Un aviso
+/// no es una posición: «¡atrás!» dice por dónde, no a cuántos metros, y por eso
+/// lo que se oye vale menos que lo que se ve —pero llega sin cono y sin línea,
+/// que es justo lo que le falta a la vista—.
+pub const SHOUTED_BLUR: f32 = 5.0;
+
 /// Cuánta perspectiva hace falta entre dos cuerpos para que uno esconda al otro,
 /// en metros. Nadie tapa lo que lleva al lado: el balón que uno conduce se ve
 /// junto a él, no detrás de él, y sin esto conducir volvería invisible el balón

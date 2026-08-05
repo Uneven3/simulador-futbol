@@ -37,11 +37,14 @@ disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 futura real y todo el mundo lee: es la omnisciencia que queda por romper.
 
 **Percepción.** `Vision` es el cono, cuelga de `Looking` —los ojos, no el
-pecho— y `blocks_the_view` le pone la línea: un cuerpo delante esconde lo que
-hay detrás. `Observation` es lo último que se supo de otro, cuándo y con cuánta
-duda (`blur` lo que se falló al verlo, `uncertainty` lo escapado desde
-entonces); entra en `ObservationMemory` `reaction` después y con la hora en que
-se vio, y `Beliefs` arma el campo que la decisión lee en vez de la verdad. La
+pecho— y `hidden_by` le pone la línea: un cuerpo delante esconde del todo o deja
+ver un trozo, que es situar peor. Lo que la vista no alcanza lo alcanza el
+oído: un compañero a `shout_range` canta lo que sabe del balón, sin cono ni
+línea y con `SHOUTED_BLUR` encima. `Observation` es lo último que se supo de
+otro, cuándo y con cuánta duda (`blur` lo que se falló al verlo, `uncertainty`
+lo escapado desde entonces); entra en `ObservationMemory` `reaction` después y
+con la hora en que se vio, y `Beliefs` arma el campo que se lee en vez de la
+verdad. La
 duda viaja en `PlayerReading` y decide: se barre buscando al peor situado, se va
 a por el balón si se duda más de `lost_ball_doubt`, un pase a quien no se tiene
 situado vale menos, y se persigue la idea del balón hasta `eyes_on_the_ball`.
