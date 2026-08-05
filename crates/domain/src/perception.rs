@@ -230,6 +230,23 @@ pub fn can_see(from: Vec2, facing: Dir2, target: Vec2, vision: &Vision) -> bool 
     facing.angle_to(*direction).abs() <= vision.half_angle
 }
 
+/// Cuánto se equivoca uno sobre sí mismo, en fracción de lo que puede correr.
+/// Sin referencia medida: es el margen con el que un jugador se lanza a un balón
+/// que no va a alcanzar, o deja de ir a uno que sí.
+pub const SELF_MISJUDGED: f32 = 0.1;
+
+/// La velocidad a la que uno cree que llega, que no es a la que llega.
+///
+/// El único error perceptivo sobre uno mismo, y es un sesgo y no un temblor: el
+/// optimista se lanza a balones que no alcanza una y otra vez, y el prudente
+/// deja de ir a los que sí. Sale del dorsal, así que es de por vida.
+pub fn believed_pace(who: PlayerId, top_speed: f32) -> f32 {
+    let key = who.team.index() * 11 + usize::from(who.shirt);
+    let scattered = (key as f32 * 78.233).sin() * 43758.547;
+    let unit = (scattered - scattered.floor()) * 2.0 - 1.0;
+    top_speed * (1.0 + SELF_MISJUDGED * unit)
+}
+
 /// Lo que se falla al situar algo que a uno le han gritado, en metros. Un aviso
 /// no es una posición: «¡atrás!» dice por dónde, no a cuántos metros, y por eso
 /// lo que se oye vale menos que lo que se ve —pero llega sin cono y sin línea,
@@ -421,6 +438,30 @@ mod tests {
             hidden_by(eyes, target, Vec2::new(25.0, 0.0)),
             0.0,
             "detrás de lo que se mira no se tapa nada"
+        );
+    }
+
+    /// Uno también se juzga a sí mismo, y también mal: hay quien se cree más
+    /// rápido de lo que es, y lo cree siempre.
+    #[test]
+    fn a_player_misjudges_himself_too_and_always_the_same_way() {
+        let top_speed = 8.0;
+        let optimists = (1..=11)
+            .map(|shirt| believed_pace(PlayerId::home(shirt), top_speed))
+            .filter(|believed| *believed > top_speed)
+            .count();
+
+        assert_eq!(
+            believed_pace(PlayerId::home(7), top_speed),
+            believed_pace(PlayerId::home(7), top_speed)
+        );
+        assert!(
+            (believed_pace(PlayerId::home(7), top_speed) - top_speed).abs()
+                <= top_speed * SELF_MISJUDGED
+        );
+        assert!(
+            (1..11).contains(&optimists),
+            "los once se creían lo mismo: {optimists} optimistas"
         );
     }
 

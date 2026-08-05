@@ -35,7 +35,7 @@ use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
     Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, MovementIntent, PitchSides,
     Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece,
-    TeamId, Velocity,
+    TeamId, Velocity, believed_pace,
 };
 
 mod attention;
@@ -249,7 +249,7 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
         // orbitarlo. La velocidad es la justa para llegar, no la punta.
         let (intercept, _) = crate::player_movement::find_interception(
             me.pos,
-            stats.top_speed,
+            believed_pace(me.id, stats.top_speed),
             &ctx.ball.predictions,
         );
         let to_intercept = chased_spot(
@@ -322,8 +322,13 @@ fn chased_spot(spot: Vec2, error: Vec2, from: Vec2, eyes_on_the_ball: f32) -> Ve
 /// Run to the earliest reachable point on the ball's predicted path
 /// (approximates `AI_GetToBallMovement`).
 fn to_ball_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes) -> (Vec2, f32) {
-    let (intercept, _) =
-        crate::player_movement::find_interception(me.pos, stats.top_speed, &ctx.ball.predictions);
+    // Se elige el punto con la velocidad que uno se cree, no con la que tiene:
+    // el optimista apunta a un balón que no va a alcanzar, y corre igual.
+    let (intercept, _) = crate::player_movement::find_interception(
+        me.pos,
+        believed_pace(me.id, stats.top_speed),
+        &ctx.ball.predictions,
+    );
     let target = chased_spot(
         intercept,
         ctx.ball_error,
