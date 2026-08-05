@@ -13,8 +13,8 @@ use bevy_time::prelude::*;
 use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
 use football_domain::{
-    Ball, Facing, Observation, ObservationMemory, Player, PlayerId, Position, Velocity, Vision,
-    can_see,
+    Ball, Facing, Observation, ObservationMemory, Player, PlayerId, Position, TOTAL_LOSS, Velocity,
+    Vision, can_see,
 };
 
 pub struct PerceptionPlugin;
@@ -40,6 +40,7 @@ pub struct Beliefs {
     by_player: Vec<(PlayerId, Vec<PlayerReading>)>,
     ball_position: Vec<(PlayerId, Vec2)>,
     ball_error: Vec<(PlayerId, Vec2)>,
+    ball_uncertainty: Vec<(PlayerId, f32)>,
 }
 
 impl Beliefs {
@@ -69,6 +70,26 @@ impl Beliefs {
             .iter()
             .find(|(id, _)| *id == who)
             .map(|(_, position)| *position)
+    }
+
+    /// Cuánto duda este jugador de dónde está el balón, en metros.
+    ///
+    /// Es lo que separa «lo tengo ahí» de «lo perdí», y a diferencia del error
+    /// —que solo se puede calcular desde fuera, comparando con la verdad— esto
+    /// el jugador sí lo sabe: hace cuánto que no mira y qué tan rápido iba.
+    /// No haberlo visto nunca es la duda máxima, no la ausencia de duda.
+    pub fn ball_uncertainty_of(&self, who: PlayerId) -> f32 {
+        self.ball_uncertainty
+            .iter()
+            .find(|(id, _)| *id == who)
+            .map_or(TOTAL_LOSS, |(_, doubt)| *doubt)
+    }
+
+    fn remember_ball_uncertainty(&mut self, who: PlayerId, doubt: f32) {
+        match self.ball_uncertainty.iter_mut().find(|(id, _)| *id == who) {
+            Some((_, known)) => *known = doubt,
+            None => self.ball_uncertainty.push((who, doubt)),
+        }
     }
 
     fn remember_ball(&mut self, who: PlayerId, position: Vec2) {
@@ -122,6 +143,10 @@ pub fn believe_the_pitch(
             _ => Vec2::ZERO,
         };
         beliefs.remember_ball_error(player.id, error);
+        beliefs.remember_ball_uncertainty(
+            player.id,
+            memory.ball.map_or(TOTAL_LOSS, |seen| seen.uncertainty(now)),
+        );
         if let Some(position) = believed_ball {
             beliefs.remember_ball(player.id, position);
         }
@@ -196,6 +221,7 @@ pub fn observe_the_pitch(
                     spot: spot + blurred_by(spot, blur),
                     velocity: velocity.0.truncate(),
                     seen_at: now,
+                    blur,
                 },
             );
         }
@@ -203,10 +229,14 @@ pub fn observe_the_pitch(
         if let Some((spot, momentum)) = ball
             && can_see(eyes, facing.0, spot, vision)
         {
+            // El balón se sitúa donde está y se declara con cuánta duda. Meter
+            // el desenfoque también en el punto es una fuente de error nueva y
+            // va aparte: aquí solo se dice lo que ya se sabía mal.
             memory.ball = Some(Observation {
                 spot,
                 velocity: momentum,
                 seen_at: now,
+                blur: vision.blur_at(eyes.distance(spot)),
             });
         }
     }

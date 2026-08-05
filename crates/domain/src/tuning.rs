@@ -69,6 +69,9 @@ pub struct PerceptionTuning {
     pub scan_interval: Duration,
     /// Tiempo durante el que se pide mirar fuera del balón.
     pub scan_duration: Duration,
+    /// A cuántos metros de duda sobre dónde está el balón se deja de reconocer
+    /// el entorno y se pasa a buscarlo.
+    pub lost_ball_doubt: f32,
 }
 
 impl Default for PerceptionTuning {
@@ -80,6 +83,10 @@ impl Default for PerceptionTuning {
             // 0,3965 s de media en cuatro mediocampistas de élite, 11v11:
             // doi:10.1371/journal.pone.0244118.
             scan_duration: Duration::from_millis(400),
+            // Sin referencia: es el orden de magnitud de un cuerpo. Situar el
+            // balón peor que eso ya no permite ir a disputarlo, y ahí la vista
+            // deja de servir para reconocer y pasa a servir para encontrarlo.
+            lost_ball_doubt: 2.0,
         }
     }
 }

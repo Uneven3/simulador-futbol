@@ -67,6 +67,8 @@ struct AttentionSituation<'a> {
     desired_velocity: Vec2,
     eyes: Vec2,
     ball: Option<Vec2>,
+    /// Cuánto duda de dónde está el balón, en metros.
+    ball_doubt: f32,
     vision: &'a Vision,
 }
 
@@ -77,6 +79,12 @@ fn attention_target(situation: AttentionSituation<'_>, tuning: &PerceptionTuning
     }
     if situation.desired_velocity.length() >= SPRINT_VELOCITY {
         return None;
+    }
+    // Quien ya no sabe dónde está el balón no reconoce el entorno: lo busca.
+    // El barrido es lo que se hace teniéndolo situado, y por eso la duda manda
+    // sobre la cadencia y no al revés.
+    if situation.ball_doubt >= tuning.lost_ball_doubt {
+        return Some(ball);
     }
     scan_side_at(situation.now, situation.who, tuning)
         .and_then(|side| scan_target(situation.eyes, ball, situation.vision, side))
@@ -102,6 +110,7 @@ pub(crate) fn direct_visual_attention(
                 desired_velocity: intent.0.truncate(),
                 eyes: position.on_pitch(),
                 ball: beliefs.ball_of(player.id),
+                ball_doubt: beliefs.ball_uncertainty_of(player.id),
                 vision,
             },
             &tuning.perception,
@@ -143,23 +152,35 @@ mod tests {
         }
     }
 
+    /// El momento del barrido según el metrónomo, para preguntar qué lo tumba.
+    fn scanning_at(ball_doubt: f32) -> AttentionSituation<'static> {
+        static VISION: Vision = Vision {
+            half_angle: std::f32::consts::PI * 0.28,
+            sharp_range: 12.0,
+            range: 30.0,
+        };
+        AttentionSituation {
+            now: Duration::ZERO,
+            who: PlayerId::home(1),
+            possesses_ball: false,
+            desired_velocity: Vec2::ZERO,
+            eyes: Vec2::ZERO,
+            ball: Some(Vec2::X * 10.0),
+            ball_doubt,
+            vision: &VISION,
+        }
+    }
+
     #[test]
     fn possession_and_sprinting_override_a_scan() {
         let tuning = PerceptionTuning::default();
-        let player = PlayerId::home(1);
-        let vision = Vision::default();
         let ball = Vec2::X * 10.0;
 
         assert_eq!(
             attention_target(
                 AttentionSituation {
-                    now: Duration::ZERO,
-                    who: player,
                     possesses_ball: true,
-                    desired_velocity: Vec2::ZERO,
-                    eyes: Vec2::ZERO,
-                    ball: Some(ball),
-                    vision: &vision,
+                    ..scanning_at(0.0)
                 },
                 &tuning,
             ),
@@ -168,17 +189,28 @@ mod tests {
         assert_eq!(
             attention_target(
                 AttentionSituation {
-                    now: Duration::ZERO,
-                    who: player,
-                    possesses_ball: false,
                     desired_velocity: Vec2::X * SPRINT_VELOCITY,
-                    eyes: Vec2::ZERO,
-                    ball: Some(ball),
-                    vision: &vision,
+                    ..scanning_at(0.0)
                 },
                 &tuning,
             ),
             None
+        );
+    }
+
+    /// Reconocer el entorno es un lujo de quien tiene el balón situado: perdido,
+    /// la misma cadencia deja de barrer y se va a buscarlo.
+    #[test]
+    fn losing_the_ball_stops_the_scan_and_looks_for_it() {
+        let tuning = PerceptionTuning::default();
+        let ball = Vec2::X * 10.0;
+
+        let scanning = attention_target(scanning_at(0.0), &tuning).expect("hay balón que mirar");
+        assert_ne!(scanning, ball, "con el balón situado, este tick barre");
+
+        assert_eq!(
+            attention_target(scanning_at(tuning.lost_ball_doubt), &tuning),
+            Some(ball)
         );
     }
 }

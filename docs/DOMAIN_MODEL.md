@@ -36,11 +36,13 @@ disposición y `PlayerMatchState` lo que el partido le va escribiendo.
 futura real y todo el mundo lee: es la omnisciencia que queda por romper.
 
 **Percepción.** `Vision` es el cono —ángulo, detalle y alcance—, `Observation`
-lo último que se supo de un cuerpo y cuándo, y `ObservationMemory` eso por
-cabeza: lo que sale del cono no se olvida, envejece. `Beliefs` arma con ello un
-campo y una posición del balón por jugador, que es lo que la decisión lee en
-vez de la verdad. `Gaze` es dónde se quiere mirar; la atención alterna barridos
-fuera del balón con cadencia y duración de `PerceptionTuning`.
+lo último que se supo de un cuerpo, cuándo y con cuánta duda: `blur` es lo que
+se falló al verlo y `uncertainty` lo que se escapó desde entonces —el error solo
+se calcula desde fuera, comparando con la verdad; la duda el jugador sí la sabe—.
+`ObservationMemory` es eso por cabeza, y `Beliefs` el campo que arma con ello,
+que es lo que la decisión lee en vez de la verdad. `Gaze` es dónde se quiere
+mirar; la atención barre fuera del balón con la cadencia de `PerceptionTuning`,
+salvo que la duda pase de `lost_ball_doubt`: entonces deja de reconocer y busca.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del
@@ -61,8 +63,8 @@ Nombres que aún no existen, con el MVP que los trae. Están escritos para que e
 día que aparezcan no se inventen dos veces:
 
 - **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria futura
-  real. La posición creída del balón dirige la mirada, pero todavía no la
-  persecución; faltan oclusión, latencia e incertidumbre explícita.
+  real: la posición creída dirige la mirada, pero todavía no la persecución.
+  Faltan oclusión y latencia, y un lector para la duda de los compañeros.
 - **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez
   de un solo instante de contacto. La aceleración, el frenado y la fatiga ya no
   están aquí: existen, con el mecanismo que los lee.

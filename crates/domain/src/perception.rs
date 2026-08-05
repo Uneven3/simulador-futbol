@@ -59,7 +59,20 @@ pub struct Observation {
     pub spot: Vec2,
     pub velocity: Vec2,
     pub seen_at: Duration,
+    /// Lo que se falló al situarlo en el momento de verlo, en metros: el
+    /// `blur_at` de la distancia a la que estaba. Un punto sin esto es una
+    /// creencia que no sabe cuánto vale.
+    pub blur: f32,
 }
+
+/// Cuánto se le escapa a uno la velocidad de lo que mira: se ve que alguien va
+/// lanzado, no a cuántos metros por segundo. Por eso una creencia vieja de algo
+/// que corre vale menos que una igual de vieja de algo parado.
+pub const VELOCITY_MISJUDGED: f32 = 0.25;
+
+/// Dónde deja de importar seguir dudando, en metros. Pasado esto la respuesta ya
+/// es la misma —no se sabe dónde está— y un número más grande no dice más.
+pub const TOTAL_LOSS: f32 = 30.0;
 
 /// Hasta dónde se extrapola lo que se dejó de ver. Pasado esto uno sabe que ya
 /// no sabe: seguir tirando de la recta pone un balón visto a veinte metros por
@@ -76,6 +89,17 @@ impl Observation {
 
     pub fn age(self, now: Duration) -> Duration {
         now.saturating_sub(self.seen_at)
+    }
+
+    /// Cuántos metros puede estar equivocada esta creencia ahora mismo: lo que
+    /// se falló al verlo más lo que se ha escapado desde entonces.
+    ///
+    /// La edad entra entera y no recortada al horizonte, al revés que en
+    /// `projected_to`: dejar de mover un punto no es dejar de dudar de él, y esa
+    /// asimetría es justo lo que distingue «lo tengo ahí» de «lo perdí».
+    pub fn uncertainty(self, now: Duration) -> f32 {
+        let drift = self.velocity.length() * VELOCITY_MISJUDGED * self.age(now).as_secs_f32();
+        (self.blur + drift).min(TOTAL_LOSS)
     }
 }
 
@@ -169,6 +193,7 @@ mod tests {
             spot: Vec2::ZERO,
             velocity: Vec2::new(20.0, 0.0),
             seen_at: Duration::ZERO,
+            blur: 0.0,
         };
 
         let far_future = seen.projected_to(Duration::from_secs(30));
@@ -177,5 +202,44 @@ mod tests {
             "medio minuto después lo situaba a {} m",
             far_future.x
         );
+    }
+
+    /// Dejar de mover un punto no es dejar de dudar de él: pasado el horizonte
+    /// la creencia se queda quieta y la incertidumbre sigue subiendo.
+    #[test]
+    fn doubt_keeps_growing_after_the_point_stops_moving() {
+        let seen = Observation {
+            spot: Vec2::ZERO,
+            velocity: Vec2::new(10.0, 0.0),
+            seen_at: Duration::ZERO,
+            blur: 0.0,
+        };
+        let horizon = EXTRAPOLATION_HORIZON;
+        let later = horizon * 2;
+
+        assert_eq!(seen.projected_to(horizon), seen.projected_to(later));
+        assert!(seen.uncertainty(later) > seen.uncertainty(horizon));
+        assert!(seen.uncertainty(Duration::from_secs(300)) <= TOTAL_LOSS);
+    }
+
+    /// Lo que se falló al verlo no se olvida, y lo que corre se escapa más
+    /// rápido que lo que está parado.
+    #[test]
+    fn what_runs_is_lost_faster_than_what_stands_still() {
+        let now = Duration::from_secs(1);
+        let standing = Observation {
+            spot: Vec2::ZERO,
+            velocity: Vec2::ZERO,
+            seen_at: Duration::ZERO,
+            blur: 1.5,
+        };
+        let running = Observation {
+            velocity: Vec2::new(8.0, 0.0),
+            ..standing
+        };
+
+        assert!((standing.uncertainty(Duration::ZERO) - 1.5).abs() < f32::EPSILON);
+        assert!((standing.uncertainty(now) - 1.5).abs() < f32::EPSILON);
+        assert!(running.uncertainty(now) > standing.uncertainty(now));
     }
 }

@@ -20,7 +20,9 @@ pub use match_state::{
     BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
     PossessionDesignation, PotentialFoul, SetPiece,
 };
-pub use perception::{EXTRAPOLATION_HORIZON, Observation, ObservationMemory, Vision, can_see};
+pub use perception::{
+    EXTRAPOLATION_HORIZON, Observation, ObservationMemory, TOTAL_LOSS, Vision, can_see,
+};
 pub use player::{
     Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
     PlayingPosition, TacticalRole,

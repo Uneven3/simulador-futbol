@@ -51,11 +51,10 @@ regla queda desconocida; se entrega mediante MVP verticales.
 Los `.5` y `.75` son trabajo de consolidación: no añaden capacidades, pagan lo
 que ya está construido.
 
-**Son ejes, no fases.** Se avanzó en espiral y con razón: las reglas de MVP 2
-no significaban nada sobre cápsulas —las faltas pasaron de 168 por 90 a 16 por
-mecanismos del cuerpo, sin tocar al árbitro— y la percepción de MVP 4 solo se
-sostiene sobre cuerpos que miran. Terminar un eje antes de tocar el siguiente
-produce números que se caen cuando el siguiente llega.
+**Son ejes, no fases.** Se avanzó en espiral y con razón: las reglas de MVP 2 no
+significaban nada sobre cápsulas —las faltas las arreglaron mecanismos del
+cuerpo, sin tocar al árbitro— y la percepción de MVP 4 solo se sostiene sobre
+cuerpos que miran. Terminar un eje antes del siguiente da números que se caen.
 
 ### MVP 0 — Constitución y ontología
 
@@ -102,11 +101,11 @@ de equipo, y **jugadores que no sean clones** (`AHORA.md`).
 Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
 
-Puestos el cono, el barrido visual, la memoria que envejece y el error que crece
-con la distancia; las decisiones de movimiento leen campos creídos y la mirada
-lee el balón creído. Faltan atención dependiente del contexto, oclusión,
-latencia e incertidumbre explícita. La trayectoria que se persigue sigue siendo
-la real: separar decisión perceptiva y contacto físico es el próximo corte.
+Puestos el cono, el barrido, la memoria que envejece, el error que crece con la
+distancia y la duda que la creencia declara de sí misma; se decide sobre campos
+creídos y la mirada busca el balón cuando lo pierde. Faltan oclusión, latencia,
+la duda de los compañeros con quien la lea y el resto de la atención por
+contexto. Lo que se persigue sigue siendo la trayectoria real.
 
 ### MVP 5 — Responsabilidad táctica
 
