@@ -7,7 +7,7 @@ use bevy_ecs::prelude::{With, Without};
 use bevy_math::Vec2;
 use bevy_time::Time;
 use football_domain::{
-    Ball, Looking, MatchTuning, ObservationMemory, Player, PlayerId, Position, Scenario, Vision,
+    Ball, Looking, MatchTuning, ObservationMemory, Player, PlayerId, Position, Scenario, Senses,
     can_see, hidden_by,
 };
 use football_simulation::ScenarioRunner;
@@ -56,6 +56,11 @@ pub fn run() {
         let mut bodies = world.query::<&Player>();
         bodies.iter(world).map(|player| player.id).collect()
     };
+    let ball_position = {
+        let mut ball = world.query_filtered::<&Position, (With<Ball>, Without<Player>)>();
+        ball.single(world)
+            .map_or(Vec2::ZERO, |position| position.on_pitch())
+    };
     // Solo quien tiene una creencia del balón entra en la comparación: a quien
     // no lo ha visto nunca el error le sale cero y la duda máxima, y mezclarlos
     // haría parecer certero al que no sabe nada.
@@ -65,7 +70,9 @@ pub fn run() {
             .filter(|id| beliefs.ball_of(**id).is_some())
             .map(|id| {
                 (
-                    beliefs.ball_error_of(*id).length(),
+                    beliefs
+                        .ball_of(*id)
+                        .map_or(0.0, |believed| believed.distance(ball_position)),
                     beliefs.ball_uncertainty_of(*id),
                 )
             })
@@ -170,11 +177,11 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64,
     let mut ball_in_cone = 0;
     let mut ball_shadowed = 0;
 
-    let mut watchers = world.query::<(&Position, &Looking, &Player, &Vision)>();
-    for (position, looking, watcher, vision) in watchers.iter(world) {
+    let mut watchers = world.query::<(&Position, &Looking, &Player, &Senses)>();
+    for (position, looking, watcher, senses) in watchers.iter(world) {
         let eyes = position.on_pitch();
         for (id, spot) in &crowd {
-            if *id == watcher.id || !can_see(eyes, looking.0, *spot, vision) {
+            if *id == watcher.id || !can_see(eyes, looking.0, *spot, &senses.vision) {
                 continue;
             }
             in_cone += 1;
@@ -185,7 +192,7 @@ fn who_is_in_the_way(world: &mut bevy_ecs::world::World) -> (u64, u64, u64, u64,
             }
         }
         if let Some((spot, height)) = ball
-            && can_see(eyes, looking.0, spot, vision)
+            && can_see(eyes, looking.0, spot, &senses.vision)
         {
             ball_in_cone += 1;
             if is_hidden(eyes, spot, height, &crowd, watcher.id, None) >= 1.0 {

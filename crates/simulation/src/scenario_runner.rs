@@ -9,13 +9,32 @@
 //! La variante con primitivas se monta desde arriba, sobre esta misma app, para
 //! que las dos formas de correr una situación sigan siendo la misma corrida.
 
-use bevy_app::{App, TaskPoolPlugin};
+use bevy_app::App;
+use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
 use bevy_ecs::world::World;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use football_domain::scenario::{PlayState, TICK};
 use football_domain::{ByTeam, MatchPhase, MatchState, Scenario, ScenarioOutcome, SetPiece};
 
 use crate::MatchKernelPlugin;
+
+/// Builds the reference headless app used by both a single teaching situation
+/// and a calibration envelope. Keeping this setup in one place prevents a
+/// measurement from changing merely because the scheduler picked another
+/// valid parallel order.
+pub(crate) fn headless_scenario_app(scenario: Scenario) -> App {
+    scenario
+        .validate()
+        .unwrap_or_else(|error| panic!("cannot run invalid scenario: {error}"));
+    let mut app = App::new();
+    app.add_plugins(TimePlugin);
+    app.add_plugins(MatchKernelPlugin::new(scenario));
+    for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
+        schedule.set_executor(SingleThreadedExecutor::new());
+    }
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+    app
+}
 
 /// Runs one scenario, one fixed tick per step.
 pub struct ScenarioRunner {
@@ -33,10 +52,7 @@ impl ScenarioRunner {
     /// The scenario with no presentation at all: no window, no assets, no
     /// renderer. This is the reference run.
     pub fn headless(scenario: Scenario) -> Self {
-        let mut app = App::new();
-        app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-        app.add_plugins(MatchKernelPlugin::new(scenario.clone()));
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+        let app = headless_scenario_app(scenario.clone());
         Self::from_app(app, scenario)
     }
 
@@ -135,5 +151,47 @@ impl ScenarioRunner {
             outcome.ticks_simulated,
             mismatches.join("\n  - ")
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy_math::Vec3;
+    use football_domain::{TeamId, scenario::BallSetup};
+    use std::time::Duration;
+
+    #[test]
+    fn an_exported_teaching_situation_reproduces_the_same_headless_run() {
+        let source = Scenario::kick_off()
+            .named("imported live ball")
+            .with_ball(
+                BallSetup::travelling_from(Vec3::new(8.0, -5.0, 0.4), Vec3::new(4.0, 1.0, 0.0))
+                    .last_touched_by(TeamId::Home),
+            )
+            .already_in_play()
+            .for_duration(Duration::from_millis(800));
+        let imported = Scenario::from_situation_text(
+            &source
+                .to_situation_text()
+                .expect("a canonical situation exports"),
+        )
+        .expect("the exported situation imports");
+
+        let original_outcome = ScenarioRunner::headless(source).run();
+        let imported_outcome = ScenarioRunner::headless(imported).run();
+        assert_eq!(
+            original_outcome.ticks_simulated,
+            imported_outcome.ticks_simulated
+        );
+        assert_eq!(original_outcome.score, imported_outcome.score);
+        assert_eq!(original_outcome.set_pieces, imported_outcome.set_pieces);
+        assert_eq!(original_outcome.phases, imported_outcome.phases);
+        assert_eq!(original_outcome.final_phase, imported_outcome.final_phase);
+        assert_eq!(
+            original_outcome.period_elapsed,
+            imported_outcome.period_elapsed
+        );
+        assert_eq!(original_outcome.play_resumed, imported_outcome.play_resumed);
     }
 }

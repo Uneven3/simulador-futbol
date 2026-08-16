@@ -21,8 +21,10 @@ name = "football_domain"
 # introspectable (`Entity`, `Vec3`, `Quat` inside a `#[derive(Reflect)]`), which
 # the diagnostic overlays and future scenario serialization rely on.
 bevy_ecs = { version = "0.19", features = ["bevy_reflect"] }
-bevy_math = { version = "0.19", features = ["bevy_reflect"] }
+bevy_math = { version = "0.19", features = ["bevy_reflect", "serialize"] }
 bevy_reflect = "0.19"
+ron = "0.12"
+serde = { version = "1", features = ["derive"] }
 
 # Ley 10: lo que puede ser un error de compilación, lo es. No se heredan del
 # workspace porque es compartido con otros proyectos.

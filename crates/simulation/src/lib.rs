@@ -5,6 +5,7 @@ pub mod ball_collisions;
 pub mod ball_contest;
 pub mod ball_physics;
 pub mod ball_release;
+pub mod counterfactual;
 pub mod diagnostics;
 pub mod envelope;
 pub mod force_field;
@@ -17,20 +18,25 @@ pub mod perception;
 pub mod player_decisions;
 pub mod player_movement;
 pub mod referee;
+pub mod scenario_proposals;
 pub mod scenario_runner;
+pub mod substitutions;
 pub mod team_tactics;
 
 pub use ball_collisions::BallCollisionPlugin;
 pub use ball_contest::BallContestPlugin;
 pub use ball_physics::BallPhysicsPlugin;
 pub use ball_release::BallReleasePlugin;
+pub use counterfactual::{CounterfactualAlternative, CounterfactualReport, CounterfactualResult};
 pub use diagnostics::MatchDiagnosticsPlugin;
 pub use match_clock::MatchClockPlugin;
 pub use match_setup::MatchSetupPlugin;
 pub use perception::PerceptionPlugin;
 pub use player_movement::PlayerMovementPlugin;
 pub use referee::RefereePlugin;
+pub use scenario_proposals::ScenarioProposalPlugin;
 pub use scenario_runner::ScenarioRunner;
+pub use substitutions::{PendingSubstitutions, SubstitutionPlugin};
 
 use football_domain::Scenario;
 
@@ -60,6 +66,7 @@ impl MatchKernelPlugin {
 
 impl Plugin for MatchKernelPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(ball_collisions::CollisionRng::seeded(self.scenario.seed));
         app.add_plugins((
             MatchSetupPlugin::new(self.scenario.clone()),
             SimulationOrderPlugin,
@@ -69,6 +76,8 @@ impl Plugin for MatchKernelPlugin {
             RefereePlugin,
             PerceptionPlugin,
             PlayerMovementPlugin,
+            ScenarioProposalPlugin,
+            SubstitutionPlugin,
             BallContestPlugin,
             BallReleasePlugin,
             MatchDiagnosticsPlugin::retaining(self.retained_facts),
@@ -78,7 +87,7 @@ impl Plugin for MatchKernelPlugin {
 
 /// Whether there is still a match to play.
 fn the_match_is_still_on(match_state: Res<football_domain::MatchState>) -> bool {
-    !match_state.phase.is_over()
+    !match_state.phase.is_over() && match_state.phase != football_domain::MatchPhase::Penalties
 }
 
 /// Fixed-tick ordering: the match lifecycle first (is there a match to play?),
@@ -125,6 +134,7 @@ impl Plugin for SimulationOrderPlugin {
 mod tests {
     use super::*;
     use bevy_app::TaskPoolPlugin;
+    use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
     use bevy_math::prelude::*;
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
     use football_domain::scenario::TICK;
@@ -137,6 +147,12 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
         app.add_plugins(MatchKernelPlugin::new(Scenario::kick_off()).retaining_facts(4096));
+        // La prueba de integración comprueba una trayectoria causal, no qué
+        // orden escoge un pool compartido con las demás pruebas. Es la misma
+        // condición de reproducción que usa `ScenarioRunner`.
+        for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
+            schedule.set_executor(SingleThreadedExecutor::new());
+        }
         // one fixed tick per app.update()
         app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
         app

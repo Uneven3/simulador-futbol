@@ -48,6 +48,11 @@ verdad. La
 duda viaja en `PlayerReading` y decide: se barre buscando al peor situado, se va
 a por el balón si se duda más de `lost_ball_doubt`, un pase a quien no se tiene
 situado vale menos, y se persigue la idea del balón hasta `eyes_on_the_ball`.
+`Judgement` sesga lo visto y `Senses` define cono, reacción, barrido, oído y
+cuello; ambos salen de la semilla y se espejan por dorsal. `TacticalPlan` es la
+política por equipo; `TacticalResponsibility`, la ocupación, cobertura, presión
+o apoyo que consume cada decisión. Las familiaridades limitan cobertura, no dan
+un bonus global.
 
 **Hechos y decisiones.** `BallTouched` y `PotentialFoul` son hechos: ocurrieron,
 y no dicen qué hacer con ellos. `SetPiece` y `OffsideRecords` ya son decisión del
@@ -59,24 +64,25 @@ su `TuningVersion`: un número que decide algo vive ahí y en ningún otro sitio
 
 **Situaciones.** `Scenario` es una situación reproducible completa —estado
 inicial, semilla, ventana y afirmaciones—, `Expectations` lo que debe pasar y
-`ScenarioOutcome` lo que pasó.
+`ScenarioOutcome` lo que pasó. `PlayerPlacement` reconstruye una posición,
+rol y casilla individual; `MovementProposal` propone una intención y deja que
+el motor resuelva el cuerpo que realmente resulta. `InitialObservation` declara
+la creencia con la que un observador empieza, no una lectura inicial de la
+verdad. El RON versionado intercambia escenario, reglamento, tuning, planes,
+balón, alternativas y esas creencias. `CounterfactualReport` corre cada propuesta
+sobre las mismas semillas y conserva su envolvente, sin
+elegir una trayectoria como si fuera la única consecuencia.
 
 ## Vocabulario reservado
 
 Nombres que aún no existen, con el MVP que los trae, para que el día que
 aparezcan no se inventen dos veces:
 
-- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria real y
-  falta que cada uno prediga la suya. `Senses` traerá lo que separa a un jugador
-  de otro —reacción, cuello, barrido, oído— como factores sobre la referencia de
-  `MatchTuning`, que sigue siendo lo versionado; `Judgement`, los sesgos de
-  juicio, absolutos porque su media es cero. Cómo funciona ver no es de nadie y
-  no será atributo.
+- **Percepción (MVP 4):** `Ball.predictions` sigue siendo la trayectoria real;
+  cada jugador conserva su propia extrapolación en `Beliefs`. Cómo funciona ver
+  no es de nadie y no será atributo.
 - **Motor (MVP 3):** `BodyEnvelope`, y un `ActionCommitment` con fases en vez de
   un solo instante de contacto.
-- **Táctica (MVP 5):** `TacticalPlan`, `TacticalResponsibility`,
-  `PositionFamiliarity`, `RoleFamiliarity`. Un atributo modifica operaciones
-  concretas; nunca es un bonus global.
 - **Arbitraje:** `RefereeObservation`, que separa lo que el árbitro vio de lo
   que ocurrió. Hoy ve todo lo que se publica.
 - **Unidades:** `Metres`, `Seconds`, `MetresPerSecond` como newtypes de campo

@@ -198,6 +198,28 @@ fn a_match_runs_from_kick_off_to_full_time() {
 }
 
 #[test]
+fn a_substitution_is_served_only_at_the_catalogued_stoppage() {
+    use football_domain::{Player, PlayerId};
+
+    let mut runner = ScenarioRunner::headless(scenarios::substitution_at_kick_off());
+    runner.advance();
+    runner.advance(); // the queued despawn/spawn is applied at the tick boundary
+    let world = runner.world_mut();
+    let ids: Vec<_> = world
+        .query::<&Player>()
+        .iter(world)
+        .map(|player| player.id)
+        .collect();
+    assert!(!ids.contains(&PlayerId::home(9)));
+    assert!(ids.contains(&PlayerId::home(19)));
+}
+
+#[test]
+fn a_drawn_elimination_match_reaches_and_finishes_the_shootout() {
+    ScenarioRunner::headless(scenarios::drawn_match_to_penalties()).assert_scenario_holds();
+}
+
+#[test]
 fn a_shot_at_speed_does_not_tunnel_through_the_goal_line() {
     ScenarioRunner::headless(scenarios::goal_at_high_speed()).assert_scenario_holds();
 }
@@ -362,6 +384,8 @@ fn every_catalogued_scenario_has_a_test_of_its_own() {
     const COVERED: &[&str] = &[
         "opening minute",
         "short match",
+        "substitution at kick-off",
+        "drawn match to penalties",
         "shot crossing the goal line",
         "goal at high speed",
         "shot off the crossbar",

@@ -154,6 +154,7 @@ pub fn short_match() -> Scenario {
         .with_regulations(MatchRegulations {
             half_duration: Duration::from_secs(20),
             half_time_interval: Duration::from_secs(3),
+            ..MatchRegulations::default()
         })
         .for_duration(Duration::from_secs(50))
         .expecting(Expectations {
@@ -161,6 +162,49 @@ pub fn short_match() -> Scenario {
                 MatchPhase::FirstHalf,
                 MatchPhase::HalfTime,
                 MatchPhase::SecondHalf,
+                MatchPhase::FullTime,
+            ],
+            play_resumes: true,
+            ..Default::default()
+        })
+}
+
+/// Ley 3: un cambio pedido por la situación se sirve en la primera detención,
+/// sin alterar cuerpos mientras el balón está vivo.
+pub fn substitution_at_kick_off() -> Scenario {
+    Scenario::kick_off()
+        .named("substitution at kick-off")
+        .with_substitutions(vec![football_domain::Substitution::new(
+            football_domain::PlayerId::home(9),
+            football_domain::PlayerId::home(19),
+        )])
+        .for_duration(Duration::from_secs(4))
+        .expecting(Expectations {
+            play_resumes: true,
+            ..Default::default()
+        })
+}
+
+/// Leyes 7 y 10: si un empate eliminatorio sobrevive a las dos prórrogas, la
+/// tanda es una fase propia antes del final, no goles escondidos en el marcador.
+pub fn drawn_match_to_penalties() -> Scenario {
+    Scenario::kick_off()
+        .named("drawn match to penalties")
+        .with_regulations(MatchRegulations {
+            half_duration: Duration::from_secs(1),
+            half_time_interval: Duration::ZERO,
+            extra_time_half_duration: Some(Duration::from_secs(1)),
+            extra_time_interval: Duration::ZERO,
+            kicks_from_penalty_mark_if_draw: true,
+            shootout_conversion_probability: 0.63,
+            ..MatchRegulations::default()
+        })
+        .for_duration(Duration::from_secs(15))
+        .expecting(Expectations {
+            phases: vec![
+                MatchPhase::FirstExtraTime,
+                MatchPhase::SecondExtraTime,
+                MatchPhase::Penalties,
                 MatchPhase::FullTime,
             ],
             play_resumes: true,
@@ -304,6 +348,7 @@ pub fn interrupted_half() -> Scenario {
         .with_regulations(MatchRegulations {
             half_duration: Duration::from_secs(10),
             half_time_interval: Duration::from_secs(2),
+            ..MatchRegulations::default()
         })
         .with_ball(
             BallSetup::travelling_from(Vec3::new(0.0, 30.0, 0.11), Vec3::new(0.0, 12.0, 0.0))
@@ -323,6 +368,8 @@ pub fn all() -> Vec<Scenario> {
     vec![
         opening_minute(),
         short_match(),
+        substitution_at_kick_off(),
+        drawn_match_to_penalties(),
         shot_crossing_the_goal_line(),
         goal_at_high_speed(),
         shot_off_the_crossbar(),

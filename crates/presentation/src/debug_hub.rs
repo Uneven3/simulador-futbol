@@ -35,6 +35,7 @@ pub enum DebugSwitch {
     RestartSpot,
     Vision,
     Legs,
+    Counterfactual,
     Log(DiagnosticChannel),
 }
 
@@ -50,6 +51,7 @@ impl DebugSwitch {
             DebugSwitch::RestartSpot,
             DebugSwitch::Vision,
             DebugSwitch::Legs,
+            DebugSwitch::Counterfactual,
         ];
         switches.extend(DiagnosticChannel::ALL.map(DebugSwitch::Log));
         switches
@@ -64,6 +66,7 @@ impl DebugSwitch {
             DebugSwitch::RestartSpot => "Overlay: restart spot".to_string(),
             DebugSwitch::Vision => "Overlay: vision".to_string(),
             DebugSwitch::Legs => "Overlay: legs".to_string(),
+            DebugSwitch::Counterfactual => "Overlay: counterfactual proposals".to_string(),
             DebugSwitch::Log(channel) => format!("Log: {}", channel_name(channel)),
         }
     }
@@ -79,6 +82,7 @@ impl DebugSwitch {
             DebugSwitch::RestartSpot => "where the ball goes back into play",
             DebugSwitch::Vision => "qué alcanza a ver cada jugador, y a quién recuerda",
             DebugSwitch::Legs => "lo que le queda a cada uno, y quién está armando un golpeo",
+            DebugSwitch::Counterfactual => "movement alternatives without changing the match",
             DebugSwitch::Log(channel) => channel.cost(),
         }
     }
@@ -92,6 +96,7 @@ impl DebugSwitch {
             DebugSwitch::RestartSpot => overlays.restart_spot,
             DebugSwitch::Vision => overlays.vision,
             DebugSwitch::Legs => overlays.legs,
+            DebugSwitch::Counterfactual => overlays.counterfactual,
             DebugSwitch::Log(channel) => channels.is_enabled(channel),
         }
     }
@@ -105,6 +110,7 @@ impl DebugSwitch {
             DebugSwitch::RestartSpot => overlays.restart_spot = !overlays.restart_spot,
             DebugSwitch::Vision => overlays.vision = !overlays.vision,
             DebugSwitch::Legs => overlays.legs = !overlays.legs,
+            DebugSwitch::Counterfactual => overlays.counterfactual = !overlays.counterfactual,
             DebugSwitch::Log(channel) => {
                 channels.toggle(channel);
             }
@@ -240,7 +246,7 @@ mod tests {
     fn closed_the_hub_says_only_how_to_open_it() {
         let lines = panel_lines(
             &DebugHub::default(),
-            &OverlaySettings::default(),
+            &OverlaySettings::disabled(),
             &DiagnosticChannels::default(),
         );
         assert_eq!(lines.len(), 1);
@@ -257,7 +263,7 @@ mod tests {
         };
         let lines = panel_lines(
             &hub,
-            &OverlaySettings::default(),
+            &OverlaySettings::disabled(),
             &DiagnosticChannels::default(),
         );
 
@@ -281,7 +287,8 @@ mod tests {
             open: true,
             selected: 0,
         };
-        let mut overlays = OverlaySettings::default();
+        let mut overlays = OverlaySettings::disabled();
+        overlays.velocities = true;
         let mut channels = DiagnosticChannels::default();
 
         DebugSwitch::Velocities.flip(&mut overlays, &mut channels);

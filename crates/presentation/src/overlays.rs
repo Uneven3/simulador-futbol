@@ -12,8 +12,9 @@
 
 use bevy::prelude::*;
 use football_domain::{
-    Attributes, Ball, FatigueState, Looking, MatchState, ObservationMemory, OffsideRecords,
-    PitchConfig, Player, Position, PossessionDesignation, SetPiece, TeamId, Velocity, Vision,
+    Attributes, Ball, CounterfactualOverlay, FatigueState, Looking, MatchState, ObservationMemory,
+    OffsideRecords, PitchConfig, Player, Position, PossessionDesignation, Senses, SetPiece, TeamId,
+    Velocity, Vision,
 };
 
 pub struct DiagnosticOverlaysPlugin;
@@ -33,6 +34,7 @@ impl Plugin for DiagnosticOverlaysPlugin {
                 draw_restart_spot,
                 draw_vision,
                 draw_legs,
+                draw_counterfactual,
             )
                 .run_if(resource_exists::<GizmoConfigStore>),
         );
@@ -51,6 +53,7 @@ pub struct OverlaySettings {
     pub restart_spot: bool,
     pub vision: bool,
     pub legs: bool,
+    pub counterfactual: bool,
 }
 
 impl Default for OverlaySettings {
@@ -60,16 +63,7 @@ impl Default for OverlaySettings {
         // para apagar uno de los que vienen puestos. No cambia el arranque
         // normal —el hub sigue siendo la vía— y nada se enciende por defecto.
         let asked = std::env::var("GF_OVERLAYS").unwrap_or_default();
-        let mut settings = Self {
-            velocities: true,
-            ball_future: true,
-            possession: true,
-            offside: true,
-            restart_spot: true,
-            // apagado: veintidós conos y veintidós telarañas tapan el fútbol
-            vision: false,
-            legs: true,
-        };
+        let mut settings = Self::disabled();
         for name in asked
             .split(',')
             .map(str::trim)
@@ -87,10 +81,28 @@ impl Default for OverlaySettings {
                 "restart_spot" => settings.restart_spot = on,
                 "vision" => settings.vision = on,
                 "legs" => settings.legs = on,
+                "counterfactual" => settings.counterfactual = on,
                 _ => {}
             }
         }
         settings
+    }
+}
+
+impl OverlaySettings {
+    /// Estado sin entorno ni teclado: el que usan pruebas y consumidores que
+    /// necesitan un instrumento apagado de forma reproducible.
+    pub fn disabled() -> Self {
+        Self {
+            velocities: false,
+            ball_future: false,
+            possession: false,
+            offside: false,
+            restart_spot: false,
+            vision: false,
+            legs: false,
+            counterfactual: false,
+        }
     }
 }
 
@@ -102,6 +114,11 @@ const OFFSIDE_COLOUR: Srgba = Srgba::new(1.0, 0.5, 0.0, 1.0);
 const LEGS_COLOUR: Srgba = Srgba::new(0.4, 1.0, 0.5, 0.9);
 /// Radio del arco de piernas, por dentro del anillo de designado (0,8 m).
 const LEGS_RING: f32 = 0.55;
+const COUNTERFACTUAL_COLOURS: [Srgba; 3] = [
+    Srgba::new(0.95, 0.25, 0.9, 1.0),
+    Srgba::new(0.2, 0.95, 0.85, 1.0),
+    Srgba::new(1.0, 0.7, 0.2, 1.0),
+];
 
 fn team_colour(team: TeamId) -> Srgba {
     match team {
@@ -136,6 +153,33 @@ fn draw_velocities(
         }
         let (start, end) = velocity_arrow(*position, *velocity, attributes.height);
         gizmos.arrow(start, end, team_colour(player.id.team));
+    }
+}
+
+/// Flechas de las intenciones de cada alternativa, a distinta altura para que
+/// se puedan comparar sin que la vista altere ni recalcula la simulación.
+fn draw_counterfactual(
+    mut gizmos: Gizmos,
+    settings: Res<OverlaySettings>,
+    overlay: Option<Res<CounterfactualOverlay>>,
+    players: Query<(&Position, &Player)>,
+) {
+    if !settings.counterfactual {
+        return;
+    }
+    let Some(overlay) = overlay else { return };
+    for (index, alternative) in overlay.alternatives.iter().enumerate() {
+        let colour = COUNTERFACTUAL_COLOURS[index % COUNTERFACTUAL_COLOURS.len()];
+        let z = 0.25 + index as f32 * 0.08;
+        for proposal in &alternative.movement_proposals {
+            if let Some((position, _)) = players
+                .iter()
+                .find(|(_, player)| player.id == proposal.player)
+            {
+                let start = position.0 + Vec3::Z * z;
+                gizmos.arrow(start, start + proposal.desired_velocity.extend(0.0), colour);
+            }
+        }
     }
 }
 
@@ -293,7 +337,7 @@ fn draw_vision(
         &Looking,
         &Player,
         &Attributes,
-        &Vision,
+        &Senses,
         &ObservationMemory,
     )>,
 ) {
@@ -301,7 +345,7 @@ fn draw_vision(
         return;
     }
     let now = time.elapsed();
-    for (position, looking, player, attributes, vision, memory) in watchers.iter() {
+    for (position, looking, player, attributes, senses, memory) in watchers.iter() {
         let colour = team_colour(player.id.team);
 
         // dónde cree cada uno que está el balón: cuanto más se separan las
@@ -310,8 +354,12 @@ fn draw_vision(
             let at = Vec3::new(believed.x, believed.y, 0.1);
             gizmos.cross(Isometry3d::from_translation(at), 0.4, colour);
         }
-        let [eyes, left, right] =
-            vision_cone(*position, looking.0, vision, attributes.height * 0.9);
+        let [eyes, left, right] = vision_cone(
+            *position,
+            looking.0,
+            &senses.vision,
+            attributes.height * 0.9,
+        );
         let faded = colour.with_alpha(0.25);
         gizmos.line(eyes, left, faded);
         gizmos.line(eyes, right, faded);

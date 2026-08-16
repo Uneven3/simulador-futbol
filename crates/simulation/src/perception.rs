@@ -15,9 +15,11 @@ use std::time::Duration;
 
 use crate::SimulationSet;
 use crate::team_tactics::PlayerReading;
+use football_domain::scenario::TICK;
 use football_domain::{
-    Ball, HIDDEN_BLUR, Looking, MatchTuning, Observation, ObservationMemory, Player, PlayerId,
-    Position, SHOUTED_BLUR, TOTAL_LOSS, Velocity, Vision, can_see, hidden_by, misjudged_pace,
+    BALL_PREDICTION_STEPS, BALL_RADIUS, Ball, HIDDEN_BLUR, Judgement, Looking, Observation,
+    ObservationMemory, Player, PlayerId, Position, SHOUTED_BLUR, Senses, TOTAL_LOSS, Velocity,
+    can_see, hidden_by,
 };
 
 pub struct PerceptionPlugin;
@@ -30,6 +32,8 @@ impl Plugin for PerceptionPlugin {
             (observe_the_pitch, hear_the_others, believe_the_pitch)
                 .chain()
                 .in_set(SimulationSet::Players)
+                .before(crate::player_movement::update_possession_designation)
+                .before(crate::team_tactics::assign_perceived_responsibilities)
                 .before(crate::player_decisions::select_player_movement),
         );
     }
@@ -42,7 +46,11 @@ impl Plugin for PerceptionPlugin {
 pub struct Beliefs {
     by_player: Vec<(PlayerId, Vec<PlayerReading>)>,
     ball_position: Vec<(PlayerId, Vec2)>,
-    ball_error: Vec<(PlayerId, Vec2)>,
+    ball_paths: Vec<(PlayerId, Vec<Vec2>)>,
+    /// La misma forma que usa el motor, pero reconstruida desde una observación
+    /// y nunca prestada de `Ball`. Mantener el buffer evita asignar por cabeza
+    /// cada tick y permite que decisiones heredadas lean una trayectoria creída.
+    ball_models: Vec<(PlayerId, Ball)>,
     ball_uncertainty: Vec<(PlayerId, f32)>,
 }
 
@@ -54,16 +62,25 @@ impl Beliefs {
             .map_or(&[], |(_, readings)| readings.as_slice())
     }
 
-    /// Lo que este jugador se equivoca sobre dónde está el balón, en metros.
-    ///
-    /// Hoy solo gobierna hacia dónde mira y qué se dibuja: sumarlo también a la
-    /// trayectoria que persigue dejó el partido sin un solo tiro, porque un
-    /// error de un metro impide un contacto que se decide en sesenta y cinco.
-    pub fn ball_error_of(&self, who: PlayerId) -> Vec2 {
-        self.ball_error
+    /// Trayectoria que este jugador extrapola desde su última observación. No
+    /// hay sustituto verdadero: quien nunca vio el balón no tiene dónde correr.
+    pub fn ball_path_of(&self, who: PlayerId) -> &[Vec2] {
+        self.ball_paths
             .iter()
             .find(|(id, _)| *id == who)
-            .map_or(Vec2::ZERO, |(_, error)| *error)
+            .map_or(&[], |(_, path)| path.as_slice())
+    }
+
+    /// Modelo cinemático privado de este jugador. Falta si nunca observó el
+    /// balón: no hay una trayectoria verdadera de respaldo (§3).
+    pub fn ball_model_of(&self, who: PlayerId) -> Option<&Ball> {
+        self.ball_paths
+            .iter()
+            .find(|(id, path)| *id == who && !path.is_empty())?;
+        self.ball_models
+            .iter()
+            .find(|(id, _)| *id == who)
+            .map(|(_, model)| model)
     }
 
     /// Dónde sitúa este jugador el balón ahora. No devuelve la verdad como
@@ -102,10 +119,42 @@ impl Beliefs {
         }
     }
 
-    fn remember_ball_error(&mut self, who: PlayerId, error: Vec2) {
-        match self.ball_error.iter_mut().find(|(id, _)| *id == who) {
-            Some((_, known)) => *known = error,
-            None => self.ball_error.push((who, error)),
+    fn remember_ball_path(&mut self, who: PlayerId, seen: Observation, now: Duration) {
+        let path = if let Some((_, path)) = self.ball_paths.iter_mut().find(|(id, _)| *id == who) {
+            path
+        } else {
+            self.ball_paths
+                .push((who, Vec::with_capacity(BALL_PREDICTION_STEPS)));
+            &mut self.ball_paths.last_mut().expect("acaba de insertarse").1
+        };
+        path.clear();
+        let start = seen.projected_to(now);
+        let step = TICK.as_secs_f32();
+        path.extend(
+            (0..BALL_PREDICTION_STEPS).map(|index| start + seen.velocity * (index as f32 * step)),
+        );
+
+        let model = if let Some((_, model)) = self.ball_models.iter_mut().find(|(id, _)| *id == who)
+        {
+            model
+        } else {
+            self.ball_models.push((
+                who,
+                Ball::placed_at(Vec3::new(start.x, start.y, BALL_RADIUS), Vec3::ZERO),
+            ));
+            &mut self.ball_models.last_mut().expect("acaba de insertarse").1
+        };
+        model.momentum = Vec3::new(seen.velocity.x, seen.velocity.y, 0.0);
+        model.previous_position = Vec3::new(start.x, start.y, BALL_RADIUS);
+        for (index, predicted) in model.predictions.iter_mut().enumerate() {
+            let spot = start + seen.velocity * (index as f32 * step);
+            *predicted = Vec3::new(spot.x, spot.y, BALL_RADIUS);
+        }
+    }
+
+    fn forget_ball_path(&mut self, who: PlayerId) {
+        if let Some((_, path)) = self.ball_paths.iter_mut().find(|(id, _)| *id == who) {
+            path.clear();
         }
     }
 
@@ -132,21 +181,22 @@ impl Beliefs {
 /// ya tiene, y por eso esto no puede empeorar una creencia.
 pub fn hear_the_others(
     time: Res<Time>,
-    tuning: Res<MatchTuning>,
-    mut voices: Query<(&Player, &Position, &mut ObservationMemory)>,
+    match_state: Res<football_domain::MatchState>,
+    mut voices: Query<(&Player, &Position, &Senses, &mut ObservationMemory)>,
     mut said: Local<Vec<(PlayerId, Vec2, Option<Observation>)>>,
     mut warned: Local<Vec<(PlayerId, Vec2, PlayerId, Observation)>>,
+    mut line_calls: Local<Vec<(PlayerId, Vec2, PlayerId, Observation)>>,
 ) {
-    let range = tuning.perception.shout_range;
     let now = time.elapsed();
     said.clear();
     warned.clear();
+    line_calls.clear();
     // Solo habla el que le toca hablar. Los avisos se reparten en el tiempo con
     // el dorsal, como los barridos, para que no canten los once a la vez ni
     // haga falta un RNG para decidirlo (§5).
-    for (player, position, memory) in voices
+    for (player, position, _senses, memory) in voices
         .iter()
-        .filter(|(player, ..)| speaks_now(now, player.id, tuning.perception.shout_interval))
+        .filter(|(player, _, senses, _)| speaks_now(now, player.id, senses.shout_interval))
     {
         let mouth = position.on_pitch();
         said.push((player.id, mouth, memory.ball()));
@@ -159,13 +209,27 @@ pub fn hear_the_others(
                 .filter(|(id, _)| id.team != player.id.team)
                 .map(|(id, seen)| (player.id, mouth, id, seen)),
         );
+        // A defensive anchor is the one useful teammate call: it lets a
+        // listener reconstruct where the line is without a speaker sending a
+        // complete team map. The word still travels with reaction delay and
+        // shouted blur below.
+        let defending_x = match_state.sides.defending_x(player.id.team);
+        if let Some((anchor, seen)) = memory
+            .everyone()
+            .filter(|(id, _)| id.team == player.id.team && *id != player.id)
+            .max_by(|(_, left), (_, right)| {
+                (left.spot.x * defending_x).total_cmp(&(right.spot.x * defending_x))
+            })
+        {
+            line_calls.push((player.id, mouth, anchor, seen));
+        }
     }
 
-    for (player, position, mut memory) in voices.iter_mut() {
+    for (player, position, senses, mut memory) in voices.iter_mut() {
         let ears = position.on_pitch();
         let within_earshot = said
             .iter()
-            .filter(|(who, spot, _)| *who != player.id && spot.distance(ears) <= range)
+            .filter(|(who, spot, _)| *who != player.id && spot.distance(ears) <= senses.shout_range)
             .filter_map(|(_, _, ball)| *ball);
 
         if let Some(shouted) = worth_hearing(memory.ball(), within_earshot) {
@@ -180,7 +244,7 @@ pub fn hear_the_others(
             .filter(|(who, mouth, about, seen)| {
                 *who != player.id
                     && about.team != player.id.team
-                    && mouth.distance(ears) <= range
+                    && mouth.distance(ears) <= senses.shout_range
                     && seen.spot.distance(ears) <= WARNING_DISTANCE
             })
             .min_by(|left, right| {
@@ -192,6 +256,19 @@ pub fn hear_the_others(
             .map(|(_, _, about, seen)| (*about, *seen));
 
         if let Some((about, seen)) = closing_in
+            && let Some(shouted) = worth_hearing(memory.of(about), [seen].into_iter())
+        {
+            memory.saw(about, shouted);
+        }
+
+        let line_anchor = line_calls
+            .iter()
+            .filter(|(who, mouth, _, _)| {
+                *who != player.id && mouth.distance(ears) <= senses.shout_range
+            })
+            .max_by_key(|(_, _, _, seen)| seen.seen_at)
+            .map(|(_, _, about, seen)| (*about, *seen));
+        if let Some((about, seen)) = line_anchor
             && let Some(shouted) = worth_hearing(memory.of(about), [seen].into_iter())
         {
             memory.saw(about, shouted);
@@ -244,6 +321,10 @@ fn worth_hearing(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::items_after_test_module,
+    reason = "las pruebas puras se mantienen junto a las funciones de oído antes del sistema ECS"
+)]
 mod tests {
     use super::*;
     use football_domain::scenario::SIMULATION_HZ;
@@ -326,11 +407,9 @@ mod tests {
 pub fn believe_the_pitch(
     time: Res<Time>,
     mut beliefs: ResMut<Beliefs>,
-    ball_query: Query<&Position, (With<Ball>, Without<Player>)>,
     who_is_who: Query<(&Player, &ObservationMemory, &Position, &Velocity)>,
 ) {
     let now = time.elapsed();
-    let ball_now = ball_query.single().ok().map(|position| position.on_pitch());
     // los datos que no se observan porque no cambian: quién es cada dorsal
     let identities: Vec<(PlayerId, &Player)> = who_is_who
         .iter()
@@ -339,13 +418,8 @@ pub fn believe_the_pitch(
 
     for (player, memory, position, velocity) in who_is_who.iter() {
         // quien no lo ve lo sitúa donde lo dejó, adelantado a ojo
-        let believed_ball = memory.ball().map(|seen| seen.projected_to(now));
-        let error = match (believed_ball, ball_now) {
-            (Some(believed), Some(actual)) => believed - actual,
-            // sin haberlo visto nunca no hay creencia que corregir
-            _ => Vec2::ZERO,
-        };
-        beliefs.remember_ball_error(player.id, error);
+        let ball_observation = memory.ball();
+        let believed_ball = ball_observation.map(|seen| seen.projected_to(now));
         beliefs.remember_ball_uncertainty(
             player.id,
             memory
@@ -354,6 +428,13 @@ pub fn believe_the_pitch(
         );
         if let Some(position) = believed_ball {
             beliefs.remember_ball(player.id, position);
+            // Predice desde lo visto, no desde `Ball.predictions`: el buffer
+            // físico sigue siendo del motor y no entra en esta decisión (§3).
+            if let Some(seen) = ball_observation {
+                beliefs.remember_ball_path(player.id, seen, now);
+            }
+        } else {
+            beliefs.forget_ball_path(player.id);
         }
 
         let readings = beliefs.slot_for(player.id);
@@ -386,14 +467,6 @@ pub fn believe_the_pitch(
 
 /// Un desplazamiento de `blur` metros que solo depende del sitio: así el mismo
 /// cuerpo se sitúa mal siempre igual mientras no se mueva, en vez de temblar.
-fn blurred_by(spot: Vec2, blur: f32) -> Vec2 {
-    if blur <= 0.0 {
-        return Vec2::ZERO;
-    }
-    let angle = (spot.x * 12.9898 + spot.y * 78.233).sin() * 43758.547;
-    Vec2::from_angle(angle - angle.floor()) * blur
-}
-
 /// Cuánto lo esconde el que más lo esconda, de 0 a 1. Ni quien mira ni lo
 /// mirado cuentan como estorbo: uno no se tapa a sí mismo.
 ///
@@ -418,7 +491,6 @@ fn hidden_behind_somebody(
 /// como estaba y envejece solo.
 pub fn observe_the_pitch(
     time: Res<Time>,
-    tuning: Res<MatchTuning>,
     ball_query: Query<(&Position, &Ball), Without<Player>>,
     bodies: Query<(&Position, &Player, &Velocity), Without<Ball>>,
     // el cono cuelga de los ojos y no del pecho: `Looking`, no `Facing`
@@ -426,7 +498,8 @@ pub fn observe_the_pitch(
         &Position,
         &Looking,
         &Player,
-        &Vision,
+        &Senses,
+        &Judgement,
         &mut ObservationMemory,
     )>,
     // quién estorba a quién se pregunta 22 × 21 veces por tick: la plantilla se
@@ -448,17 +521,17 @@ pub fn observe_the_pitch(
             .map(|(position, player, _)| (player.id, position.on_pitch())),
     );
 
-    for (position, looking, watcher, vision, mut memory) in watchers.iter_mut() {
+    for (position, looking, watcher, senses, judgement, mut memory) in watchers.iter_mut() {
         let eyes = position.on_pitch();
         // primero uno se entera de lo que vio hace un momento, y luego mira
-        memory.settle(now, tuning.perception.reaction);
+        memory.settle(now, senses.reaction);
 
         for (other_position, other, velocity) in bodies.iter() {
             if other.id == watcher.id {
                 continue;
             }
             let spot = other_position.on_pitch();
-            if !can_see(eyes, looking.0, spot, vision) {
+            if !can_see(eyes, looking.0, spot, &senses.vision) {
                 continue;
             }
             // ver medio cuerpo por encima de un hombro es verlo, y es situarlo
@@ -478,14 +551,14 @@ pub fn observe_the_pitch(
             }
             // lo lejano se sitúa a bulto: el desenfoque es determinista y sale
             // de dónde está, o el mismo cuerpo bailaría cada tick
-            let blur = vision.blur_at(eyes.distance(spot)) + hidden * HIDDEN_BLUR;
+            let blur = senses.vision.blur_at(eyes.distance(spot)) + hidden * HIDDEN_BLUR;
             memory.saw(
                 other.id,
                 Observation {
-                    spot: spot + blurred_by(spot, blur),
+                    spot: judgement.blurred_spot(spot, blur),
                     // la dirección de la carrera se acierta y el ritmo no, y
                     // por eso lo que se cree se adelanta o se queda corto
-                    velocity: velocity.0.truncate() * misjudged_pace(watcher.id, Some(other.id)),
+                    velocity: judgement.observe_velocity(velocity.0.truncate()),
                     seen_at: now,
                     blur,
                 },
@@ -496,7 +569,7 @@ pub fn observe_the_pitch(
             hidden_behind_somebody(eyes, spot, height, &crowd, watcher.id, None)
         });
         if let Some((spot, _, momentum)) = ball
-            && can_see(eyes, looking.0, spot, vision)
+            && can_see(eyes, looking.0, spot, &senses.vision)
             && ball_hidden < 1.0
         {
             // El balón se sitúa donde está y se declara con cuánta duda. Meter
@@ -504,9 +577,9 @@ pub fn observe_the_pitch(
             // va aparte: aquí solo se dice lo que ya se sabía mal.
             memory.saw_ball(Observation {
                 spot,
-                velocity: momentum * misjudged_pace(watcher.id, None),
+                velocity: judgement.observe_velocity(momentum),
                 seen_at: now,
-                blur: vision.blur_at(eyes.distance(spot)) + ball_hidden * HIDDEN_BLUR,
+                blur: senses.vision.blur_at(eyes.distance(spot)) + ball_hidden * HIDDEN_BLUR,
             });
         }
     }

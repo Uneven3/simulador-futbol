@@ -17,18 +17,23 @@ pub mod tuning;
 pub use ball::{BALL_HISTORY_STEPS, BALL_PREDICTION_STEPS, BALL_RADIUS, Ball};
 pub use identity::{ByTeam, PitchSides, PlayerId, PlayerRegistry, TeamId, TeamSide};
 pub use match_state::{
-    BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords, PitchConfig,
-    PossessionDesignation, PotentialFoul, SetPiece,
+    BallTouched, MatchPhase, MatchRegulations, MatchRng, MatchState, OffsideRecords,
+    PenaltyShootout, PitchConfig, PossessionDesignation, PotentialFoul, SetPiece,
 };
 pub use perception::{
-    EXTRAPOLATION_HORIZON, HIDDEN_BLUR, Observation, ObservationMemory, SELF_MISJUDGED,
-    SHADOW_NEEDS_DEPTH, SHOUTED_BLUR, TOTAL_LOSS, Vision, believed_pace, can_see, hidden_by,
-    misjudged_pace,
+    EXTRAPOLATION_HORIZON, HIDDEN_BLUR, Judgement, Observation, ObservationMemory,
+    PerceptionProfile, SHADOW_NEEDS_DEPTH, SHOUTED_BLUR, Senses, TOTAL_LOSS, Vision, can_see,
+    hidden_by, perception_profile, perception_profiles,
 };
 pub use player::{
-    Attributes, FatigueState, Mentality, PLAYER_BODY_RADIUS, Player, PlayerMatchState,
-    PlayingPosition, TacticalRole,
+    Attributes, Card, DefensiveAction, Discipline, FatigueState, Mentality, PLAYER_BODY_RADIUS,
+    Player, PlayerMatchState, PlayingPosition, PositionFamiliarity, ResponsibilityKind,
+    RoleFamiliarity, TacticalPlan, TacticalPlans, TacticalResponsibility, TacticalRole,
+    player_attributes, tactical_familiarity,
 };
-pub use scenario::{Scenario, ScenarioOutcome};
+pub use scenario::{
+    CounterfactualOverlay, CounterfactualOverlayAlternative, InitialObservation, MovementProposal,
+    ObservationSubject, PlayerPlacement, Scenario, ScenarioOutcome, Substitution,
+};
 pub use spatial::{Facing, Gaze, Looking, MovementIntent, Position, Stance, Velocity};
 pub use tuning::{MatchTuning, TuningVersion};

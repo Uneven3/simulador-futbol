@@ -19,19 +19,23 @@ pub fn displayed_clock(
     phase: MatchPhase,
     period_elapsed: Duration,
     regulations: &MatchRegulations,
+    extra_time_started: bool,
 ) -> Duration {
+    let ninety = regulations.half_duration * 2;
+    let extra_half = regulations
+        .extra_time_half_duration
+        .unwrap_or(Duration::ZERO);
     match phase {
         MatchPhase::PreMatch => Duration::ZERO,
         MatchPhase::FirstHalf => period_elapsed,
         // during the interval the clock rests on the half-time whistle
         MatchPhase::HalfTime => regulations.half_duration,
         MatchPhase::SecondHalf => regulations.half_duration + period_elapsed,
-        MatchPhase::FullTime => regulations.half_duration * 2,
-        // extra time is not modelled yet; keep the clock honest rather than
-        // invent a number for it
-        MatchPhase::FirstExtraTime | MatchPhase::SecondExtraTime | MatchPhase::Penalties => {
-            regulations.half_duration * 2 + period_elapsed
-        }
+        MatchPhase::FirstExtraTime => ninety + period_elapsed,
+        MatchPhase::SecondExtraTime => ninety + extra_half + period_elapsed,
+        MatchPhase::Penalties => ninety + extra_half * 2,
+        MatchPhase::FullTime if extra_time_started => ninety + extra_half * 2,
+        MatchPhase::FullTime => ninety,
     }
 }
 
@@ -63,6 +67,7 @@ pub fn restart_label(set_piece: SetPiece, team: Option<TeamId>) -> Option<String
         SetPiece::Corner => "Corner",
         SetPiece::ThrowIn => "Throw-in",
         SetPiece::Penalty => "Penalty",
+        SetPiece::DroppedBall => "Dropped ball",
     };
     Some(match team {
         Some(TeamId::Home) => format!("{awarded}: home"),
@@ -82,7 +87,12 @@ pub fn scoreboard_fields(match_state: &MatchState, regulations: &MatchRegulation
         ),
         Field::volatile(
             "clock",
-            format_clock(displayed_clock(match_state.phase, elapsed, regulations)),
+            format_clock(displayed_clock(
+                match_state.phase,
+                elapsed,
+                regulations,
+                match_state.extra_time_started,
+            )),
         ),
         Field::new("phase", phase_label(match_state.phase)),
     ]
@@ -246,6 +256,7 @@ mod tests {
         MatchRegulations {
             half_duration: Duration::from_secs(45 * 60),
             half_time_interval: Duration::from_secs(15 * 60),
+            ..MatchRegulations::default()
         }
     }
 
@@ -256,6 +267,7 @@ mod tests {
             MatchPhase::SecondHalf,
             Duration::from_secs(90),
             &regulations,
+            false,
         );
         assert_eq!(format_clock(shown), "46:30");
     }
@@ -263,11 +275,42 @@ mod tests {
     #[test]
     fn the_clock_rests_on_the_half_time_whistle() {
         let regulations = short_regulations();
-        let shown = displayed_clock(MatchPhase::HalfTime, Duration::from_secs(600), &regulations);
+        let shown = displayed_clock(
+            MatchPhase::HalfTime,
+            Duration::from_secs(600),
+            &regulations,
+            false,
+        );
         assert_eq!(
             format_clock(shown),
             "45:00",
             "the interval must not run the match clock on"
+        );
+    }
+
+    #[test]
+    fn extra_time_and_its_final_whistle_keep_the_completed_periods() {
+        let regulations = MatchRegulations {
+            extra_time_half_duration: Some(Duration::from_secs(15 * 60)),
+            ..short_regulations()
+        };
+        assert_eq!(
+            format_clock(displayed_clock(
+                MatchPhase::SecondExtraTime,
+                Duration::from_secs(90),
+                &regulations,
+                true,
+            )),
+            "106:30"
+        );
+        assert_eq!(
+            format_clock(displayed_clock(
+                MatchPhase::FullTime,
+                Duration::ZERO,
+                &regulations,
+                true,
+            )),
+            "120:00"
         );
     }
 
@@ -277,6 +320,7 @@ mod tests {
             MatchPhase::PreMatch,
             Duration::from_secs(30),
             &short_regulations(),
+            false,
         );
         assert_eq!(format_clock(shown), "00:00");
     }

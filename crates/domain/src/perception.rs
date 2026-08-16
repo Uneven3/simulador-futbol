@@ -6,10 +6,13 @@
 //! memoria que envejece, y decisiones que leen creencias.
 
 use crate::identity::PlayerId;
+use crate::math::XorShift32;
 use crate::player::{EYE_HEIGHT, PLAYER_BODY_RADIUS, PLAYER_HEIGHT};
+use crate::tuning::{PerceptionTuning, TurningTuning};
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Qué alcanza a ver un cuerpo, y con qué detalle.
@@ -17,7 +20,7 @@ use std::time::Duration;
 /// Ver medio campo no es enterarse de medio campo: lo que se sitúa con
 /// precisión es el balón y lo cercano, y lo demás se sabe a grandes rasgos. Por
 /// eso hay dos distancias y no una.
-#[derive(Component, Debug, Clone, Copy, Reflect)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Reflect)]
 pub struct Vision {
     /// Medio ángulo del campo visual útil, en radianes.
     pub half_angle: f32,
@@ -55,7 +58,7 @@ pub const BLUR_AT_THE_EDGE: f32 = 2.5;
 
 /// Lo último que un jugador supo de otro cuerpo, con cuándo lo supo: una
 /// posición de hace tres segundos no es una posición, es un punto de partida.
-#[derive(Debug, Clone, Copy, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Reflect, Serialize, Deserialize)]
 pub struct Observation {
     pub spot: Vec2,
     pub velocity: Vec2,
@@ -71,19 +74,191 @@ pub struct Observation {
 /// que corre vale menos que una igual de vieja de algo parado.
 pub const VELOCITY_MISJUDGED: f32 = 0.25;
 
-/// El factor por el que uno multiplica la carrera ajena al juzgarla: la
-/// dirección se acierta y la magnitud no, dentro de `VELOCITY_MISJUDGED`.
+/// El juicio con el que un jugador transforma una observación en creencia.
 ///
-/// Sale de quién mira a quién y no del reloj, porque un juicio no tiembla: uno
-/// le echa siempre el mismo error al mismo cuerpo, y ese sesgo constante es lo
-/// que hace que se le adelante o se le quede corto una y otra vez. `None` es el
-/// balón, que no tiene dorsal.
-pub fn misjudged_pace(watcher: PlayerId, seen: Option<PlayerId>) -> f32 {
-    let tag = |who: PlayerId| who.team.index() * 11 + usize::from(who.shirt);
-    let key = tag(watcher) * 23 + seen.map_or(0, tag);
-    let scattered = (key as f32 * 12.9898).sin() * 43758.547;
-    let unit = (scattered - scattered.floor()) * 2.0 - 1.0;
-    1.0 + VELOCITY_MISJUDGED * unit
+/// No es capacidad física ni ruido por tick. Es el error estable de una
+/// persona al situar y anticipar: dos equipos reciben el mismo mapa por dorsal
+/// para que un cambio de semilla no rompa la simetría del partido.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Reflect)]
+pub struct Judgement {
+    /// Fracción que suma a la velocidad ajena que cree haber visto.
+    pub observed_pace_bias: f32,
+    /// Fracción que suma a la propia punta que cree poder alcanzar.
+    pub self_pace_bias: f32,
+    /// Giro, en radianes, del error espacial de una observación borrosa.
+    pub position_bias_angle: f32,
+}
+
+impl Judgement {
+    pub fn observe_velocity(self, velocity: Vec2) -> Vec2 {
+        velocity * (1.0 + self.observed_pace_bias)
+    }
+
+    pub fn believed_pace(self, top_speed: f32) -> f32 {
+        top_speed * (1.0 + self.self_pace_bias)
+    }
+
+    pub fn blurred_spot(self, spot: Vec2, blur: f32) -> Vec2 {
+        if blur <= 0.0 {
+            return spot;
+        }
+        let angle = (spot.x * 12.9898 + spot.y * 78.233).sin() * 43758.547;
+        spot + Vec2::from_angle(angle - angle.floor() + self.position_bias_angle) * blur
+    }
+}
+
+/// Lo que tarda y hasta dónde alcanza un sensor concreto. La media vive en
+/// `MatchTuning`; esta componente es el perfil reproducible de un jugador.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Reflect)]
+pub struct Senses {
+    pub vision: Vision,
+    pub reaction: Duration,
+    pub scan_interval: Duration,
+    pub scan_duration: Duration,
+    pub shout_range: f32,
+    pub shout_interval: Duration,
+    pub neck_range: f32,
+    pub neck_rate: f32,
+}
+
+impl Senses {
+    /// El perfil de referencia antes de que la semilla lo distribuya entre los
+    /// dorsales. Útil en escenarios mínimos que no instalan un equipo completo.
+    pub fn reference(perception: &PerceptionTuning, turning: &TurningTuning) -> Self {
+        Self {
+            vision: Vision::default(),
+            reaction: perception.reaction,
+            scan_interval: perception.scan_interval,
+            scan_duration: perception.scan_duration,
+            shout_range: perception.shout_range,
+            shout_interval: perception.shout_interval,
+            neck_range: turning.neck_range,
+            neck_rate: turning.neck_rate,
+        }
+    }
+}
+
+/// El par que se instala al crear un cuerpo. Separarlo mantiene el orden del
+/// dominio: primero el juicio que interpreta; después el sentido que observa.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PerceptionProfile {
+    pub judgement: Judgement,
+    pub senses: Senses,
+}
+
+/// Perfiles de los once dorsales de una situación. La misma entrada se usa
+/// para local y visita, por lo que el espejo no depende de qué mitad defienden.
+pub fn perception_profiles(
+    seed: u32,
+    perception: &PerceptionTuning,
+    turning: &TurningTuning,
+) -> [PerceptionProfile; 11] {
+    let mut rng = XorShift32(seed ^ 0x53E9_5E5D);
+    let mut judgements = std::array::from_fn(|_| Judgement {
+        observed_pace_bias: rng.range(
+            -perception.judgement.observed_pace_bias,
+            perception.judgement.observed_pace_bias,
+        ),
+        self_pace_bias: rng.range(
+            -perception.judgement.self_pace_bias,
+            perception.judgement.self_pace_bias,
+        ),
+        position_bias_angle: rng.range(
+            -perception.judgement.position_bias_angle,
+            perception.judgement.position_bias_angle,
+        ),
+    });
+    centre_judgements(&mut judgements);
+
+    std::array::from_fn(|index| PerceptionProfile {
+        judgement: judgements[index],
+        senses: seeded_senses(&mut rng, perception, turning),
+    })
+}
+
+/// Profile of one named player. Starters retain the centred eleven-dorsal
+/// distribution; a substitute receives a separate deterministic stream rather
+/// than silently inheriting another player's senses through `% 11`.
+pub fn perception_profile(
+    seed: u32,
+    shirt: u8,
+    perception: &PerceptionTuning,
+    turning: &TurningTuning,
+) -> PerceptionProfile {
+    if (1..=11).contains(&shirt) {
+        return perception_profiles(seed, perception, turning)[usize::from(shirt - 1)];
+    }
+    let mut rng = XorShift32(seed ^ 0x53E9_5E5D ^ u32::from(shirt).wrapping_mul(0x9E37_79B9));
+    PerceptionProfile {
+        judgement: Judgement {
+            observed_pace_bias: rng.range(
+                -perception.judgement.observed_pace_bias,
+                perception.judgement.observed_pace_bias,
+            ),
+            self_pace_bias: rng.range(
+                -perception.judgement.self_pace_bias,
+                perception.judgement.self_pace_bias,
+            ),
+            position_bias_angle: rng.range(
+                -perception.judgement.position_bias_angle,
+                perception.judgement.position_bias_angle,
+            ),
+        },
+        senses: seeded_senses(&mut rng, perception, turning),
+    }
+}
+
+fn centre_judgements(judgements: &mut [Judgement; 11]) {
+    let count = judgements.len() as f32;
+    let observed = judgements
+        .iter()
+        .map(|profile| profile.observed_pace_bias)
+        .sum::<f32>()
+        / count;
+    let own = judgements
+        .iter()
+        .map(|profile| profile.self_pace_bias)
+        .sum::<f32>()
+        / count;
+    let position = judgements
+        .iter()
+        .map(|profile| profile.position_bias_angle)
+        .sum::<f32>()
+        / count;
+    for profile in judgements {
+        profile.observed_pace_bias -= observed;
+        profile.self_pace_bias -= own;
+        profile.position_bias_angle -= position;
+    }
+}
+
+fn seeded_senses(
+    rng: &mut XorShift32,
+    perception: &PerceptionTuning,
+    turning: &TurningTuning,
+) -> Senses {
+    let varied = |reference: f32, rng: &mut XorShift32| {
+        reference * (1.0 + rng.range(-perception.senses_variation, perception.senses_variation))
+    };
+    let varied_duration = |reference: Duration, rng: &mut XorShift32| {
+        reference
+            .mul_f32(1.0 + rng.range(-perception.senses_variation, perception.senses_variation))
+    };
+    let reference = Senses::reference(perception, turning);
+    Senses {
+        vision: Vision {
+            half_angle: varied(reference.vision.half_angle, rng),
+            sharp_range: varied(reference.vision.sharp_range, rng),
+            range: varied(reference.vision.range, rng),
+        },
+        reaction: varied_duration(reference.reaction, rng),
+        scan_interval: varied_duration(reference.scan_interval, rng),
+        scan_duration: varied_duration(reference.scan_duration, rng),
+        shout_range: varied(reference.shout_range, rng),
+        shout_interval: varied_duration(reference.shout_interval, rng),
+        neck_range: varied(reference.neck_range, rng),
+        neck_rate: varied(reference.neck_rate, rng),
+    }
 }
 
 /// Dónde deja de importar seguir dudando, en metros. Pasado esto la respuesta ya
@@ -162,6 +337,28 @@ pub struct ObservationMemory {
 }
 
 impl ObservationMemory {
+    /// Declares something the player already knew when the situation started.
+    /// This bypasses the visual delay on purpose: it is scenario data, not a
+    /// new observation produced by the sensor during this tick.
+    pub fn remember(&mut self, who: PlayerId, what: Observation) {
+        match self.seen.iter_mut().find(|(id, _)| *id == who) {
+            Some((_, slot)) => slot.known = Some(what),
+            None => self.seen.push((
+                who,
+                Delayed {
+                    known: Some(what),
+                    on_the_way: None,
+                },
+            )),
+        }
+    }
+
+    /// The ball counterpart of [`Self::remember`].
+    pub fn remember_ball(&mut self, what: Observation) {
+        self.ball.known = Some(what);
+        self.ball.on_the_way = None;
+    }
+
     pub fn saw(&mut self, who: PlayerId, what: Observation) {
         match self.seen.iter_mut().find(|(id, _)| *id == who) {
             Some((_, slot)) => slot.saw(what),
@@ -230,23 +427,6 @@ pub fn can_see(from: Vec2, facing: Dir2, target: Vec2, vision: &Vision) -> bool 
     facing.angle_to(*direction).abs() <= vision.half_angle
 }
 
-/// Cuánto se equivoca uno sobre sí mismo, en fracción de lo que puede correr.
-/// Sin referencia medida: es el margen con el que un jugador se lanza a un balón
-/// que no va a alcanzar, o deja de ir a uno que sí.
-pub const SELF_MISJUDGED: f32 = 0.1;
-
-/// La velocidad a la que uno cree que llega, que no es a la que llega.
-///
-/// El único error perceptivo sobre uno mismo, y es un sesgo y no un temblor: el
-/// optimista se lanza a balones que no alcanza una y otra vez, y el prudente
-/// deja de ir a los que sí. Sale del dorsal, así que es de por vida.
-pub fn believed_pace(who: PlayerId, top_speed: f32) -> f32 {
-    let key = who.team.index() * 11 + usize::from(who.shirt);
-    let scattered = (key as f32 * 78.233).sin() * 43758.547;
-    let unit = (scattered - scattered.floor()) * 2.0 - 1.0;
-    top_speed * (1.0 + SELF_MISJUDGED * unit)
-}
-
 /// Lo que se falla al situar algo que a uno le han gritado, en metros. Un aviso
 /// no es una posición: «¡atrás!» dice por dónde, no a cuántos metros, y por eso
 /// lo que se oye vale menos que lo que se ve —pero llega sin cono y sin línea,
@@ -310,6 +490,10 @@ pub fn hidden_by(eyes: Vec2, target: Vec2, target_height: f32, blocker: Vec2) ->
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::float_cmp,
+    reason = "los casos de oclusión afirman los extremos exactos de una función discreta"
+)]
 mod tests {
     use super::*;
 
@@ -468,45 +652,46 @@ mod tests {
         );
     }
 
-    /// Uno también se juzga a sí mismo, y también mal: hay quien se cree más
-    /// rápido de lo que es, y lo cree siempre.
+    /// El mapa se obtiene de la semilla, conserva sus juicios entre lecturas y
+    /// se centra: variar personas no puede variar la fuerza media del equipo.
     #[test]
-    fn a_player_misjudges_himself_too_and_always_the_same_way() {
-        let top_speed = 8.0;
-        let optimists = (1..=11)
-            .map(|shirt| believed_pace(PlayerId::home(shirt), top_speed))
-            .filter(|believed| *believed > top_speed)
-            .count();
+    fn seeded_judgements_are_stable_and_centred() {
+        let perception = PerceptionTuning::default();
+        let turning = TurningTuning::default();
+        let profiles = perception_profiles(42, &perception, &turning);
+        assert_eq!(profiles, perception_profiles(42, &perception, &turning));
 
-        assert_eq!(
-            believed_pace(PlayerId::home(7), top_speed),
-            believed_pace(PlayerId::home(7), top_speed)
-        );
-        assert!(
-            (believed_pace(PlayerId::home(7), top_speed) - top_speed).abs()
-                <= top_speed * SELF_MISJUDGED
-        );
-        assert!(
-            (1..11).contains(&optimists),
-            "los once se creían lo mismo: {optimists} optimistas"
+        let mean = |values: [f32; 11]| values.into_iter().sum::<f32>() / 11.0;
+        assert!(mean(profiles.map(|profile| profile.judgement.observed_pace_bias)).abs() < 1e-6);
+        assert!(mean(profiles.map(|profile| profile.judgement.self_pace_bias)).abs() < 1e-6);
+    }
+
+    /// Local y visita comparten el perfil de cada dorsal. Así el sensor puede
+    /// diferir entre jugadores sin convertir el equipo elegido en un sesgo.
+    #[test]
+    fn each_shirt_gets_a_reproducible_but_distinct_sensor_profile() {
+        let profiles =
+            perception_profiles(7, &PerceptionTuning::default(), &TurningTuning::default());
+        assert_ne!(profiles[3], profiles[4]);
+        assert_ne!(
+            profiles[3].judgement.believed_pace(8.0),
+            8.0,
+            "el perfil no introdujo ningún juicio sobre sí mismo"
         );
     }
 
-    /// La carrera ajena se juzga mal, siempre igual de mal, y cada uno a su
-    /// manera: si el sesgo cambiara cada tick sería ruido y no un juicio.
     #[test]
-    fn everybody_misjudges_a_run_their_own_way() {
-        let watcher = PlayerId::home(4);
-        let seen = PlayerId::away(9);
+    fn a_substitute_does_not_reuse_a_starters_sensor_profile() {
+        let perception = PerceptionTuning::default();
+        let turning = TurningTuning::default();
 
-        let judged = misjudged_pace(watcher, Some(seen));
-        assert_eq!(judged, misjudged_pace(watcher, Some(seen)));
-        assert!((judged - 1.0).abs() <= VELOCITY_MISJUDGED);
-        assert_ne!(judged, misjudged_pace(PlayerId::home(5), Some(seen)));
+        assert_eq!(
+            perception_profile(7, 19, &perception, &turning),
+            perception_profile(7, 19, &perception, &turning)
+        );
         assert_ne!(
-            judged,
-            misjudged_pace(watcher, None),
-            "el balón no se juzga como se juzga un cuerpo"
+            perception_profile(7, 19, &perception, &turning),
+            perception_profile(7, 8, &perception, &turning)
         );
     }
 

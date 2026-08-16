@@ -199,6 +199,7 @@ pub fn commit_to_an_action(
     mut commands: Commands,
     striking: Striking,
     designation: Res<PossessionDesignation>,
+    beliefs: Res<crate::perception::Beliefs>,
     committed: Query<&ActionCommitment>,
     ball_query: Query<(&Position, &Ball), Without<Player>>,
     touching: Touching,
@@ -246,14 +247,25 @@ pub fn commit_to_an_action(
         return;
     }
 
-    let readings = readings_of(&touching);
+    // El pie comprueba el contacto verdadero, pero la elección nace del campo
+    // que el poseedor recuerda: ni compañeros, ni línea de offside, ni vuelo
+    // del balón se prestan desde el mundo al decidir (§3).
+    let readings = beliefs.of(possessor);
+    let Some(believed_ball) = beliefs.ball_model_of(possessor) else {
+        return;
+    };
     let sides = match_state.sides;
-    let offside_line =
-        player_decisions::offside_line(&readings, possessor.team, sides, ball_pos.x, 0.0);
+    let offside_line = player_decisions::offside_line(
+        readings,
+        possessor.team,
+        sides,
+        believed_ball.predictions[0].x,
+        0.0,
+    );
     let action = player_decisions::decide_on_ball_action(
-        &readings,
+        readings,
         possessor,
-        ball,
+        believed_ball,
         &designation,
         now.saturating_sub(match_state.possession_since),
         offside_line,
@@ -432,7 +444,7 @@ pub fn complete_committed_strike(
             player_state.last_touch_at = now;
         }
         if !keeps_possession {
-            match_state.possession_player = None;
+            match_state.release_possessor_to_controlled_flight();
         }
         // el balón está en juego: ya no hay nadie obligado a ponerlo
         if !matches!(commitment.action, OnBallAction::Dribble) {

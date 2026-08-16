@@ -8,11 +8,12 @@
 //! calibrated against ball flight rather than match statistics.
 
 use bevy_ecs::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Which calibration produced a result. A goal rate means nothing without the
 /// parameters behind it, so every run can name them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TuningVersion {
     /// The envelope inherited from the C++ original, never calibrated against
     /// anything: 51 goals per 90 minutes against ~2.7 real ones
@@ -22,7 +23,7 @@ pub enum TuningVersion {
 }
 
 /// Everything that decides how a match turns out, in one place.
-#[derive(Resource, Debug, Clone, PartialEq)]
+#[derive(Resource, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MatchTuning {
     pub version: TuningVersion,
     pub contest: ContestTuning,
@@ -63,8 +64,17 @@ impl Default for MatchTuning {
 /// ambos lados. La frecuencia y la duración se miden por separado porque una
 /// dice cuántas oportunidades tiene de actualizarse y la otra cuánto tiempo
 /// juega sin el balón dentro del campo visual.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PerceptionTuning {
+    /// Desviación máxima, como fracción de la referencia, con la que la semilla
+    /// del escenario construye los sentidos individuales. La referencia sigue
+    /// siendo este tuning; el perfil del jugador solo declara quién se aparta
+    /// de ella y en cuánto.
+    pub senses_variation: f32,
+    /// Límites de los sesgos con los que un jugador juzga lo que vio. Son
+    /// errores constantes, no ruido de cada tick: `Judgement` los centra entre
+    /// los once dorsales para que no cambie la fuerza media de un equipo.
+    pub judgement: JudgementTuning,
     /// Tiempo entre inicios de barrido.
     pub scan_interval: Duration,
     /// Tiempo durante el que se pide mirar fuera del balón.
@@ -87,6 +97,8 @@ pub struct PerceptionTuning {
 impl Default for PerceptionTuning {
     fn default() -> Self {
         Self {
+            senses_variation: 0.1,
+            judgement: JudgementTuning::default(),
             // 0,44 barridos/s en 27 profesionales de Premier League:
             // doi:10.3389/fpsyg.2020.553813.
             scan_interval: Duration::from_millis(2270),
@@ -117,10 +129,33 @@ impl Default for PerceptionTuning {
     }
 }
 
+/// Los límites de juicio que una situación reparte entre los dorsales. Cada
+/// uno es un factor o un ángulo, por eso no pertenece a `Attributes`: no dice
+/// lo que el cuerpo puede hacer sino qué cree que va a hacer.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JudgementTuning {
+    /// Error fraccional máximo al estimar una velocidad ajena.
+    pub observed_pace_bias: f32,
+    /// Error fraccional máximo al estimar la propia punta.
+    pub self_pace_bias: f32,
+    /// Giro máximo, en radianes, del desplazamiento con que sitúa algo borroso.
+    pub position_bias_angle: f32,
+}
+
+impl Default for JudgementTuning {
+    fn default() -> Self {
+        Self {
+            observed_pace_bias: 0.25,
+            self_pace_bias: 0.1,
+            position_bias_angle: std::f32::consts::FRAC_PI_4,
+        }
+    }
+}
+
 /// Lo que tarda un golpeo desde que se decide hasta que el pie llega al balón:
 /// mientras dura, el rival sigue jugando y el compañero sigue corriendo, así
 /// que comprometerse cuesta algo.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StrikingTuning {
     pub pass_windup: Duration,
     pub shot_windup: Duration,
@@ -145,7 +180,7 @@ impl Default for StrikingTuning {
 /// Lo que cuesta correr hacia donde no se mira: de espaldas se cubre alrededor
 /// del sesenta por ciento de lo que se cubre de frente, y girar el cuerpo a la
 /// carrera es más lento que girarlo parado.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TurningTuning {
     /// Fracción de la velocidad que se alcanza corriendo hacia atrás...
     pub backpedal_pace: f32,
@@ -180,7 +215,7 @@ impl Default for TurningTuning {
 /// Lo que cuesta correr y lo que se recupera andando. La referencia es el
 /// partido real: once kilómetros casi todos al trote, y lo que no se aguanta es
 /// el sprint. De ahí que el trote no gaste y la punta vacíe en cuarenta segundos.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StaminaTuning {
     /// Fracción del depósito que cuesta un segundo a velocidad punta.
     pub sprint_drain: f32,
@@ -208,7 +243,7 @@ impl Default for StaminaTuning {
 }
 
 /// Lo que el árbitro decide, más allá de lo que la ley fija.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RefereeTuning {
     /// Cuánto espera antes de dar por buena una ventaja (Ley 5). La ley dice
     /// "unos segundos": si en ese tiempo el equipo infringido conserva el balón,
@@ -216,6 +251,8 @@ pub struct RefereeTuning {
     pub advantage_window: Duration,
     /// Si el árbitro detiene el juego por las faltas que observa.
     pub whistles_fouls: bool,
+    /// Acumulación de amonestaciones que expulsa; la regla normal es dos.
+    pub yellow_cards_before_dismissal: u8,
 }
 
 impl Default for RefereeTuning {
@@ -223,6 +260,7 @@ impl Default for RefereeTuning {
         Self {
             advantage_window: Duration::from_secs(3),
             whistles_fouls: true,
+            yellow_cards_before_dismissal: 2,
         }
     }
 }
@@ -231,7 +269,7 @@ impl Default for RefereeTuning {
 /// that decide who has it. Most of these exist because this port has no
 /// animation layer — the original shields, traps and tackles with body
 /// animations, and these windows stand in for them.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContestTuning {
     /// Beyond this distance from the carrier (m) the ball counts as escaped and
     /// possession is loose again.
@@ -349,7 +387,7 @@ impl Default for ContestTuning {
 
 /// How a player judges whether the ball is his to go for (the magnet branch of
 /// the original's `_MovementCommand`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PossessionTuning {
     /// `possessionAmount` above which we would beat everyone to the ball, so the
     /// designated player goes for it whatever the state of play.
@@ -375,7 +413,7 @@ impl Default for PossessionTuning {
 }
 
 /// When a pass is worth attempting, and to whom.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PassingTuning {
     /// A teammate must improve on the carrier's tactical rating by at least this
     /// much (rating, 0..1) — scaled down for attacking mindsets.
@@ -460,7 +498,7 @@ impl Default for PassingTuning {
 /// Panic: hoofing the ball away instead of playing it (`_AddPanicPass`). Not a
 /// goalkeeper matter: any defender near his own goal with no pass on does it,
 /// and how readily decides how often possession is simply given back.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClearanceTuning {
     /// Only players below this attacking bias (0..1) panic at all.
     pub defensive_mindset_max: f32,
@@ -495,7 +533,7 @@ impl Default for ClearanceTuning {
 ///
 /// The first suspect of MVP 1.75: the gate below lets a player shoot from
 /// almost anywhere, and shots that reach the goal are rarely stopped.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShootingTuning {
     /// The ideal shooting spot sits this far in front of the goal line (m)...
     pub ideal_position_offset: f32,
@@ -560,7 +598,7 @@ impl Default for ShootingTuning {
 }
 
 /// Off-the-ball defending: when to leave shape and how far to cover.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DefendingTuning {
     /// How close to the goal (m) the ball carrier is treated as a shooting
     /// threat, and how close anyone else has to be.
@@ -593,7 +631,7 @@ impl Default for DefendingTuning {
 /// The goalkeeper: where he stands, when he comes out, and when he hoofs it.
 ///
 /// The second suspect of MVP 1.75: "the keeper does not really defend".
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GoalkeepingTuning {
     /// Resting distance in front of the goal line (m).
     pub line_distance: f32,

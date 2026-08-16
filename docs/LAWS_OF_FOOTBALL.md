@@ -40,16 +40,16 @@ primitivas.
 |---|---|---|---|
 | 1 Field | Superficie, marcas, dimensiones, áreas, arcos, postes, banderines, área técnica | Geometría parcial | 1 |
 | 2 Ball | Dimensiones, masa/presión, defecto, reemplazo y balones extra | Radio/dinámica; sin contrato completo | 1–2 |
-| 3 Players | 11, goalkeeper, mínimo 7, sustituciones, expulsados y personas extra | 22 fijos | 2 |
+| 3 Players | 11, goalkeeper, mínimo 7, sustituciones, expulsados y personas extra | Sustituciones en detención, máximo configurable y corte bajo mínimo; sin personas extra | 2 |
 | 4 Equipment | Obligatorio/prohibido, seguridad, colores, infracciones y retorno | Ausente | 2/config |
-| 5 Referee | Autoridad, ventaja, disciplina, lesiones, interferencia, reloj y correcciones | Reloj y ventaja implementados; el árbitro observa faltas y no las pita (`whistles_fouls`). Sin disciplina | 2 |
+| 5 Referee | Autoridad, ventaja, disciplina, lesiones, interferencia, reloj y correcciones | Reloj, ventaja y disciplina acumulativa; faltan severidad, lesiones e interferencias | 2 |
 | 6 Officials | Asistentes, cuarto oficial, adicionales, VAR/AVAR | Ausente | diferido |
-| 7 Duration | Mitades, descanso, añadido, recuperación, penal extendido, abandono | Mitades, descanso y añadido implementados y con escenario; duración como dato de competición. Sin extra time ni abandono | 1–2 |
-| 8 Start/restart | Sorteo, kick-off, posiciones, balón en juego, dropped ball | Cambio de mitades y kick-off del otro equipo, con escenario; alguien ejecuta cada reanudación y los rivales guardan distancia. Sin dropped ball | 1–2 |
+| 7 Duration | Mitades, descanso, añadido, recuperación, penal extendido, abandono | Mitades, descanso, añadido y tiempo suplementario como dato de competición; sin abandono | 1–2 |
+| 8 Start/restart | Sorteo, kick-off, posiciones, balón en juego, dropped ball | Cambio de mitades y kick-off del otro equipo, con escenario; alguien ejecuta cada reanudación y los rivales guardan distancia; dropped ball implementado | 1–2 |
 | 9 In/out | Cruce completo, detención arbitral, contacto con oficial y excepciones | Parcial | 1 |
-| 10 Outcome | Gol, ganador, empate, extra time y tanda | Gol/marcador parcial | 1–2 |
+| 10 Outcome | Gol, ganador, empate, extra time y tanda | Marcador, tiempo suplementario y tanda determinista/configurable; falta contrato de ganador de competición | 1–2 |
 | 11 Offside | Posición, toque, interferencia, advantage, deliberate play/save, excepciones | Simplificado | 2 |
-| 12 Fouls | Direct/indirect, handball, goalkeeper, severidad, DOGSO y disciplina | El contacto se detecta y se publica como hecho; sin sanción, severidad ni mano | 2 |
+| 12 Fouls | Direct/indirect, handball, goalkeeper, severidad, DOGSO y disciplina | Contacto, ventaja, sanción y tarjetas acumulativas; sin mano, severidad ni DOGSO | 2 |
 | 13 Free kicks | Tipo, señal, posición, distancias, muro, quick kick, doble toque | Concesión construida y apagada; distancia de rivales sí, sin muro ni tipos | 2 |
 | 14 Penalty | Posiciones, procedimiento, feint, goalkeeper e infracciones combinadas | Enum sin ejecución | 2 |
 | 15 Throw-in | Concesión, cuerpo/manos, lugar, distancia, doble toque e infracciones | Simplificado | 1–2 |
@@ -112,4 +112,3 @@ MVP 2:
 4. Variantes son datos.
 5. No hay reglas ocultas en IA, presentación o animación.
 6. Cada escenario genera trace explicable.
-

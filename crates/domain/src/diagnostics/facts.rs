@@ -5,7 +5,7 @@
 //! match already knew. These are `Copy` values with no allocation: a consumer
 //! counts them, a sink renders them, and adding a consumer costs nothing.
 
-use crate::{MatchPhase, PlayerId, SetPiece, TeamId};
+use crate::{Card, MatchPhase, PlayerId, SetPiece, TeamId};
 
 /// How the ball left a player deliberately. Recorded when he releases it, read
 /// when the other team gets it: a turnover is only meaningful attributed to the
@@ -111,6 +111,10 @@ pub enum MatchFact {
         by: PlayerId,
         on: PlayerId,
     },
+    CardShown {
+        to: PlayerId,
+        card: Card,
+    },
     /// ...and let this one go, because stopping play would have punished the
     /// side that was fouled (Law 5).
     AdvantagePlayed {
@@ -133,6 +137,7 @@ impl MatchFact {
             MatchFact::Goal { .. }
             | MatchFact::RestartAwarded { .. }
             | MatchFact::FoulGiven { .. }
+            | MatchFact::CardShown { .. }
             | MatchFact::AdvantagePlayed { .. }
             | MatchFact::OffsideGiven { .. } => DiagnosticChannel::RefereeDecisions,
             MatchFact::PhaseEntered(_) => DiagnosticChannel::PhaseTransitions,
@@ -157,6 +162,7 @@ impl std::fmt::Display for MatchFact {
                 write!(f, "{player} lost the ball at ({:.1}, {:.1})", at.x, at.y)
             }
             MatchFact::FoulGiven { by, on } => write!(f, "{by} fouled {on}"),
+            MatchFact::CardShown { to, card } => write!(f, "{card:?} card to {to}"),
             MatchFact::AdvantagePlayed { to } => write!(f, "advantage to {to}"),
             MatchFact::ShotSaved { keeper, caught } => {
                 let how = if caught {

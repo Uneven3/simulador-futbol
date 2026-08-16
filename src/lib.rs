@@ -7,7 +7,8 @@ pub mod scenarios;
 
 use bevy::prelude::*;
 use football_presentation::{
-    DebugHubPlugin, DiagnosticOverlaysPlugin, MatchHudPlugin, PrimitiveVisualsPlugin,
+    DebugHubPlugin, DiagnosticOverlaysPlugin, LowPolyVisualsPlugin, MatchHudPlugin,
+    PrimitiveVisualsPlugin,
 };
 
 pub use football_domain::scenario;
@@ -36,6 +37,24 @@ pub fn with_primitives(scenario: Scenario) -> ScenarioRunner {
     app.init_asset::<StandardMaterial>();
     app.add_plugins((
         PrimitiveVisualsPlugin,
+        DiagnosticOverlaysPlugin,
+        DebugHubPlugin,
+        MatchHudPlugin,
+    ));
+    runner
+}
+
+/// The same headless match with the skinned low-poly presentation attached.
+/// As with [`with_primitives`], this composition must never alter a verdict.
+pub fn with_low_poly(scenario: Scenario) -> ScenarioRunner {
+    let mut runner = ScenarioRunner::headless(scenario);
+    let app = runner.app_mut();
+    app.add_plugins(AssetPlugin::default());
+    app.init_asset::<Mesh>();
+    app.init_asset::<StandardMaterial>();
+    app.init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
+    app.add_plugins((
+        LowPolyVisualsPlugin,
         DiagnosticOverlaysPlugin,
         DebugHubPlugin,
         MatchHudPlugin,

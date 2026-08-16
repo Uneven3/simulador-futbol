@@ -7,6 +7,7 @@
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -14,7 +15,7 @@ use std::fmt;
 ///
 /// This is identity, not geography: which half a team defends changes at the
 /// interval (Law 8) and is `TeamSide`, not this.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
 pub enum TeamId {
     Home,
     Away,
@@ -123,7 +124,7 @@ impl PitchSides {
 /// A participant in the match: a team and a shirt number, which is how football
 /// itself names players. Reads in a log without a lookup table (`Away #9`) and
 /// survives being written to disk, which `Entity` does not.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
 pub struct PlayerId {
     pub team: TeamId,
     pub shirt: u8,
@@ -153,7 +154,7 @@ impl fmt::Display for PlayerId {
 ///
 /// The port carried a dozen `[T; 2]` indexed with `team as usize` and reached
 /// the opponent's slot with `1 - team`. Both are silent when wrong.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Reflect)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 pub struct ByTeam<T> {
     pub home: T,
     pub away: T,

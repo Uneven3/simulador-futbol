@@ -223,6 +223,7 @@ impl MatchLedger {
             MatchFact::AdvantagePlayed { .. } => self.advantages += 1,
             MatchFact::PossessionLost { .. }
             | MatchFact::ShotSaved { .. }
+            | MatchFact::CardShown { .. }
             | MatchFact::Turnover { .. }
             | MatchFact::RestartAwarded { .. }
             | MatchFact::OffsideGiven { .. }

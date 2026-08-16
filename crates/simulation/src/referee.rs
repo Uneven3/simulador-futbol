@@ -7,9 +7,9 @@ use bevy_math::prelude::*;
 use bevy_time::prelude::*;
 use football_domain::math::normalized_or_2d;
 use football_domain::{
-    BALL_RADIUS, Ball, BallTouched, Facing, Looking, MatchState, OffsideRecords, PitchConfig,
-    PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PotentialFoul,
-    SetPiece, TeamId, Velocity,
+    BALL_RADIUS, Ball, BallTouched, Facing, Looking, MatchRegulations, MatchState, OffsideRecords,
+    PitchConfig, PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition, Position,
+    PotentialFoul, SetPiece, TeamId, Velocity,
 };
 use std::time::Duration;
 
@@ -19,6 +19,8 @@ impl Plugin for RefereePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(OffsideRecords::default())
             .init_resource::<PendingAdvantage>()
+            .init_resource::<DirectRestartOffsideExemption>()
+            .init_resource::<DroppedBallRecipient>()
             .add_systems(
                 FixedUpdate,
                 (
@@ -32,6 +34,19 @@ impl Plugin for RefereePlugin {
             );
     }
 }
+
+/// Law 11 exempts the first direct reception from a goal kick, corner or
+/// throw-in. `set_piece` is cleared before that touch, so the origin must live
+/// long enough to be consumed by the offside observer.
+#[derive(Resource, Debug, Default)]
+struct DirectRestartOffsideExemption {
+    pending: bool,
+}
+
+/// Recipient selected by Law 8. It is distinct from `restart_taker`: a dropped
+/// ball is already in play, so this must never force the recipient to kick.
+#[derive(Resource, Debug, Default)]
+struct DroppedBallRecipient(Option<PlayerId>);
 
 /// Port of `Match::CheckForGoal(side)`: swept segment (previous → current ball
 /// position) against the goal mouth plane at x = ±(pitchHalfW + lineHalfW + 0.11),
@@ -117,13 +132,21 @@ pub fn judge_advantage(
 ///
 /// Lo que falta aquí es la disciplina: la amonestación va sobre el mismo hecho,
 /// y no depende de si se pitó o se dio ventaja.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "la falta conecta estado, evidencia, reloj, disciplina y telemetría sin compartir escritores"
+)]
 fn referee_foul_system(
+    mut commands: Commands,
     mut match_state: ResMut<MatchState>,
     mut pending: ResMut<PendingAdvantage>,
     tuning: Res<football_domain::MatchTuning>,
+    regulations: Res<MatchRegulations>,
+    pitch: Res<PitchConfig>,
     time: Res<Time>,
     mut fouls: MessageReader<PotentialFoul>,
     mut telemetry: ResMut<MatchTelemetry>,
+    mut discipline: Query<(Entity, &Player, &mut football_domain::Discipline)>,
 ) {
     if match_state.set_piece != SetPiece::None {
         fouls.clear();
@@ -135,6 +158,23 @@ fn referee_foul_system(
     if let Some(foul) = fouls.read().next().copied()
         && pending.foul.is_none()
     {
+        if let Some((card, body)) = card_for_foul(foul.by, &tuning.refereeing, &mut discipline) {
+            telemetry.record(MatchFact::CardShown { to: foul.by, card });
+            if card == football_domain::Card::Red {
+                let on_pitch = discipline
+                    .iter()
+                    .filter(|(_, player, _)| player.id.team == foul.by.team)
+                    .count();
+                commands.entity(body).despawn();
+                if !team_can_continue_after_send_off(on_pitch, regulations.minimum_players) {
+                    match_state.unable_to_continue = Some(foul.by.team);
+                    match_state.end_match();
+                    telemetry.record(MatchFact::PhaseEntered(
+                        football_domain::MatchPhase::FullTime,
+                    ));
+                }
+            }
+        }
         pending.foul = Some(foul);
         pending.since = now;
         telemetry.record(MatchFact::FoulGiven {
@@ -165,16 +205,85 @@ fn referee_foul_system(
                 return;
             }
             let awarded_to = foul.on.team;
-            match_state.set_piece = SetPiece::FreeKick;
+            let set_piece = restart_for_foul(foul, match_state.sides, &pitch);
+            match_state.set_piece = set_piece;
             match_state.set_piece_team = Some(awarded_to);
             match_state.restart_in = Duration::from_secs_f32(3.0);
-            match_state.restart_pos = Vec3::new(foul.at.x, foul.at.y, 0.0);
+            match_state.restart_pos =
+                restart_position_for_foul(foul, set_piece, match_state.sides, &pitch);
             telemetry.record(MatchFact::RestartAwarded {
-                set_piece: SetPiece::FreeKick,
+                set_piece,
                 team: awarded_to,
             });
         }
     }
+}
+
+/// A player being dismissed leaves `on_pitch - 1`. Equality is legal: a team
+/// with exactly the competition minimum still has enough players to continue.
+pub fn team_can_continue_after_send_off(on_pitch: usize, minimum_players: u8) -> bool {
+    on_pitch.saturating_sub(1) >= usize::from(minimum_players)
+}
+
+/// Todas las faltas observadas cuentan para disciplina aunque luego se aplique
+/// ventaja: no pitar el reinicio no borra lo que el árbitro vio (Ley 5/12).
+fn card_for_foul(
+    offender: PlayerId,
+    tuning: &football_domain::tuning::RefereeTuning,
+    discipline: &mut Query<(Entity, &Player, &mut football_domain::Discipline)>,
+) -> Option<(football_domain::Card, Entity)> {
+    let (body, _, mut record) = discipline
+        .iter_mut()
+        .find(|(_, player, _)| player.id == offender)?;
+    next_card(&mut record, tuning).map(|card| (card, body))
+}
+
+fn next_card(
+    record: &mut football_domain::Discipline,
+    tuning: &football_domain::tuning::RefereeTuning,
+) -> Option<football_domain::Card> {
+    if record.sent_off {
+        return None;
+    }
+    record.yellow_cards = record.yellow_cards.saturating_add(1);
+    if record.yellow_cards >= tuning.yellow_cards_before_dismissal.max(1) {
+        record.sent_off = true;
+        Some(football_domain::Card::Red)
+    } else {
+        Some(football_domain::Card::Yellow)
+    }
+}
+
+/// Una falta de quien defiende dentro de su propia área se reinicia desde el
+/// punto penal; todas las demás se ejecutan en el lugar de la infracción.
+/// Es geometría de Ley 1 + Ley 14, separada del silbato para que los escenarios
+/// puedan afirmar el límite sin levantar el árbitro entero.
+pub fn restart_for_foul(foul: PotentialFoul, sides: PitchSides, pitch: &PitchConfig) -> SetPiece {
+    let defending_side = sides.defending_x(foul.by.team);
+    let in_own_area = foul.at.x * defending_side > pitch.half_width - pitch.penalty_area_depth
+        && foul.at.y.abs() <= pitch.penalty_area_half_width;
+    if in_own_area {
+        SetPiece::Penalty
+    } else {
+        SetPiece::FreeKick
+    }
+}
+
+fn restart_position_for_foul(
+    foul: PotentialFoul,
+    set_piece: SetPiece,
+    sides: PitchSides,
+    pitch: &PitchConfig,
+) -> Vec3 {
+    if set_piece == SetPiece::Penalty {
+        let defending_side = sides.defending_x(foul.by.team);
+        return Vec3::new(
+            defending_side * (pitch.half_width - pitch.penalty_mark_distance),
+            0.0,
+            0.0,
+        );
+    }
+    Vec3::new(foul.at.x, foul.at.y, 0.0)
 }
 
 fn referee_system(
@@ -290,12 +399,25 @@ fn referee_system(
     }
 }
 
+/// Whether Law 11 exempts the direct first reception from this restart.
+fn direct_restart_exempts_offside(set_piece: SetPiece) -> bool {
+    matches!(
+        set_piece,
+        SetPiece::GoalKick | SetPiece::Corner | SetPiece::ThrowIn
+    )
+}
+
 /// Port of `Referee::BallTouched()`: on every touch, first whistle if the toucher
 /// was recorded offside at the previous touch, then re-record teammates standing
 /// beyond the offside line (`AI_GetOffsideLine`) at this moment.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "el árbitro consume el hecho, estado, registro, origen de reanudación y cuerpos"
+)]
 fn referee_offside_system(
     mut match_state: ResMut<MatchState>,
     mut records: ResMut<OffsideRecords>,
+    mut direct_restart_exemption: ResMut<DirectRestartOffsideExemption>,
     pitch_config: Res<PitchConfig>,
     mut touches: MessageReader<BallTouched>,
     mut telemetry: ResMut<MatchTelemetry>,
@@ -304,6 +426,15 @@ fn referee_offside_system(
 ) {
     for touch in touches.read() {
         if match_state.set_piece != SetPiece::None {
+            records.players.clear();
+            records.team = None;
+            records.judged_line_x = None;
+            records.judged_against_team = None;
+            continue;
+        }
+
+        if direct_restart_exemption.pending {
+            direct_restart_exemption.pending = false;
             records.players.clear();
             records.team = None;
             records.judged_line_x = None;
@@ -528,10 +659,17 @@ type PlacedBody = (
     &'static mut PlayerMatchState,
 );
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "la reanudación coordina estado, reglas, hechos, reloj, balón y cuerpos"
+)]
 fn referee_set_piece_system(
     mut match_state: ResMut<MatchState>,
     mut records: ResMut<OffsideRecords>,
+    mut direct_restart_exemption: ResMut<DirectRestartOffsideExemption>,
+    mut dropped_ball_recipient: ResMut<DroppedBallRecipient>,
     time: Res<Time>,
+    pitch: Res<PitchConfig>,
     mut ball_query: Query<(&mut Position, &mut Ball), Without<Player>>,
     mut player_query: Query<PlacedBody, Without<Ball>>,
 ) {
@@ -564,6 +702,8 @@ fn referee_set_piece_system(
     };
 
     let restart_pos = match_state.restart_pos;
+    let restart_2d = restart_pos.truncate();
+    let last_touch_team = ball.last_touch_team;
     ball.reset(restart_pos);
     ball_position.0 = restart_pos + Vec3::new(0.0, 0.0, BALL_RADIUS);
 
@@ -587,13 +727,75 @@ fn referee_set_piece_system(
     }
 
     let prev_set_piece = match_state.set_piece;
+    dropped_ball_recipient.0 = None;
+    direct_restart_exemption.pending = direct_restart_exempts_offside(prev_set_piece);
     let mut taker_of_the_restart = None;
+
+    // Ley 8: el árbitro deja caer el balón para el portero defensor si se
+    // detuvo en el área, o para el equipo del último toque en los demás casos.
+    // No es un saque: el destinatario queda junto al balón y todos los demás a
+    // cuatro metros; el contest resuelve la posesión física en el tick siguiente.
+    if prev_set_piece == SetPiece::DroppedBall {
+        let in_area_of = TeamId::BOTH.into_iter().find(|team| {
+            restart_pos.x * sides.defending_x(*team) > pitch.half_width - pitch.penalty_area_depth
+                && restart_pos.y.abs() <= pitch.penalty_area_half_width
+        });
+        let receiving_team = in_area_of.or(last_touch_team).unwrap_or_else(|| {
+            match_state
+                .set_piece_team
+                .unwrap_or(match_state.opening_kick_off_team)
+        });
+        let bodies: Vec<(PlayerId, PlayingPosition, Vec2)> = player_query
+            .iter()
+            .map(|(position, _, _, _, player, _)| (player.id, player.position, position.on_pitch()))
+            .collect();
+        let recipient = if in_area_of.is_some() {
+            select_restart_taker(&bodies, receiving_team, SetPiece::GoalKick, restart_2d)
+        } else {
+            select_restart_taker(&bodies, receiving_team, SetPiece::None, restart_2d)
+        };
+        dropped_ball_recipient.0 = recipient;
+        for (mut position, mut facing, mut looking, _, player, _) in player_query.iter_mut() {
+            if Some(player.id) == recipient {
+                let spot = restart_taker_spot(
+                    restart_2d,
+                    sides.attacking_x(receiving_team),
+                    SetPiece::None,
+                );
+                *position = Position::from_pitch(spot, 0.0);
+                if let Ok(towards_ball) = Dir2::new(restart_2d - spot) {
+                    facing.0 = towards_ball;
+                    looking.0 = towards_ball;
+                }
+            } else {
+                let cleared = cleared_position(
+                    position.on_pitch(),
+                    restart_2d,
+                    4.0,
+                    Vec2::new(-sides.attacking_x(player.id.team), 0.0),
+                );
+                *position = Position::from_pitch(cleared, 0.0);
+            }
+        }
+        match_state.set_piece = SetPiece::None;
+        match_state.set_piece_team = None;
+        // A dropped-ball recipient receives play; they are not a restart taker
+        // and therefore must retain the option to dribble after the contest.
+        match_state.restart_taker = None;
+        match_state.is_ball_in_goal = false;
+        match_state.possession_player = None;
+        match_state.possession_team = None;
+        match_state.previous_possessor = None;
+        match_state.possession_since = Duration::ZERO;
+        records.players.clear();
+        records.team = None;
+        return;
+    }
 
     // Someone takes the restart. Standing them on the ball is all it takes:
     // possession is positional, so `ball_contest` hands it over next tick —
     // awarding it here would make the referee a second owner of possession.
     if let Some(taking_team) = match_state.set_piece_team {
-        let restart_2d = restart_pos.truncate();
         let bodies: Vec<(PlayerId, PlayingPosition, Vec2)> = player_query
             .iter()
             .map(|(position, _, _, _, player, _)| (player.id, player.position, position.on_pitch()))
@@ -947,5 +1149,74 @@ mod tests {
             .map(|(id, _)| id.shirt)
             .collect();
         assert_eq!(flagged, vec![9]);
+    }
+
+    #[test]
+    fn a_defender_fouling_inside_his_area_gives_a_penalty_mark_restart() {
+        let pitch = PitchConfig::default();
+        let foul = PotentialFoul {
+            by: PlayerId::home(4),
+            on: PlayerId::away(9),
+            at: Vec3::new(-50.0, 3.0, 0.0),
+        };
+
+        assert_eq!(
+            restart_for_foul(foul, PitchSides::opening(), &pitch),
+            SetPiece::Penalty
+        );
+        assert_eq!(
+            restart_position_for_foul(foul, SetPiece::Penalty, PitchSides::opening(), &pitch),
+            Vec3::new(-44.0, 0.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn a_second_caution_dismisses_the_same_player() {
+        let mut record = football_domain::Discipline::default();
+        let tuning = football_domain::tuning::RefereeTuning::default();
+
+        assert_eq!(
+            next_card(&mut record, &tuning),
+            Some(football_domain::Card::Yellow)
+        );
+        assert!(!record.sent_off);
+        assert_eq!(
+            next_card(&mut record, &tuning),
+            Some(football_domain::Card::Red)
+        );
+        assert!(record.sent_off);
+        assert_eq!(next_card(&mut record, &tuning), None);
+    }
+
+    #[test]
+    fn a_team_at_the_minimum_cannot_continue_after_another_dismissal() {
+        assert!(!team_can_continue_after_send_off(7, 7));
+        assert!(team_can_continue_after_send_off(8, 7));
+    }
+
+    #[test]
+    fn a_dropped_ball_is_given_to_the_last_touching_team_with_everyone_else_clear() {
+        let mut scenario = football_domain::Scenario::kick_off();
+        scenario.play_state = football_domain::scenario::PlayState::AwaitingRestart {
+            set_piece: SetPiece::DroppedBall,
+            team: TeamId::Home,
+            delay: Duration::ZERO,
+        };
+        scenario.ball.position = Vec3::new(12.0, -4.0, BALL_RADIUS);
+        scenario.ball.last_touched_by_team = Some(TeamId::Away);
+        let mut runner = crate::ScenarioRunner::headless(scenario);
+
+        runner.advance(); // instala entidades en el primer tick del runner
+        runner.advance();
+        let state = runner.world_mut().resource::<MatchState>();
+        assert_eq!(state.set_piece, SetPiece::None);
+        assert_eq!(state.restart_taker, None, "a drop is not a restart kick");
+        assert_eq!(state.possession_player, None);
+        let recipient = runner
+            .world_mut()
+            .resource::<DroppedBallRecipient>()
+            .0
+            .expect("Law 8 names a recipient");
+        assert_eq!(recipient.team, TeamId::Away);
     }
 }

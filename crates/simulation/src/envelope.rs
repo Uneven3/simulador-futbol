@@ -6,18 +6,14 @@
 //! la distribución antes que por la media: un modelo puede acertar la media y
 //! no parecerse a un partido (`docs/VALIDATION.md`).
 
-use bevy_app::TaskPoolPlugin;
-use bevy_app::prelude::*;
-use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use football_domain::math::rounded_count;
-use football_domain::scenario::TICK;
 use football_domain::tuning::TuningVersion;
 use football_domain::{ByTeam, MatchTuning, Scenario, TeamId};
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use crate::MatchKernelPlugin;
 use crate::diagnostics::MatchLedger;
+use crate::scenario_runner::headless_scenario_app;
 
 /// Goles por partido de un partido real, para tener contra qué comparar
 /// (`docs/VALIDATION.md`). Es la referencia externa más barata que existe.
@@ -379,10 +375,7 @@ fn run_one_match(scenario: &Scenario, seed: u32) -> MatchSummary {
     };
     let ticks = scenario.ticks();
 
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), TimePlugin));
-    app.add_plugins(MatchKernelPlugin::new(scenario));
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(TICK));
+    let mut app = headless_scenario_app(scenario);
     for _ in 0..ticks {
         app.update();
     }

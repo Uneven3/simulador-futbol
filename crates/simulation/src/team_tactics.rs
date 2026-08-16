@@ -1,23 +1,22 @@
-//! What a team decides as a team: possession amounts, the offside trap line,
-//! the shape each player holds, man marking, attacking runs and the forward
-//! support player. Reads the match, writes only its own resource.
+//! Qué marco táctico usa cada jugador: forma base, estado de bloque y
+//! responsabilidades nacidas de sus creencias. El proceso global heredado aún
+//! calcula la forma del bloque; la responsabilidad individual no arbitra un
+//! reparto con el mapa verdadero.
 //!
 //! Ported from `TeamAIController` (onthepitch/teamAIcontroller.cpp). Dynamic
 //! roles equal static ones — `CalculateDynamicRoles` is not ported — and the
 //! tactics are the original's `baseTeamTactics` with no user modifiers.
 
-use crate::diagnostics::{MatchFact, MatchTelemetry};
+use crate::perception::Beliefs;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
-use bevy_time::prelude::*;
 use std::collections::VecDeque;
 
-use football_domain::math::{
-    curve, line_distance_to_point_2d, normalized_clamp, normalized_or_2d, rotated_2d, what_side_2d,
-};
+use football_domain::math::{curve, normalized_clamp};
 use football_domain::{
-    Ball, ByTeam, MatchState, PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition,
-    Position, PossessionDesignation, SetPiece, TacticalRole, TeamId, Velocity,
+    Ball, ByTeam, MatchState, PitchSides, Player, PlayerId, PlayingPosition, PositionFamiliarity,
+    PossessionDesignation, ResponsibilityKind, RoleFamiliarity, SetPiece, TacticalPlans,
+    TacticalResponsibility, TacticalRole, TeamId,
 };
 
 // ---------------------------------------------------------------------------
@@ -106,29 +105,18 @@ fn mixup(base: f32, varname: &str, role: PlayingPosition) -> f32 {
 
 #[derive(Debug, Clone)]
 pub struct TeamShape {
-    pub offside_trap_x: f32,
     /// 0 = fully defensive stance, 1 = fully offensive (score/time driven).
     pub offensiveness_bias: f32,
     pub team_possession_amount: f32,
     pub fading_team_possession_amount: f32,
-    pub attacking_run_player: Option<PlayerId>,
-    pub end_attacking_run_ms: u64,
-    pub forward_support_player: Option<PlayerId>,
-    /// Opponents sorted most dangerous first (port of `tacticalOpponentInfo`).
-    pub dangerous_opponents: Vec<PlayerId>,
 }
 
 impl Default for TeamShape {
     fn default() -> Self {
         Self {
-            offside_trap_x: 0.0,
             offensiveness_bias: 0.5,
             team_possession_amount: 1.0,
             fading_team_possession_amount: 1.0,
-            attacking_run_player: None,
-            end_attacking_run_ms: 0,
-            forward_support_player: None,
-            dangerous_opponents: Vec::new(),
         }
     }
 }
@@ -172,6 +160,95 @@ pub struct PlayerReading {
     /// «lo estoy viendo» —y es lo que vale para quien lee la verdad del mundo en
     /// vez de una creencia—, y crece con lo que hace que uno mire.
     pub doubt: f32,
+}
+
+/// Publica una responsabilidad por jugador desde lo que él cree haber visto.
+/// No arbitra un reparto perfecto con el mapa real: si dos defensores perdieron
+/// al mismo rival pueden cubrirlo los dos, que es justo el fenómeno que la
+/// percepción parcial tiene que poder producir.
+pub fn assign_perceived_responsibilities(
+    match_state: Res<MatchState>,
+    plans: Res<TacticalPlans>,
+    beliefs: Res<Beliefs>,
+    mut players: Query<(
+        &Player,
+        &PositionFamiliarity,
+        &RoleFamiliarity,
+        &mut TacticalResponsibility,
+    )>,
+) {
+    for (player, position_familiarity, role_familiarity, mut responsibility) in players.iter_mut() {
+        let base = plans.for_team(player.id.team);
+        let familiarity = (position_familiarity.0 * role_familiarity.0).clamp(0.0, 1.0);
+        let plan = football_domain::TacticalPlan {
+            defensive_line_depth: base.defensive_line_depth,
+            press_distance: base.press_distance * familiarity,
+            cover_distance: base.cover_distance * familiarity,
+            support_distance: base.support_distance * role_familiarity.0.clamp(0.0, 1.0),
+        };
+        *responsibility = responsibility_from_readings(
+            player,
+            beliefs.of(player.id),
+            beliefs.ball_of(player.id),
+            match_state.sides,
+            plan,
+        );
+    }
+}
+
+fn responsibility_from_readings(
+    player: &Player,
+    readings: &[PlayerReading],
+    ball: Option<Vec2>,
+    sides: PitchSides,
+    plan: football_domain::TacticalPlan,
+) -> TacticalResponsibility {
+    let Some(me) = readings.iter().find(|reading| reading.id == player.id) else {
+        return TacticalResponsibility::default();
+    };
+    if player.position == PlayingPosition::Goalkeeper {
+        return TacticalResponsibility::default();
+    }
+
+    let side = sides.defending_x(player.id.team);
+    let goal = Vec2::new(PITCH_HALF_W * side, 0.0);
+    let opponent = readings
+        .iter()
+        .filter(|reading| reading.team() != player.id.team)
+        .min_by(|left, right| {
+            let left_threat = left.pos.distance(goal) + left.pos.distance(me.pos) * 0.4;
+            let right_threat = right.pos.distance(goal) + right.pos.distance(me.pos) * 0.4;
+            left_threat.total_cmp(&right_threat)
+        });
+
+    if let Some(opponent) = opponent
+        && opponent.pos.distance(me.pos) <= plan.cover_distance
+    {
+        return TacticalResponsibility {
+            kind: if opponent.pos.distance(me.pos) <= plan.press_distance {
+                ResponsibilityKind::Press
+            } else {
+                ResponsibilityKind::Cover
+            },
+            target: Some(opponent.id),
+        };
+    }
+
+    let support = ball.and_then(|ball| {
+        readings
+            .iter()
+            .filter(|reading| reading.team() == player.id.team && reading.id != player.id)
+            .min_by(|left, right| left.pos.distance(ball).total_cmp(&right.pos.distance(ball)))
+    });
+    if let Some(teammate) = support
+        && teammate.pos.distance(me.pos) <= plan.support_distance
+    {
+        return TacticalResponsibility {
+            kind: ResponsibilityKind::Support,
+            target: Some(teammate.id),
+        };
+    }
+    TacticalResponsibility::default()
 }
 
 impl PlayerReading {
@@ -229,35 +306,12 @@ pub fn closest_players(
 // ---------------------------------------------------------------------------
 
 pub fn update_team_tactics(
-    time: Res<Time>,
     match_state: Res<MatchState>,
     designation: Res<PossessionDesignation>,
     mut tactics: ResMut<TeamTactics>,
-    mut telemetry: ResMut<MatchTelemetry>,
-    ball_query: Query<&Ball>,
-    mut player_query: Query<(&Position, &Player, &mut PlayerMatchState, &Velocity)>,
 ) {
-    let Ok(ball) = ball_query.single() else {
-        return;
-    };
-    let now_ms = crate::match_clock::engine_elapsed_ms(&time);
     let in_play = match_state.set_piece == SetPiece::None;
     let sides = match_state.sides;
-
-    let snaps: Vec<PlayerReading> = player_query
-        .iter()
-        .map(|(position, p, _, v)| PlayerReading {
-            id: p.id,
-            playing_position: p.position,
-            role: p.role,
-            pos: position.on_pitch(),
-            vel: Vec2::new(v.0.x, v.0.y),
-            formation_slot: p.formation_slot,
-            // el bloque de equipo se dibuja sobre el campo real, no sobre lo que
-            // cree nadie: aquí no hay duda que declarar
-            doubt: 0.0,
-        })
-        .collect();
 
     // -- possession amounts (port of Team::Process) --
     for t in TeamId::BOTH {
@@ -290,7 +344,8 @@ pub fn update_team_tactics(
             (match_state.away_score as f32, match_state.home_score as f32)
         };
         let goal_factor = (0.5 + (opp_goals - goals) * 0.25).clamp(0.0, 1.0);
-        let time_factor = 0.5 + 0.5 * (now_ms as f32 / 6_300_000.0).clamp(0.0, 1.0);
+        let time_factor =
+            0.5 + 0.5 * (match_state.period_elapsed.as_secs_f32() / 6_300.0).clamp(0.0, 1.0);
         let offense_bias = (0.5 + (goal_factor - 0.5) * time_factor).clamp(0.0, 1.0);
         let recent_possession_bias =
             normalized_clamp(tactics.team[t].fading_team_possession_amount, 0.5, 1.5);
@@ -307,176 +362,6 @@ pub fn update_team_tactics(
         if tactics.possession_side_history.len() > 600 {
             tactics.possession_side_history.pop_front();
         }
-    }
-
-    for t in TeamId::BOTH {
-        let side = sides.defending_x(t);
-        let opp_designated = designation.designated[t.opponent()]
-            .and_then(|id| snaps.iter().find(|s| s.id == id))
-            .copied();
-
-        // -- offside trap line (port of the deepestDanger computation) --
-        let offensiveness = tactics.team[t].offensiveness_bias;
-        let start_distance = 30.0 + 20.0 * offensiveness;
-        let force_distance = 6.0;
-        let mut deepest_danger = (PITCH_HALF_W - start_distance) * side;
-
-        // ball as max
-        let mut adapted_ball_x = ball.predictions[0].x * side; // > 0 == on our half
-        let offset_x = 20.0 + 10.0 * (1.0 - offensiveness);
-        let start_to_forced = normalized_clamp(
-            adapted_ball_x,
-            PITCH_HALF_W - start_distance - offset_x,
-            PITCH_HALF_W - force_distance,
-        );
-        adapted_ball_x += offset_x * (1.0 - start_to_forced);
-        adapted_ball_x *= side; // back to absolute space
-        if adapted_ball_x * side > deepest_danger * side {
-            deepest_danger = adapted_ball_x;
-        }
-
-        // ball future as max
-        let future_x = ball.predictions[70.min(ball.predictions.len() - 1)].x;
-        if future_x * side > deepest_danger * side {
-            deepest_danger = future_x;
-        }
-
-        // opponent designated possession player as max
-        if let Some(opp) = opp_designated {
-            let caution = 4.0 * side;
-            if (opp.pos.x + opp.vel.x * 0.15 + caution) * side > deepest_danger * side {
-                deepest_danger = opp.pos.x + opp.vel.x * 0.1 + caution;
-            }
-        }
-
-        // slacking teammate as max: our own defensive line (one-but-deepest of us)
-        let line_x = own_defensive_line_x(&snaps, t, sides);
-        let allow_slack_distance = 4.0;
-        if line_x * side - allow_slack_distance > deepest_danger * side {
-            deepest_danger = line_x - allow_slack_distance * side;
-        }
-
-        tactics.team[t].offside_trap_x = deepest_danger;
-
-        // -- who's dangerous (port of tacticalOpponentInfo) --
-        let most_dangerous_pos = Vec2::new((PITCH_HALF_W - 2.0) * side, 0.0) * 0.8
-            + Vec2::new(
-                ball.predictions[10.min(ball.predictions.len() - 1)].x,
-                ball.predictions[10.min(ball.predictions.len() - 1)].y,
-            ) * 0.2;
-        let mut danger: Vec<(PlayerId, f32)> = snaps
-            .iter()
-            .filter(|s| s.team() != t)
-            .map(|s| {
-                let mut factor = 1.0
-                    - normalized_clamp(
-                        (s.pos - most_dangerous_pos).length(),
-                        0.0,
-                        PITCH_HALF_W * 2.0,
-                    );
-                factor *= 0.95;
-                if designation.designated[t.opponent()] == Some(s.id) {
-                    factor += 0.05;
-                }
-                (s.id, factor)
-            })
-            .collect();
-        danger.sort_by(|a, b| b.1.total_cmp(&a.1));
-        tactics.team[t].dangerous_opponents = danger.iter().map(|(id, _)| *id).collect();
-
-        // -- attacking runs (every 500 ms) --
-        if in_play
-            && now_ms % 500 < 10
-            && tactics.team[t].end_attacking_run_ms <= now_ms
-            && best_possession_team(&designation) == Some(t)
-            && let Some(designated) =
-                designation.designated[t].and_then(|id| snaps.iter().find(|s| s.id == id))
-        {
-            // SelectAttackingRunPlayer: closest to a spot 26 m ahead of the ball carrier
-            let focus = designated.pos + Vec2::new(-side * 26.0, 0.0);
-            if let Some(runner) = closest_player(&snaps, t, focus, Some(designated.id), true)
-                .and_then(|runner_id| snaps.iter().find(|s| s.id == runner_id))
-            {
-                let distance = (runner.pos - designated.pos).length();
-                let distance_rating = (1.0 - normalized_clamp(distance, 0.0, 40.0)).powf(0.5);
-
-                let spot =
-                    Vec2::new(runner.pos.x, runner.pos.y * 0.8) + Vec2::new(side * 10.0, 0.0);
-                let mut opp_density_rating = 1.0;
-                for opp in closest_players(&snaps, t.opponent(), spot, None, 4) {
-                    let opp_distance = (opp.pos - spot).length();
-                    let inv = curve(1.0 - normalized_clamp(opp_distance, 0.0, 15.0), 1.0).powf(0.5);
-                    opp_density_rating -= inv * 0.3;
-                }
-
-                if distance_rating * opp_density_rating >= 0.5 {
-                    tactics.team[t].end_attacking_run_ms = now_ms + 4000;
-                    tactics.team[t].attacking_run_player = Some(runner.id);
-                    telemetry.record(MatchFact::AttackingRun { runner: runner.id });
-                }
-            }
-        }
-
-        // -- forward support player (every 1500 ms) --
-        if now_ms % 1500 < 10
-            && let Some(designated) =
-                designation.designated[t].and_then(|id| snaps.iter().find(|s| s.id == id))
-        {
-            tactics.team[t].forward_support_player = closest_player(
-                &snaps,
-                t,
-                designated.pos + Vec2::new(-side * 1.5, 0.0),
-                Some(designated.id),
-                false,
-            );
-        }
-    }
-
-    // -- man marking (port of CalculateManMarking) --
-    let mut assignments: Vec<(PlayerId, Option<PlayerId>)> =
-        snaps.iter().map(|s| (s.id, None)).collect();
-    for t in TeamId::BOTH {
-        let num_marked = 3usize;
-        let dangerous = tactics.team[t].dangerous_opponents.clone();
-        let mut available: Vec<&PlayerReading> = snaps
-            .iter()
-            .filter(|s| s.team() == t && s.playing_position != PlayingPosition::Goalkeeper)
-            .collect();
-        for opp_id in dangerous.iter().take(num_marked) {
-            let Some(opp) = snaps.iter().find(|s| s.id == *opp_id) else {
-                continue;
-            };
-            let mut best: Option<(usize, f32)> = None;
-            for (i, marker) in available.iter().enumerate() {
-                let quality = marking_quality(marker, opp, t, sides);
-                if best.is_none_or(|(_, bq)| quality > bq) {
-                    best = Some((i, quality));
-                }
-            }
-            if let Some((i, _)) = best {
-                let marker = available.remove(i);
-                if let Some(slot) = assignments.iter_mut().find(|(id, _)| *id == marker.id) {
-                    slot.1 = Some(*opp_id);
-                }
-            }
-            if available.is_empty() {
-                break;
-            }
-        }
-    }
-    for (_, player, mut player_state, _) in player_query.iter_mut() {
-        player_state.marking = assignments
-            .iter()
-            .find(|(id, _)| *id == player.id)
-            .and_then(|(_, marking)| *marking);
-    }
-}
-
-fn best_possession_team(designation: &PossessionDesignation) -> Option<TeamId> {
-    if designation.time_to_ball_ms[TeamId::Home] <= designation.time_to_ball_ms[TeamId::Away] {
-        Some(TeamId::Home)
-    } else {
-        Some(TeamId::Away)
     }
 }
 
@@ -503,56 +388,6 @@ fn own_defensive_line_x(snaps: &[PlayerReading], team: TeamId, sides: PitchSides
     line
 }
 
-/// Port of `TeamAIController::CalculateMarkingQuality(player, opp)`.
-fn marking_quality(
-    marker: &PlayerReading,
-    opp: &PlayerReading,
-    team: TeamId,
-    sides: PitchSides,
-) -> f32 {
-    let side = sides.defending_x(team);
-    let opp_position = opp.pos + opp.vel * 0.1;
-    let player_position = marker.pos + marker.vel * 0.1;
-
-    let goal_pos = Vec2::new(PITCH_HALF_W * side, 0.0);
-    let to_goal = goal_pos - player_position;
-    let line_length = to_goal.length().clamp(4.0, 14.0);
-    let to_goal_norm = normalized_or_2d(to_goal, Vec2::new(side, 0.0));
-    let safety_vec = -to_goal_norm * 0.5;
-    let half_pi = std::f32::consts::FRAC_PI_2;
-    let v0 = player_position + safety_vec + rotated_2d(to_goal_norm, -half_pi) * line_length;
-    let v1 = player_position + safety_vec + rotated_2d(to_goal_norm, half_pi) * line_length;
-
-    let opp_is_on_right_side = what_side_2d(v0, v1, opp_position);
-    let (opp_from_line_distance, u) = line_distance_to_point_2d(v0, v1, opp_position);
-
-    let adapted = if opp_is_on_right_side {
-        (opp_from_line_distance - 2.0).abs()
-    } else {
-        opp_from_line_distance
-    };
-
-    let opp_from_line_factor = normalized_clamp(adapted, 0.0, 60.0).powf(0.5);
-    let opp_on_line_factor = (u * 2.0 - 1.0).abs().clamp(0.0, 1.0).powf(0.5);
-
-    let mut result: f32 = 1.0;
-    result -= opp_from_line_factor * 0.5;
-    result -= opp_on_line_factor * 0.5;
-    result = result.clamp(0.0, 1.0);
-
-    if !opp_is_on_right_side {
-        result *= 0.6; // he's passed us already
-    }
-
-    let opp_distance = 1.0
-        - normalized_clamp(
-            (player_position - opp_position).length(),
-            0.0,
-            PITCH_HALF_W * 2.0,
-        );
-    result * 0.8 + opp_distance * 0.2
-}
-
 // ---------------------------------------------------------------------------
 // Adapted formation position (GetAdaptedFormationPosition +
 // AI_GetAdaptedFormationPosition)
@@ -574,6 +409,7 @@ pub fn get_adapted_formation_position(
     tactics: &TeamTactics,
     team: TeamId,
     sides: PitchSides,
+    offside_trap_x: f32,
     player: AdaptedFor,
     focal_point: Vec2,
     ball: &Ball,
@@ -715,8 +551,8 @@ pub fn get_adapted_formation_position(
     let low_y_bound = center_y - adapted_width * PITCH_HALF_H;
     let high_y_bound = center_y + adapted_width * PITCH_HALF_H;
 
-    if back_x_bound * side > ai.offside_trap_x * side {
-        back_x_bound = ai.offside_trap_x;
+    if back_x_bound * side > offside_trap_x * side {
+        back_x_bound = offside_trap_x;
     }
 
     let y_focus = ball_y;
@@ -868,15 +704,15 @@ pub fn adapted_formation_position(
     position
 }
 
-/// Port of `TeamAIController::ApplyOffsideTrap(position)` (smooth version).
-pub fn apply_offside_trap(
-    tactics: &TeamTactics,
+/// Same smoothing law, but the line is supplied by the deciding player's
+/// tactical frame rather than necessarily by the shared historical resource.
+pub fn apply_offside_trap_at(
+    offside_trap_x: f32,
     team: TeamId,
     sides: PitchSides,
     position: &mut Vec2,
 ) {
     let side = sides.defending_x(team);
-    let offside_trap_x = tactics.team[team].offside_trap_x;
 
     let area_half_length = 2.0;
     let abs_pos_x = position.x * side;
@@ -888,5 +724,118 @@ pub fn apply_offside_trap(
         let pos_factor = (pos_from_area_front / (area_half_length * 2.0)).clamp(0.0, 1.0);
         let abs_result = area_front + area_half_length * pos_factor;
         position.x = abs_result * side;
+    }
+}
+
+/// The defensive line as *one player* can reconstruct it from the teammates
+/// they remember.  It deliberately accepts no world query or `TeamTactics`:
+/// an unseen centre-back cannot silently hold the line for the observer.
+pub fn perceived_offside_trap_x(
+    readings: &[PlayerReading],
+    observer: PlayerId,
+    believed_ball_x: f32,
+    sides: PitchSides,
+) -> f32 {
+    let team = observer.team;
+    let side = sides.defending_x(team);
+    let own_line = own_defensive_line_x(readings, team, sides);
+    // A line never leaves the ball behind from the observer's perspective.
+    if believed_ball_x * side > own_line * side {
+        believed_ball_x
+    } else {
+        own_line
+    }
+}
+
+/// The line a team agrees before play starts. It is deliberately independent
+/// of bodies and ball: until communication provides enough sightings, it is
+/// the lawful fallback for a defender's local tactical frame.
+pub fn planned_defensive_line_x(depth: f32, team: TeamId, sides: PitchSides) -> f32 {
+    let side = sides.defending_x(team);
+    // 0 = 42 m from halfway towards the own goal; 1 = 8 m into the other half.
+    (-42.0 + depth.clamp(0.0, 1.0) * 50.0) * -side
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reading(id: PlayerId, pos: Vec2) -> PlayerReading {
+        PlayerReading {
+            id,
+            playing_position: PlayingPosition::CentreMidfielder,
+            role: TacticalRole::Linking,
+            pos,
+            vel: Vec2::ZERO,
+            formation_slot: Vec2::ZERO,
+            doubt: 0.0,
+        }
+    }
+
+    #[test]
+    fn a_perceived_line_uses_only_the_readings_the_observer_has() {
+        let seen = [
+            reading(PlayerId::home(3), Vec2::new(-35.0, 0.0)),
+            reading(PlayerId::home(4), Vec2::new(-30.0, 4.0)),
+        ];
+        let line = perceived_offside_trap_x(&seen, PlayerId::home(3), -20.0, PitchSides::opening());
+        assert!((line + 30.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_responsibility_only_covers_an_opponent_the_player_has_seen() {
+        let me = Player::new(
+            PlayerId::home(6),
+            PlayingPosition::CentreMidfielder,
+            Vec2::ZERO,
+        );
+        let unseen = PlayerId::away(9);
+        let seen = PlayerId::away(10);
+        let readings = [
+            reading(me.id, Vec2::ZERO),
+            reading(seen, Vec2::new(-12.0, 0.0)),
+        ];
+
+        let responsibility = responsibility_from_readings(
+            &me,
+            &readings,
+            None,
+            PitchSides::opening(),
+            football_domain::TacticalPlan::default(),
+        );
+
+        assert_eq!(responsibility.target, Some(seen));
+        assert_ne!(responsibility.target, Some(unseen));
+        assert_eq!(responsibility.kind, ResponsibilityKind::Cover);
+    }
+
+    #[test]
+    fn the_team_plan_switches_between_press_and_occupation() {
+        let me = Player::new(
+            PlayerId::home(6),
+            PlayingPosition::CentreMidfielder,
+            Vec2::ZERO,
+        );
+        let readings = [
+            reading(me.id, Vec2::ZERO),
+            reading(PlayerId::away(10), Vec2::new(-12.0, 0.0)),
+        ];
+        let press = football_domain::TacticalPlan {
+            press_distance: 15.0,
+            ..Default::default()
+        };
+        let occupy = football_domain::TacticalPlan {
+            cover_distance: 10.0,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            responsibility_from_readings(&me, &readings, None, PitchSides::opening(), press).kind,
+            ResponsibilityKind::Press
+        );
+        assert_eq!(
+            responsibility_from_readings(&me, &readings, None, PitchSides::opening(), occupy).kind,
+            ResponsibilityKind::Occupy
+        );
     }
 }

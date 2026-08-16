@@ -20,16 +20,23 @@ pub struct BallCollisionPlugin;
 
 impl Plugin for BallCollisionPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(CollisionRng(XorShift32(0x9E3779B9)))
-            .add_systems(
-                FixedUpdate,
-                ball_body_collisions.in_set(SimulationSet::BallCollisions),
-            );
+        app.add_systems(
+            FixedUpdate,
+            ball_body_collisions.in_set(SimulationSet::BallCollisions),
+        );
     }
 }
 
 #[derive(Resource)]
-struct CollisionRng(XorShift32);
+pub(crate) struct CollisionRng(XorShift32);
+
+impl CollisionRng {
+    /// A collision has its own random stream: adding a bounce cannot shift the
+    /// random decisions made by the rest of the match.
+    pub(crate) fn seeded(scenario_seed: u32) -> Self {
+        Self(XorShift32(scenario_seed ^ 0x9E37_79B9))
+    }
+}
 
 const PLAYER_CAPSULE_RADIUS: f32 = 0.35;
 /// Original: `boundingBoxSizeOffset = -0.1f`, `+0.03f` when not in possession.
@@ -175,7 +182,7 @@ fn ball_body_collisions(
                     player: interrupted,
                     at: ball_pos.truncate(),
                 });
-                match_state.possession_player = None;
+                match_state.lose_possession_to_a_loose_ball();
             }
             telemetry.record(MatchFact::Touched {
                 player,
@@ -216,6 +223,56 @@ mod tests {
         assert!(
             deflects_it(true, struck, &tuning),
             "el defensor que estaba delante dejó pasar el tiro"
+        );
+    }
+
+    #[test]
+    fn collision_randomness_is_a_repeatable_stream_of_the_scenario_seed() {
+        let mut first = CollisionRng::seeded(42);
+        let mut replay = CollisionRng::seeded(42);
+        let mut another_situation = CollisionRng::seeded(43);
+
+        let first_value = first.0.next_u32();
+        assert_eq!(first_value, replay.0.next_u32());
+        assert_ne!(first_value, another_situation.0.next_u32());
+
+        let mut match_stream = XorShift32(42);
+        assert_ne!(first_value, match_stream.next_u32());
+    }
+
+    #[test]
+    fn the_kernel_installs_the_collision_stream_from_its_scenario_seed() {
+        let mut first_scenario =
+            football_domain::Scenario::kick_off().for_duration(Duration::from_secs(1));
+        first_scenario.seed = 42;
+        let replay_scenario = first_scenario.clone();
+        let mut another_scenario = first_scenario.clone();
+        another_scenario.seed = 43;
+
+        let mut first = crate::scenario_runner::headless_scenario_app(first_scenario);
+        let mut replay = crate::scenario_runner::headless_scenario_app(replay_scenario);
+        let mut another = crate::scenario_runner::headless_scenario_app(another_scenario);
+
+        let first_value = first
+            .world_mut()
+            .resource_mut::<CollisionRng>()
+            .0
+            .next_u32();
+        assert_eq!(
+            first_value,
+            replay
+                .world_mut()
+                .resource_mut::<CollisionRng>()
+                .0
+                .next_u32()
+        );
+        assert_ne!(
+            first_value,
+            another
+                .world_mut()
+                .resource_mut::<CollisionRng>()
+                .0
+                .next_u32()
         );
     }
 }

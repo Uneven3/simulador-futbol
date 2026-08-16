@@ -63,9 +63,10 @@ Gameplay Football y RoboCup sugieren implementaciones; no son verdad empírica.
 Registra edición/competición, campo, estado inicial, participantes, plan,
 semilla, ventana, hechos esperados y tolerancias, y alimenta igual al runner
 headless y al de primitivas. Implementado en `domain::scenario` y ejecutado por
-`simulation::scenario_runner`. Pendiente: perfiles por jugador, colocación
-explícita, métricas con tolerancia, y el escenario como archivo y no como datos
-en Rust.
+`simulation::scenario_runner`: colocaciones, propuestas y observaciones
+iniciales son explícitas. El RON versionado intercambia el escenario causal
+completo; el runner confirma que importarlo reproduce la misma corrida.
+`CounterfactualReport` compara sus envolventes con las mismas semillas.
 
 ## Enseñanza contrafactual
 

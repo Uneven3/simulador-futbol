@@ -6,6 +6,7 @@
 
 use crate::SimulationSet;
 use crate::force_field::{self, Falloff, ForceSpot};
+use crate::perception::Beliefs;
 use crate::player_decisions;
 use crate::team_tactics::{self, TeamTactics};
 use bevy_app::prelude::*;
@@ -15,13 +16,9 @@ use bevy_time::prelude::*;
 
 use football_domain::math::{normalized_clamp, sign_side};
 use football_domain::{
-    Attributes, Ball, ByTeam, MatchState, PLAYER_BODY_RADIUS, PitchSides, Player, PlayerId,
-    PlayerMatchState, PlayerRegistry, PlayingPosition, Position, PossessionDesignation, TeamId,
-    Velocity,
+    Attributes, ByTeam, PLAYER_BODY_RADIUS, PitchSides, Player, PlayerId, PlayerMatchState,
+    PlayingPosition, Position, PossessionDesignation, TeamId, Velocity,
 };
-
-/// Speed below which a ball counts as dead, in m/s.
-const BALL_AT_REST_SPEED: f32 = 0.3;
 
 pub struct PlayerMovementPlugin;
 
@@ -36,6 +33,7 @@ impl Plugin for PlayerMovementPlugin {
                 (
                     update_possession_designation,
                     team_tactics::update_team_tactics,
+                    team_tactics::assign_perceived_responsibilities,
                     player_decisions::select_player_movement,
                     player_decisions::direct_visual_attention,
                     crate::locomotion::drive_bodies,
@@ -48,66 +46,28 @@ impl Plugin for PlayerMovementPlugin {
     }
 }
 
-/// Port of the original team bookkeeping (`Team::GetTimeNeededToGetToBall_ms` +
-/// `GetDesignatedTeamPossessionPlayer`): per team, find the single outfield
-/// player who can reach the ball's predicted path first. Only he chases; a
-/// player in possession is always his team's designated player.
-fn update_possession_designation(
-    mut match_state: ResMut<MatchState>,
-    records: Res<football_domain::OffsideRecords>,
+/// Designa, por equipo, a quien *cree* que llega primero al balón. No recibe
+/// ni el poseedor ni el receptor verdaderos: cuando una cabeza no vio el balón
+/// no puede ser elegida por conocimiento ajeno (§3). La designación es sólo un
+/// desempate de coordinación; el contacto físico sigue resolviéndose aparte.
+pub(crate) fn update_possession_designation(
     mut designation: ResMut<PossessionDesignation>,
-    registry: Res<PlayerRegistry>,
-    ball_query: Query<&Ball>,
+    beliefs: Res<Beliefs>,
     player_query: Query<(&Position, &Player, &Attributes)>,
 ) {
-    let Ok(ball) = ball_query.single() else {
-        return;
-    };
-
     let mut best: ByTeam<Option<(PlayerId, f32)>> = ByTeam::default();
     for (position, player, stats) in player_query.iter() {
         if player.position == PlayingPosition::Goalkeeper {
             continue;
         }
-        // a player caught in an offside position when the ball was last played
-        // must not go for it (or the whistle blows the moment he touches it)
-        if records.team == Some(player.id.team)
-            && records.players.iter().any(|(id, _)| *id == player.id)
-        {
+        let path = beliefs.ball_path_of(player.id);
+        if path.is_empty() {
             continue;
         }
-        let (_, time_ms) =
-            find_interception(position.on_pitch(), stats.top_speed, &ball.predictions);
+        let (_, time_ms) = find_believed_interception(position.on_pitch(), stats.top_speed, path);
         let slot = &mut best[player.id.team];
         if slot.is_none_or(|(_, t)| time_ms < t) {
             *slot = Some((player.id, time_ms));
-        }
-    }
-
-    // whoever holds the ball is his team's designated player by definition
-    if let Some(possessor) = match_state.possession_player {
-        best[possessor.team] = Some((possessor, 0.0));
-    }
-
-    // A pass in flight suspends the designation race, so the threshold has to
-    // be near-rest: solved passes arrive dying, and expiring earlier strips the
-    // receiver of his priority at the very moment of reception.
-    if ball.momentum.length() < BALL_AT_REST_SPEED {
-        match_state.pass_target = None;
-    }
-
-    // the intended receiver of a pass in flight attacks it, even if a teammate
-    // is nominally a bit faster to the ball (the original's receivers run onto
-    // `AI_GetPass` balls; without this the passer often re-chases his own pass)
-    if let Some(receiver) = match_state.pass_target
-        && let Some(body) = registry.body(receiver)
-        && let Ok((position, player, stats)) = player_query.get(body)
-    {
-        let (_, time_ms) =
-            find_interception(position.on_pitch(), stats.top_speed, &ball.predictions);
-        let slot = &mut best[player.id.team];
-        if time_ms < 3500.0 && slot.is_none_or(|(_, t)| time_ms < t * 1.5 + 300.0) {
-            *slot = Some((receiver, time_ms));
         }
     }
 
@@ -261,4 +221,30 @@ pub fn find_interception(
     let last_2d = Vec2::new(last_pred.x, last_pred.y);
     let time_ms = (player_pos_2d.distance(last_2d) / player_speed + 0.05) * 1000.0;
     (last_2d, 3000.0f32.max(time_ms))
+}
+
+/// La misma pregunta sobre una trayectoria que un jugador cree haber visto. La
+/// decisión necesita solo el plano del campo; altura y contacto siguen siendo
+/// autoridad de la física cuando el cuerpo llega al último metro (§3).
+pub fn find_believed_interception(
+    player_pos_2d: Vec2,
+    player_speed: f32,
+    predictions: &[Vec2],
+) -> (Vec2, f32) {
+    if predictions.is_empty() {
+        return (Vec2::ZERO, f32::MAX);
+    }
+
+    let step_time = 0.01;
+    for (step_idx, &spot) in predictions.iter().enumerate() {
+        let time_to_reach = player_pos_2d.distance(spot) / player_speed + 0.05;
+        let ball_arrival_time = step_idx as f32 * step_time;
+        if time_to_reach <= ball_arrival_time {
+            return (spot, ball_arrival_time * 1000.0);
+        }
+    }
+
+    let last = predictions[predictions.len() - 1];
+    let time_ms = (player_pos_2d.distance(last) / player_speed + 0.05) * 1000.0;
+    (last, 3000.0f32.max(time_ms))
 }

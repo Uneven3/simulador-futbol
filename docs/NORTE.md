@@ -83,30 +83,26 @@ dropped ball, tanda y variantes configurables. Cada transición nace de un
 escenario.
 
 Puestos: fuera de juego, reanudaciones que alguien ejecuta y no puede
-conducir, portero que ataja, cambio de mitades, tiempo añadido, y la falta con
-su ventaja, ya pitada. Faltan sustituciones, disciplina, penales, dropped ball
-y tanda.
+conducir, portero que ataja, cambio de mitades, tiempo añadido, ventaja,
+disciplina, penal y balón a tierra; sustituciones servidas solo en detención,
+mínimo configurable de jugadores, tiempo suplementario y tanda configurable.
 
 ### MVP 3 — Movimiento plausible
 
 Aceleración, frenado, agarre, orientación, fatiga, alcance, colisiones y
 compromiso temporal, con los atributos motores que los alimentan.
 
-Puestos todos menos el alcance. Falta la **acción defensiva individual** —salir
-a achicar el ángulo, meter la pierna—, que es motor y decisión antes que táctica
-de equipo, y **jugadores que no sean clones** (`AHORA.md`).
+Puestos aceleración, frenado, agarre, orientación, fatiga, alcance, colisiones y
+entrada defensiva explícita; los perfiles por dorsal mantienen la simetría.
 
 ### MVP 4 — Percepción y creencias
 
 Campo visual, atención, oclusión, retardo, ruido, memoria e incertidumbre. La
 verdad del mundo deja de ser entrada válida para decisiones.
 
-Puestos el cono sobre un cuello que gira solo, la oclusión, el barrido que elige
-a quién buscar, la memoria que envejece, el retardo entre ver y enterarse, el
-error con la distancia, la duda que la creencia declara de sí misma —leída por
-el pase y la mirada— y el corte: se persigue la idea del balón hasta el último
-metro, donde manda el pie. Falta que cada uno prediga su trayectoria, y que
-taparse sea situar peor en vez de dejar de ver.
+Puestos cono sobre cuello que gira solo, oclusión, barrido, memoria, retardo,
+error con distancia, incertidumbre declarada, trayectoria por cabeza y
+comunicación limitada; cobertura, apoyo y ruta leen ese campo local.
 
 ### MVP 5 — Responsabilidad táctica
 
@@ -127,5 +123,5 @@ instrumental de MVP 1.75 solo compara builds y afirma propiedades.
 
 ### MVP 7 — Presentación low-poly
 
-Skinned meshes reemplazan primitivas sin cambiar resultados; se conservan los
+Skinned meshes low-poly reemplazan las primitivas del ejecutable sin cambiar resultados; se conservan los
 overlays diagnósticos.

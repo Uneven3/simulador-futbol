@@ -6,17 +6,19 @@
 //! is a property of the person; the match state is rewritten every tick. Merged,
 //! any read of a shirt number needs write access to the tick's scratch data.
 
-use crate::identity::PlayerId;
+use crate::identity::{ByTeam, PlayerId, TeamId};
+use crate::math::XorShift32;
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
 use bevy_reflect::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Where a player lines up. Position is a place on the pitch, and it is
 /// deliberately not the same thing as what he is asked to do there
 /// (`TacticalRole`): a full back can be told to attack without becoming a
 /// winger.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
 pub enum PlayingPosition {
     Goalkeeper,
     CentreBack,
@@ -56,7 +58,7 @@ impl PlayingPosition {
 
 /// What a player is asked to do, along the one axis the simulation currently
 /// reads: how far up the pitch his instructions push him.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
 pub enum TacticalRole {
     Defending,
     Holding,
@@ -166,6 +168,29 @@ impl Default for Attributes {
     }
 }
 
+/// Capacidades espejo de los once dorsales. La misma persona nominal tiene las
+/// mismas piernas en ambos equipos para que la variación individual no rompa la
+/// simetría local/visita de un escenario.
+pub fn player_attributes(seed: u32, shirt: u8, position: PlayingPosition) -> Attributes {
+    let shirt_key = u32::from(shirt).wrapping_mul(0xD1B5_4A35);
+    let mut rng = XorShift32(seed ^ shirt_key);
+    let mut attributes = Attributes {
+        top_speed: rng.range(7.1, 8.5),
+        acceleration: rng.range(5.0, 7.0),
+        braking: rng.range(7.5, 10.0),
+        grip: rng.range(15.0, 20.0),
+        turn_rate: rng.range(5.0, 7.0),
+        shot_technique: rng.range(0.3, 0.8),
+        ..Default::default()
+    };
+    if position.is_goalkeeper() {
+        attributes.lateral_technique = 1.0;
+        attributes.top_speed = rng.range(6.0, 7.0);
+        attributes.shot_technique = rng.range(0.2, 0.5);
+    }
+    attributes
+}
+
 /// Lo que le queda de lo que salió teniendo: 1 fresco, 0 vacío. Es capacidad y
 /// no disposición —un jugador vacío no es que no quiera—, así que lo lee el
 /// motor. Solo baja: los cambios y el descanso son de MVP 2.
@@ -203,11 +228,147 @@ pub struct PlayerMatchState {
     pub recent_speed: f32,
     /// Match time of his last touch, for the touch and collision windows.
     pub last_touch_at: Duration,
-    /// Opponent he is currently man-marking, assigned by the team AI each tick.
-    pub marking: Option<PlayerId>,
+}
+
+/// La acción defensiva elegida para este tick. Contener no autoriza a atravesar
+/// el radio de contacto para robar: la entrada es una decisión distinta que el
+/// motor puede fallar o convertir en falta.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Reflect)]
+pub enum DefensiveAction {
+    #[default]
+    Contain,
+    Tackle,
+}
+
+/// Sanción individual acumulada durante este partido. Es decisión del árbitro,
+/// no una propiedad estable del jugador ni una consecuencia del motor.
+#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
+pub struct Discipline {
+    pub yellow_cards: u8,
+    pub sent_off: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Card {
+    Yellow,
+    Red,
+}
+
+/// Lo que el equipo ha pedido explícitamente a este jugador para este tick.
+/// La responsabilidad no mueve un cuerpo: la decisión individual la consume
+/// junto con su propia creencia, y el motor decide después qué alcanza (§3).
+#[derive(Component, Debug, Clone, Copy, Reflect)]
+pub struct TacticalResponsibility {
+    pub kind: ResponsibilityKind,
+    /// Persona a quien cubre, presiona o apoya. Una identidad viene del
+    /// registro, no de observar un `Entity`.
+    pub target: Option<PlayerId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+pub enum ResponsibilityKind {
+    Occupy,
+    Cover,
+    Press,
+    Support,
+}
+
+impl Default for TacticalResponsibility {
+    fn default() -> Self {
+        Self {
+            kind: ResponsibilityKind::Occupy,
+            target: None,
+        }
+    }
+}
+
+/// La política que un equipo lleva al escenario. Es instrucción, no habilidad:
+/// cambiarla altera responsabilidades sin convertir a nadie en otro jugador.
+#[derive(Debug, Clone, Copy, PartialEq, Reflect, Serialize, Deserialize)]
+pub struct TacticalPlan {
+    /// Profundidad prepartido de la línea defensiva, 0 = cerca del propio arco
+    /// y 1 = bloque alto. Es una instrucción, no una lectura del rival.
+    pub defensive_line_depth: f32,
+    /// Hasta esta distancia la cobertura se transforma en presión.
+    pub press_distance: f32,
+    /// Más allá de esto un rival conocido no reclama una cobertura individual.
+    pub cover_distance: f32,
+    /// Distancia a la que un compañero con balón merece un apoyo cercano.
+    pub support_distance: f32,
+}
+
+impl Default for TacticalPlan {
+    fn default() -> Self {
+        Self {
+            defensive_line_depth: 0.8,
+            press_distance: 8.0,
+            cover_distance: 35.0,
+            support_distance: 18.0,
+        }
+    }
+}
+
+/// Planes configurables de los dos equipos, instalados por el escenario para
+/// que una comparación contrafactual cambie una política y nada más.
+#[derive(Resource, Debug, Clone, PartialEq, Reflect, Serialize, Deserialize)]
+pub struct TacticalPlans {
+    pub team: ByTeam<TacticalPlan>,
+}
+
+impl Default for TacticalPlans {
+    fn default() -> Self {
+        Self {
+            team: ByTeam::splat(TacticalPlan::default()),
+        }
+    }
+}
+
+impl TacticalPlans {
+    pub fn for_team(&self, team: TeamId) -> TacticalPlan {
+        self.team[team]
+    }
+}
+
+/// 0..1: cuánto conoce un jugador los movimientos de su posición nominal.
+/// Solo reduce el radio de cobertura que puede asumir; no suma una bonificación
+/// global a cada decisión.
+#[derive(Component, Debug, Clone, Copy, Reflect)]
+pub struct PositionFamiliarity(pub f32);
+
+/// 0..1: cuánto conoce la función táctica que le pidió el plan actual.
+/// Su mecanismo es el mismo que el de posición, pero sigue siendo un dato
+/// separado: cambiar de rol no borra la experiencia de ser lateral.
+#[derive(Component, Debug, Clone, Copy, Reflect)]
+pub struct RoleFamiliarity(pub f32);
+
+impl Default for PositionFamiliarity {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+impl Default for RoleFamiliarity {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+/// Familiaridades espejo de los once dorsales. El azar del escenario hace
+/// jugadores distintos sin hacer distinto a un equipo por ser local o visita.
+pub fn tactical_familiarity(seed: u32, shirt: u8) -> (PositionFamiliarity, RoleFamiliarity) {
+    let shirt_key = u32::from(shirt).wrapping_mul(0x9E37_79B9);
+    let mut rng = XorShift32(seed ^ shirt_key);
+    (
+        PositionFamiliarity(rng.range(0.75, 1.0)),
+        RoleFamiliarity(rng.range(0.75, 1.0)),
+    )
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::float_cmp,
+    reason = "la misma semilla debe reproducir exactamente el mismo perfil"
+)]
 mod tests {
     use super::*;
 
@@ -259,5 +420,16 @@ mod tests {
 
         assert_eq!(player.role.attacking_bias(), 1.0);
         assert_eq!(player.position, PlayingPosition::RightBack);
+    }
+
+    #[test]
+    fn seeded_attributes_are_individual_but_mirrored_by_shirt() {
+        let six = player_attributes(7, 6, PlayingPosition::CentreMidfielder);
+        let six_again = player_attributes(7, 6, PlayingPosition::CentreMidfielder);
+        let seven = player_attributes(7, 7, PlayingPosition::CentreMidfielder);
+
+        assert_eq!(six.top_speed, six_again.top_speed);
+        assert_eq!(six.acceleration, six_again.acceleration);
+        assert_ne!(six.top_speed, seven.top_speed);
     }
 }

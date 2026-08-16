@@ -18,14 +18,13 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_math::prelude::*;
-use bevy_time::prelude::*;
 use std::time::Duration;
 
 use crate::force_field::{self, Falloff, ForceSpot};
 use crate::team_tactics::{
     DISTANCE_TO_VELOCITY_MULTIPLIER, DRIBBLE_VELOCITY, PITCH_HALF_H, PITCH_HALF_W, PlayerReading,
-    SPRINT_VELOCITY, TeamTactics, WALK_VELOCITY, apply_offside_trap, closest_player,
-    closest_players, cpp_clamp, get_adapted_formation_position,
+    SPRINT_VELOCITY, TeamTactics, WALK_VELOCITY, closest_player, closest_players, cpp_clamp,
+    get_adapted_formation_position,
 };
 use football_domain::math::{
     curve, line_distance_to_point_2d, line_intersection_2d, normalized_clamp, normalized_or_2d,
@@ -33,9 +32,9 @@ use football_domain::math::{
 };
 use football_domain::tuning::{GoalkeepingTuning, PassingTuning};
 use football_domain::{
-    Attributes, Ball, MatchRng, MatchState, MatchTuning, Mentality, MovementIntent, PitchSides,
-    Player, PlayerId, PlayerMatchState, PlayingPosition, Position, PossessionDesignation, SetPiece,
-    TeamId, Velocity, believed_pace,
+    Attributes, Ball, DefensiveAction, Judgement, MatchRng, MatchState, MatchTuning, Mentality,
+    MovementIntent, PitchSides, Player, PlayerId, PlayerMatchState, PlayingPosition, Position,
+    PossessionDesignation, SetPiece, TacticalPlans, TacticalResponsibility, TeamId, Velocity,
 };
 
 mod attention;
@@ -50,17 +49,16 @@ struct DecisionContext<'a> {
     /// Qué mitad defiende cada equipo ahora: toda la geometría cuelga de esto.
     sides: PitchSides,
     ball: &'a Ball,
-    /// Lo que la idea que tiene del balón se aparta del balón. Es lo que hace
-    /// que persiga un sitio y no otro; el balón de `ball` sigue siendo el real
-    /// porque el contacto lo resuelve el cuerpo, no la creencia.
-    ball_error: Vec2,
+    /// Line reconstructed from this defender's own readings. It constrains
+    /// marking before it ever reaches the shared formation instruction.
+    perceived_offside_trap_x: f32,
     tactics: &'a TeamTactics,
+    plans: &'a TacticalPlans,
     tuning: &'a MatchTuning,
     designation: &'a PossessionDesignation,
     /// The single player (either team) expected to reach the ball first
     /// (original `Match::GetDesignatedPossessionPlayer`).
     match_designated: Option<PlayerId>,
-    now_ms: u64,
 }
 
 fn snap_of(snaps: &[PlayerReading], id: PlayerId) -> Option<&PlayerReading> {
@@ -121,9 +119,12 @@ type DecidingPlayer = (
     &'static Position,
     &'static Player,
     &'static Attributes,
+    &'static Judgement,
     &'static Mentality,
     &'static PlayerMatchState,
+    &'static TacticalResponsibility,
     &'static Velocity,
+    &'static mut DefensiveAction,
     &'static mut MovementIntent,
 );
 
@@ -132,10 +133,10 @@ type DecidingPlayer = (
 /// parámetros. Van juntos para declarar una dependencia en vez de cinco (§8).
 #[derive(SystemParam)]
 pub struct MatchAsItStands<'w> {
-    pub time: Res<'w, Time>,
     pub match_state: Res<'w, MatchState>,
     pub designation: Res<'w, PossessionDesignation>,
     pub tactics: Res<'w, TeamTactics>,
+    pub plans: Res<'w, TacticalPlans>,
     pub tuning: Res<'w, MatchTuning>,
 }
 
@@ -143,43 +144,46 @@ pub fn select_player_movement(
     world: MatchAsItStands,
     beliefs: Res<crate::perception::Beliefs>,
     committed: Query<&crate::ball_release::ActionCommitment>,
-    ball_query: Query<&Ball, Without<Player>>,
     mut player_query: Query<DecidingPlayer, Without<Ball>>,
 ) {
     let MatchAsItStands {
-        time,
         match_state,
         designation,
         tactics,
+        plans,
         tuning,
     } = world;
     // If a set piece is active (game paused for a restart), freeze everyone.
     if match_state.set_piece != SetPiece::None {
-        for (.., mut intent) in player_query.iter_mut() {
+        for (.., mut action, mut intent) in player_query.iter_mut() {
+            *action = DefensiveAction::Contain;
             intent.0 = Vec3::ZERO;
         }
         return;
     }
 
-    let Ok(ball) = ball_query.single() else {
-        return;
-    };
-    let now_ms = crate::match_clock::engine_elapsed_ms(&time);
-
-    let match_designated = match_state.possession_player.or_else(|| {
-        if designation.time_to_ball_ms[TeamId::Home] <= designation.time_to_ball_ms[TeamId::Away] {
-            designation.designated[TeamId::Home]
-        } else {
-            designation.designated[TeamId::Away]
-        }
-    });
-
-    for (body, position, player, stats, mentality, player_state, velocity, mut intent) in
-        player_query.iter_mut()
+    for (
+        body,
+        position,
+        player,
+        stats,
+        judgement,
+        mentality,
+        player_state,
+        responsibility,
+        velocity,
+        mut defensive_action,
+        mut intent,
+    ) in player_query.iter_mut()
     {
+        let believed_ball = beliefs.ball_model_of(player.id);
         // armar un golpeo es plantarse junto al balón: quien sigue corriendo a
         // su ritmo se lo deja atrás y llega a golpear el aire
         if committed.get(body).is_ok() {
+            let Some(ball) = believed_ball else {
+                intent.0 = Vec3::ZERO;
+                continue;
+            };
             let to_ball =
                 Vec2::new(ball.predictions[0].x, ball.predictions[0].y) - position.on_pitch();
             let pace = tuning.striking.adjust_pace;
@@ -191,16 +195,57 @@ pub fn select_player_movement(
         // Cada uno decide sobre el campo que cree, no sobre el que hay: a quien
         // no ha visto no lo tiene, y a quien vio hace tres segundos lo tiene
         // donde estaría si hubiera seguido igual.
+        let Some(ball) = believed_ball else {
+            *defensive_action = DefensiveAction::Contain;
+            intent.0 = Vec3::ZERO;
+            continue;
+        };
+        let readings = beliefs.of(player.id);
+        // Quién parece controlar el balón sale de esta cabeza, no del marcador
+        // global: si no se ve el cuerpo junto al balón no se sabe quién lo lleva.
+        let match_designated =
+            perceived_ball_holder(readings, ball, tuning.contest.ball_at_feet_distance).or_else(
+                || {
+                    // El equipo comparte una designación construida con
+                    // creencias, no con cuerpos ni con el poseedor real. Esto
+                    // mantiene una sola persecución sin revelar quién lleva.
+                    if designation.time_to_ball_ms[TeamId::Home]
+                        <= designation.time_to_ball_ms[TeamId::Away]
+                    {
+                        designation.designated[TeamId::Home]
+                    } else {
+                        designation.designated[TeamId::Away]
+                    }
+                },
+            );
+        let known_teammates = readings
+            .iter()
+            .filter(|reading| reading.id.team == player.id.team)
+            .count();
+        let perceived_offside_trap_x = if known_teammates >= 2 {
+            crate::team_tactics::perceived_offside_trap_x(
+                readings,
+                player.id,
+                ball.predictions[0].x,
+                match_state.sides,
+            )
+        } else {
+            crate::team_tactics::planned_defensive_line_x(
+                plans.for_team(player.id.team).defensive_line_depth,
+                player.id.team,
+                match_state.sides,
+            )
+        };
         let ctx = DecisionContext {
-            snaps: beliefs.of(player.id),
+            snaps: readings,
             sides: match_state.sides,
             ball,
-            ball_error: beliefs.ball_error_of(player.id),
+            perceived_offside_trap_x,
             tactics: &tactics,
+            plans: &plans,
             tuning: &tuning,
             designation: &designation,
             match_designated,
-            now_ms,
         };
         let me = PlayerReading {
             id: player.id,
@@ -212,20 +257,41 @@ pub fn select_player_movement(
             // de dónde está uno mismo no se duda: se siente
             doubt: 0.0,
         };
-        let man_marking = player_state.marking;
+        let man_marking = match responsibility.kind {
+            football_domain::ResponsibilityKind::Cover
+            | football_domain::ResponsibilityKind::Press => responsibility.target,
+            football_domain::ResponsibilityKind::Occupy
+            | football_domain::ResponsibilityKind::Support => None,
+        };
+        *defensive_action = chooses_tackle(
+            responsibility,
+            beliefs.of(player.id),
+            me.id,
+            me.pos,
+            tuning.contest.tackle_contact_distance,
+        );
         let avg_velocity = player_state.recent_speed;
         let work_rate = mentality.work_rate;
 
-        let is_possessor = match_state.possession_player == Some(player.id);
-        let is_designated = designation.designated[me.team()] == Some(player.id);
+        let is_possessor = match_designated == Some(player.id)
+            && perceived_ball_holder(readings, ball, tuning.contest.ball_at_feet_distance)
+                == Some(player.id);
+        let is_designated = match_designated == Some(player.id);
 
         let (dir, velo) = if me.playing_position == PlayingPosition::Goalkeeper {
             goalie_movement(&ctx, &me)
         } else if is_possessor {
-            carry_movement(&ctx, &me, stats)
-        } else if is_designated && ball_winnable(&ctx, &me, match_state.possession_player) {
+            carry_movement(&ctx, &me, stats, judgement)
+        } else if is_designated
+            && !beliefs.ball_path_of(player.id).is_empty()
+            && ball_winnable(&ctx, &me, match_designated)
+        {
             // the magnet branch of _MovementCommand: go win the ball
-            to_ball_movement(&ctx, &me, stats)
+            to_ball_movement(&me, stats, judgement, beliefs.ball_path_of(player.id))
+        } else if responsibility.kind == football_domain::ResponsibilityKind::Support
+            && let Some(target) = responsibility.target
+        {
+            support_movement(&ctx, &me, target)
         } else {
             // A designated player who cannot win the ball plays off it like
             // anyone else: a permanent containment shadow presses the back line
@@ -237,10 +303,80 @@ pub fn select_player_movement(
     }
 }
 
+/// The observer's likely carrier: only a body they have actually placed at the
+/// believed ball counts. This is self-knowledge as well as vision — when the
+/// body and the believed ball coincide, the player knows the ball is at their
+/// feet without consulting the match's global possession record.
+fn perceived_ball_holder(
+    snaps: &[PlayerReading],
+    ball: &Ball,
+    ball_at_feet_distance: f32,
+) -> Option<PlayerId> {
+    let ball_pos = Vec2::new(ball.predictions[0].x, ball.predictions[0].y);
+    snaps
+        .iter()
+        .filter(|reading| reading.pos.distance(ball_pos) <= ball_at_feet_distance)
+        .min_by(|left, right| {
+            left.pos
+                .distance_squared(ball_pos)
+                .total_cmp(&right.pos.distance_squared(ball_pos))
+        })
+        .map(|reading| reading.id)
+}
+
+/// Una entrada solo se declara contra el rival que uno acaba de ubicar y que
+/// cree a distancia de pierna. El contacto real todavía puede no alcanzar el
+/// balón o ser falta; aquí no se lee ni se escribe el mundo físico (§3).
+fn chooses_tackle(
+    responsibility: &TacticalResponsibility,
+    readings: &[PlayerReading],
+    me: PlayerId,
+    my_position: Vec2,
+    contact_distance: f32,
+) -> DefensiveAction {
+    let Some(target) = (responsibility.kind == football_domain::ResponsibilityKind::Press)
+        .then_some(responsibility.target)
+        .flatten()
+    else {
+        return DefensiveAction::Contain;
+    };
+    let Some(target_reading) = readings.iter().find(|reading| reading.id == target) else {
+        return DefensiveAction::Contain;
+    };
+    if target_reading.id.team != me.team
+        && target_reading.pos.distance(my_position) <= contact_distance
+    {
+        DefensiveAction::Tackle
+    } else {
+        DefensiveAction::Contain
+    }
+}
+
+/// Un apoyo se sitúa detrás y al costado del compañero que cree más cerca del
+/// balón. No sigue una posición verdadera ni vuelve a elegir al compañero: la
+/// responsabilidad ya declaró ambas cosas en la fase táctica.
+fn support_movement(ctx: &DecisionContext, me: &PlayerReading, target: PlayerId) -> (Vec2, f32) {
+    let Some(carrier) = snap_of(ctx.snaps, target) else {
+        return (Vec2::ZERO, 0.0);
+    };
+    let side = ctx.sides.defending_x(me.team());
+    let offset = Vec2::new(side * 3.0, (me.pos.y - carrier.pos.y).signum() * 2.0);
+    let spot = carrier.pos + offset;
+    let direction = spot - me.pos;
+    let speed = (direction.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
+        .clamp(WALK_VELOCITY, SPRINT_VELOCITY);
+    (direction.normalize_or_zero(), speed)
+}
+
 /// The possessor carries the ball: close the gap to the ball, then move along
 /// the dribble force field (the knock-ons in the kick system roll it the same
 /// way). Approximates `AI_GetBallControlMovement`.
-fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes) -> (Vec2, f32) {
+fn carry_movement(
+    ctx: &DecisionContext,
+    me: &PlayerReading,
+    stats: &Attributes,
+    judgement: &Judgement,
+) -> (Vec2, f32) {
     let ball_pos = Vec2::new(ctx.ball.predictions[0].x, ctx.ball.predictions[0].y);
     let dist = me.pos.distance(ball_pos);
     if dist > 0.5 {
@@ -249,15 +385,10 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
         // orbitarlo. La velocidad es la justa para llegar, no la punta.
         let (intercept, _) = crate::player_movement::find_interception(
             me.pos,
-            believed_pace(me.id, stats.top_speed),
+            judgement.believed_pace(stats.top_speed),
             &ctx.ball.predictions,
         );
-        let to_intercept = chased_spot(
-            intercept,
-            ctx.ball_error,
-            me.pos,
-            ctx.tuning.perception.eyes_on_the_ball,
-        ) - me.pos;
+        let to_intercept = intercept - me.pos;
         let closing = (to_intercept.length() * DISTANCE_TO_VELOCITY_MULTIPLIER)
             .clamp(ctx.tuning.contest.carry_pace, stats.top_speed);
         (to_intercept.normalize_or_zero(), closing)
@@ -288,7 +419,7 @@ fn carry_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes)
 fn ball_winnable(
     ctx: &DecisionContext,
     me: &PlayerReading,
-    possession_player: Option<PlayerId>,
+    perceived_holder: Option<PlayerId>,
 ) -> bool {
     let tuning = &ctx.tuning.possession;
     let my_time = ctx.designation.time_to_ball_ms[me.team()].min(tuning.time_to_ball_cap_ms);
@@ -297,7 +428,7 @@ fn ball_winnable(
     let softening = tuning.time_to_ball_softening_ms;
     let possession_amount = (opp_time + softening) / (my_time + softening);
 
-    let opp_has_ball = possession_player
+    let opp_has_ball = perceived_holder
         .and_then(|e| snap_of(ctx.snaps, e))
         .is_some_and(|s| s.team() != me.team());
 
@@ -305,37 +436,22 @@ fn ball_winnable(
         || (!opp_has_ball && possession_amount > tuning.winnable_loose)
 }
 
-/// El sitio al que uno corre cuando va a por el balón: no el balón, su idea del
-/// balón.
-///
-/// El corte entre decisión perceptiva y contacto (§3). De lejos se corre hacia
-/// donde uno cree que estará y se equivoca entero; dentro de `eyes_on_the_ball`
-/// no se corre hacia una idea, se mira el balón y se pone el pie, y por eso el
-/// desvío se desvanece en vez de cortarse: si no, todo el mundo llegaría al
-/// último metro apuntando a un sitio y lo resolvería saltando al otro.
-fn chased_spot(spot: Vec2, error: Vec2, from: Vec2, eyes_on_the_ball: f32) -> Vec2 {
-    let close = eyes_on_the_ball.max(0.01);
-    let trusting_the_eyes = ((from.distance(spot) - close) / close).clamp(0.0, 1.0);
-    spot + error * trusting_the_eyes
-}
-
 /// Run to the earliest reachable point on the ball's predicted path
 /// (approximates `AI_GetToBallMovement`).
-fn to_ball_movement(ctx: &DecisionContext, me: &PlayerReading, stats: &Attributes) -> (Vec2, f32) {
+fn to_ball_movement(
+    me: &PlayerReading,
+    stats: &Attributes,
+    judgement: &Judgement,
+    believed_path: &[Vec2],
+) -> (Vec2, f32) {
     // Se elige el punto con la velocidad que uno se cree, no con la que tiene:
     // el optimista apunta a un balón que no va a alcanzar, y corre igual.
-    let (intercept, _) = crate::player_movement::find_interception(
+    let (intercept, _) = crate::player_movement::find_believed_interception(
         me.pos,
-        believed_pace(me.id, stats.top_speed),
-        &ctx.ball.predictions,
+        judgement.believed_pace(stats.top_speed),
+        believed_path,
     );
-    let target = chased_spot(
-        intercept,
-        ctx.ball_error,
-        me.pos,
-        ctx.tuning.perception.eyes_on_the_ball,
-    );
-    ((target - me.pos).normalize_or_zero(), stats.top_speed)
+    ((intercept - me.pos).normalize_or_zero(), stats.top_speed)
 }
 
 /// Off-the-ball movement: hunting/defending (from `RequestCommand`'s movement
@@ -413,6 +529,11 @@ fn off_ball_movement(
         ctx.tactics,
         team,
         ctx.sides,
+        crate::team_tactics::planned_defensive_line_x(
+            ctx.plans.for_team(team).defensive_line_depth,
+            team,
+            ctx.sides,
+        ),
         crate::team_tactics::AdaptedFor {
             player_pos: me.pos,
             formation_pos: me.formation_slot,
@@ -425,9 +546,14 @@ fn off_ball_movement(
 
     // offensive component: blend towards the support position
     let attack_bias = normalized_clamp(fading - 0.5, attack_bias_min, attack_bias_max);
-    let make_run = attack_bias > run_gate
-        && ai.attacking_run_player == Some(me.id)
-        && ai.end_attacking_run_ms > ctx.now_ms;
+    let perceived_runner = closest_player(
+        ctx.snaps,
+        team,
+        focal_point + Vec2::new(-ctx.sides.defending_x(team) * 26.0, 0.0),
+        ctx.match_designated,
+        true,
+    );
+    let make_run = attack_bias > run_gate && perceived_runner == Some(me.id);
     let support = get_support_position_force_field(ctx, me, base_position, make_run);
     let mut desired = base_position * (1.0 - attack_bias) + support * attack_bias;
 
@@ -437,7 +563,12 @@ fn off_ball_movement(
     add_defensive_component(ctx, me, man_marking, &mut desired, bias);
 
     if use_trap {
-        apply_offside_trap(ctx.tactics, team, ctx.sides, &mut desired);
+        let planned_line = crate::team_tactics::planned_defensive_line_x(
+            ctx.plans.for_team(team).defensive_line_depth,
+            team,
+            ctx.sides,
+        );
+        crate::team_tactics::apply_offside_trap_at(planned_line, team, ctx.sides, &mut desired);
     }
 
     let to_target = desired - me.pos;
@@ -574,7 +705,7 @@ fn add_defensive_component(
         opp_pos + (goal_pos - opp_pos).normalize_or_zero() * opp_to_threshold_distance;
 
     // don't cover beyond our own offside trap line
-    let trap_x = ctx.tactics.team[me.team()].offside_trap_x;
+    let trap_x = ctx.perceived_offside_trap_x;
     if shooting_point.x * side > trap_x * side {
         let (intersect, _) = line_intersection_2d(
             opp_pos,
@@ -655,7 +786,14 @@ fn get_support_position_force_field(
     // actual base position
     {
         let mut origin = base_position;
-        if ai.forward_support_player == Some(me.id) {
+        let perceived_support = closest_player(
+            ctx.snaps,
+            team,
+            main_man_pos + Vec2::new(-side * 1.5, 0.0),
+            designated.map(|player| player.id),
+            false,
+        );
+        if perceived_support == Some(me.id) {
             origin.x += -side * (0.3 + 0.7 * dynamic_mind_set) * 12.0;
         } else {
             // lane version: flow forward when in the active lane
@@ -1400,7 +1538,7 @@ fn shot_odds(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use football_domain::TOTAL_LOSS;
+    use football_domain::{ResponsibilityKind, TOTAL_LOSS};
 
     /// Pasar a quien hace rato que no se mira es pasar a un recuerdo: el mismo
     /// hueco vale menos si el que lo ocupa no está situado.
@@ -1417,25 +1555,31 @@ mod tests {
         );
     }
 
-    /// Lo que uno persigue de lejos es su idea del balón, y el último metro es
-    /// el balón: sin ese desvanecido, un error de un metro impediría para
-    /// siempre un contacto que se decide en sesenta y cinco centímetros.
     #[test]
-    fn the_last_metre_is_run_at_the_ball_and_not_at_the_idea() {
-        let error = Vec2::new(1.5, 0.0);
-        let ball = Vec2::new(20.0, 0.0);
-        let close = 3.0;
+    fn a_press_becomes_a_tackle_only_against_a_seen_nearby_rival() {
+        let me = PlayerId::home(6);
+        let rival = PlayerId::away(8);
+        let reading = PlayerReading {
+            id: rival,
+            playing_position: PlayingPosition::CentreMidfielder,
+            role: football_domain::TacticalRole::Linking,
+            pos: Vec2::new(0.7, 0.0),
+            vel: Vec2::ZERO,
+            formation_slot: Vec2::ZERO,
+            doubt: 0.0,
+        };
+        let responsibility = TacticalResponsibility {
+            kind: ResponsibilityKind::Press,
+            target: Some(rival),
+        };
 
-        let far = chased_spot(ball, error, Vec2::ZERO, close);
-        assert_eq!(far, ball + error, "de lejos se corre a la idea entera");
-
-        let touching = chased_spot(ball, error, ball - Vec2::new(2.0, 0.0), close);
-        assert_eq!(touching, ball, "encima del balón manda el pie");
-
-        let closing = chased_spot(ball, error, ball - Vec2::new(4.5, 0.0), close);
-        assert!(
-            (closing - ball).length() < error.length() && closing != ball,
-            "y en medio se corrige, no se salta de un sitio al otro"
+        assert_eq!(
+            chooses_tackle(&responsibility, &[reading], me, Vec2::ZERO, 1.0),
+            DefensiveAction::Tackle
+        );
+        assert_eq!(
+            chooses_tackle(&responsibility, &[], me, Vec2::ZERO, 1.0),
+            DefensiveAction::Contain
         );
     }
 }

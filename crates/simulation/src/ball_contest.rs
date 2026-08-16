@@ -22,9 +22,9 @@ use crate::player_movement::dribble_direction;
 use football_domain::math::line_distance_to_point_2d;
 use football_domain::tuning::ContestTuning;
 use football_domain::{
-    Attributes, Ball, BallTouched, MatchState, MatchTuning, PLAYER_BODY_RADIUS, PitchConfig,
-    Player, PlayerId, PlayerMatchState, PlayerRegistry, Position, PossessionDesignation,
-    PotentialFoul, SetPiece, TeamId, Velocity,
+    Attributes, Ball, BallTouched, DefensiveAction, MatchState, MatchTuning, PLAYER_BODY_RADIUS,
+    PitchConfig, Player, PlayerId, PlayerMatchState, PlayerRegistry, Position,
+    PossessionDesignation, PotentialFoul, SetPiece, TeamId, Velocity,
 };
 
 /// Lo que los sistemas del balón necesitan de un cuerpo, más lo único que le
@@ -117,7 +117,7 @@ pub fn release_escaped_ball(
             player: possessor,
             at: ball_pos_2d,
         });
-        match_state.possession_player = None;
+        match_state.lose_possession_to_a_loose_ball();
     }
 }
 
@@ -296,6 +296,10 @@ pub fn judge_tackle(
 /// Robarle el balón a quien lo lleva: solo entra el designado, tiene que estar
 /// genuinamente más cerca, y el balón tiene que estar robable. Sin las tres, los
 /// dos designados se lo intercambian en cada ventana de enfriamiento.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "la entrada necesita los dueños explícitos de estado, contacto, cuerpo y hechos"
+)]
 pub fn resolve_tackle(
     mut match_state: ResMut<MatchState>,
     designation: Res<PossessionDesignation>,
@@ -303,6 +307,7 @@ pub fn resolve_tackle(
     time: Res<Time>,
     mut contesting: Contesting,
     mut ball_query: Query<BallBody, Without<Player>>,
+    tackle_actions: Query<&DefensiveAction>,
     mut touching: Touching,
 ) {
     let (contest, contact) = (&contesting.contest, &mut contesting.contact);
@@ -333,6 +338,13 @@ pub fn resolve_tackle(
 
     let is_designated_tackler = designation.designated[challenger.team] == Some(challenger);
     if !is_designated_tackler {
+        return;
+    }
+
+    let Some(challenger_body) = touching.registry.body(challenger) else {
+        return;
+    };
+    if tackle_actions.get(challenger_body) != Ok(&DefensiveAction::Tackle) {
         return;
     }
 
@@ -394,9 +406,6 @@ pub fn resolve_tackle(
         return;
     }
 
-    let Some(challenger_body) = touching.registry.body(challenger) else {
-        return;
-    };
     match_state.previous_possessor = Some(current);
     take_possession(&mut match_state, challenger, now);
     touching.telemetry.record(MatchFact::PossessionGained {

@@ -21,4 +21,4 @@ pub use lighting::StadiumLightingPlugin;
 pub use overlays::{DiagnosticOverlaysPlugin, OverlaySettings};
 pub use pitch_mesh::PitchMeshPlugin;
 pub use playback::{MatchPlaybackPlugin, PlaybackSpeed};
-pub use visuals::{PrimitiveVisualsPlugin, VisualOf};
+pub use visuals::{LowPolyVisualsPlugin, PrimitiveVisualsPlugin, VisualOf};

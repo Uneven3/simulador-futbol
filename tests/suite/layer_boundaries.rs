@@ -5,10 +5,11 @@
 //! Cargo already forbids the reverse dependency: `football_simulation` does not
 //! depend on `bevy`, so no rule can be expressed in terms of a mesh.
 
+use bevy::mesh::skinning::SkinnedMesh;
 use bevy::prelude::*;
 use football_domain::{Ball, Player, Position};
 use football_presentation::VisualOf;
-use gameplayfootball::{ScenarioRunner, scenarios, with_primitives};
+use gameplayfootball::{ScenarioRunner, scenarios, with_low_poly, with_primitives};
 
 fn body_positions(runner: &mut ScenarioRunner) -> Vec<Vec3> {
     let world = runner.world_mut();
@@ -70,6 +71,31 @@ fn a_rendered_scenario_reaches_the_same_verdict() {
     );
     assert_eq!(headless.score, rendered.score);
     assert_eq!(headless.set_pieces, rendered.set_pieces);
+}
+
+/// MVP 7 keeps the same contract when primitives are replaced with a skinned
+/// low-poly rig: rendering is a consumer, never another match configuration.
+#[test]
+fn skinned_low_poly_presentation_does_not_change_the_match() {
+    let mut headless = ScenarioRunner::headless(scenarios::opening_minute());
+    let mut rendered = with_low_poly(scenarios::opening_minute());
+
+    for tick in 0..600 {
+        headless.advance();
+        rendered.advance();
+        assert_eq!(
+            body_positions(&mut headless),
+            body_positions(&mut rendered),
+            "tick {tick}: skinned presentation changed authoritative state"
+        );
+    }
+
+    let world = rendered.world_mut();
+    let mut skins = world.query::<&SkinnedMesh>();
+    assert!(
+        skins.iter(world).count() >= 22,
+        "each low-poly player must be represented by skinned mesh data"
+    );
 }
 
 /// Law 2: an authoritative entity carries no visuals, and every body gets

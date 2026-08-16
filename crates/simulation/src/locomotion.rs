@@ -13,8 +13,8 @@ use bevy_time::prelude::*;
 
 use football_domain::tuning::{StaminaTuning, TurningTuning};
 use football_domain::{
-    Attributes, Facing, FatigueState, Gaze, Looking, MatchTuning, MovementIntent, Position, Stance,
-    Velocity,
+    Attributes, Facing, FatigueState, Gaze, Looking, MatchTuning, MovementIntent, Position, Senses,
+    Stance, Velocity,
 };
 
 /// La velocidad que un cuerpo alcanza este tick.
@@ -105,12 +105,12 @@ pub fn turned(
 
 /// Hasta dónde llega la vista sin girarse: lo que se quiere mirar si el cuello
 /// da para ello, y el tope del cuello si no.
-pub fn within_the_neck(towards: Dir2, facing: Dir2, tuning: &TurningTuning) -> Dir2 {
+pub fn within_the_neck(towards: Dir2, facing: Dir2, neck_range: f32) -> Dir2 {
     let aside = facing.angle_to(*towards);
-    if aside.abs() <= tuning.neck_range {
+    if aside.abs() <= neck_range {
         return towards;
     }
-    let held = aside.clamp(-tuning.neck_range, tuning.neck_range);
+    let held = aside.clamp(-neck_range, neck_range);
     Dir2::new(Vec2::from_angle(held).rotate(*facing)).unwrap_or(facing)
 }
 
@@ -121,12 +121,13 @@ pub fn turned_head(
     looking: Dir2,
     towards: Dir2,
     facing: Dir2,
-    tuning: &TurningTuning,
+    neck_range: f32,
+    neck_rate: f32,
     dt: f32,
 ) -> Dir2 {
-    let reachable = within_the_neck(towards, facing, tuning);
+    let reachable = within_the_neck(towards, facing, neck_range);
     let angle = looking.angle_to(*reachable);
-    let step = angle.clamp(-tuning.neck_rate * dt, tuning.neck_rate * dt);
+    let step = angle.clamp(-neck_rate * dt, neck_rate * dt);
     Dir2::new(Vec2::from_angle(step).rotate(*looking)).unwrap_or(looking)
 }
 
@@ -149,6 +150,7 @@ pub fn pace_towards(facing: Dir2, heading: Dir2, body: &Attributes, tuning: &Tur
 type DrivenBody = (
     &'static MovementIntent,
     &'static Attributes,
+    &'static Senses,
     &'static Gaze,
     &'static Stance,
     &'static Position,
@@ -166,6 +168,7 @@ pub fn drive_bodies(time: Res<Time>, tuning: Res<MatchTuning>, mut bodies: Query
     for (
         intent,
         body,
+        senses,
         gaze,
         stance,
         position,
@@ -198,13 +201,20 @@ pub fn drive_bodies(time: Res<Time>, tuning: Res<MatchTuning>, mut bodies: Query
         // arrastra es el barrido: para eso está el cuello, y solo cuando la
         // mirada no le cabe se gira el torso a acompañarla.
         let planted = Dir2::new(stance.0.map_or(asked, towards)).unwrap_or(facing.0);
-        let body_target = if facing.0.angle_to(*wanted).abs() > turning.neck_range {
+        let body_target = if facing.0.angle_to(*wanted).abs() > senses.neck_range {
             wanted
         } else {
             planted
         };
         facing.0 = turned(facing.0, body_target, speed, body, turning, dt);
-        looking.0 = turned_head(looking.0, wanted, facing.0, turning, dt);
+        looking.0 = turned_head(
+            looking.0,
+            wanted,
+            facing.0,
+            senses.neck_range,
+            senses.neck_rate,
+            dt,
+        );
     }
 }
 
@@ -441,8 +451,8 @@ mod tests {
         let aside = Dir2::from_angle(tuning.neck_range * 0.5);
         let behind = Dir2::NEG_X;
 
-        assert_eq!(within_the_neck(aside, facing, &tuning), aside);
-        let held = within_the_neck(behind, facing, &tuning);
+        assert_eq!(within_the_neck(aside, facing, tuning.neck_range), aside);
+        let held = within_the_neck(behind, facing, tuning.neck_range);
         assert!(
             (facing.angle_to(*held).abs() - tuning.neck_range).abs() < 0.001,
             "el cuello se quedó en {} rad",
@@ -453,6 +463,11 @@ mod tests {
     /// Y la cabeza llega antes que el cuerpo: en el tiempo que un barrido dura,
     /// los ojos han hecho el recorrido y el cuerpo apenas se ha movido.
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "la ventana y el tick son positivos y su cociente cabe sobradamente en u32"
+    )]
     fn the_head_gets_there_before_the_body_does() {
         let tuning = TurningTuning::default();
         let body = Attributes::default();
@@ -463,7 +478,14 @@ mod tests {
         let mut facing = Dir2::X;
         for _ in 0..(scan / TICK) as u32 {
             facing = turned(facing, Dir2::X, 0.0, &body, &tuning, TICK);
-            looking = turned_head(looking, towards, facing, &tuning, TICK);
+            looking = turned_head(
+                looking,
+                towards,
+                facing,
+                tuning.neck_range,
+                tuning.neck_rate,
+                TICK,
+            );
         }
 
         assert!(
